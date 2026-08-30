@@ -1,5 +1,5 @@
-# Imagen ligera: build fuera del NAS; Prisma Client se genera en el host con binaryTargets musl.
-FROM node:22-alpine AS runner
+# Imagen con soporte PDF (WeasyPrint). Prisma Client se genera en el host.
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -7,9 +7,13 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV DATABASE_URL=file:/app/data/travel.db
+ENV WEASYPRINT_BIN=/usr/bin/weasyprint
 
-RUN addgroup --system --gid 1001 nodejs \
-  && adduser --system --uid 1001 nextjs \
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends weasyprint python3 \
+  && rm -rf /var/lib/apt/lists/* \
+  && addgroup --system --gid 1001 nodejs \
+  && adduser --system --uid 1001 --ingroup nodejs nextjs \
   && mkdir -p /app/data /app/public/uploads \
   && chown -R nextjs:nodejs /app/data /app/public/uploads
 
@@ -20,6 +24,7 @@ COPY --chown=nextjs:nodejs prisma ./prisma
 COPY --chown=nextjs:nodejs node_modules/.prisma ./node_modules/.prisma
 COPY --chown=nextjs:nodejs node_modules/@prisma ./node_modules/@prisma
 COPY --chown=nextjs:nodejs package.json ./package.json
+COPY --chown=nextjs:nodejs scripts ./scripts
 
 USER nextjs
 EXPOSE 3000

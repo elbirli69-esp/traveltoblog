@@ -8,6 +8,7 @@ import NoteForm from "@/components/NoteForm";
 import OfflineSyncBanner from "@/components/OfflineSyncBanner";
 import GenerateJournalButton from "@/components/GenerateJournalButton";
 import ExportHtmlPanel from "@/components/ExportHtmlPanel";
+import ExportPdfPanel from "@/components/ExportPdfPanel";
 import { getSessionFromStorage } from "@/lib/utils";
 import type { TravelDateRange } from "@/types";
 
@@ -24,6 +25,7 @@ interface TravelData {
     exifDateTime: string | null;
     latitude: number | null;
     longitude: number | null;
+    selected: boolean;
     user: { alias: string };
   }[];
   notes: {
@@ -203,6 +205,18 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
           hasGpsPhotos={travel.photos.some(
             (p) => p.latitude != null && p.longitude != null
           )}
+        />
+      </section>
+
+      <section className="rounded-2xl border border-violet-100 bg-violet-50/40 p-6">
+        <h2 className="mb-2 text-lg font-semibold text-violet-900">Álbum para imprenta</h2>
+        <p className="mb-4 text-sm text-violet-800/80">
+          PDF maquetado para imprenta profesional (A4 horizontal o cuadrado 21×21 cm).
+        </p>
+        <ExportPdfPanel
+          travelId={travelId}
+          hasJournal={Boolean(travel.journalMarkdown)}
+          photoCount={travel.photos.filter((p) => p.selected).length}
         />
       </section>
     </main>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import ExportHtmlPanel from "@/components/ExportHtmlPanel";
+import ExportPdfPanel from "@/components/ExportPdfPanel";
 
 export default async function JournalPage({
   params,
@@ -21,6 +22,7 @@ export default async function JournalPage({
         where: { selected: true },
         select: { latitude: true, longitude: true },
       },
+      _count: { select: { photos: { where: { selected: true } } } },
     },
   });
 
@@ -74,6 +76,21 @@ export default async function JournalPage({
           travelId={travel.id}
           hasJournal={Boolean(travel.journalMarkdown)}
           hasGpsPhotos={hasGpsPhotos}
+        />
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-violet-100 bg-violet-50/40 p-6">
+        <h2 className="mb-1 text-lg font-semibold text-violet-900">
+          Álbum para imprenta
+        </h2>
+        <p className="mb-5 text-sm text-violet-800/80">
+          PDF maquetado con portada, doble columna (fotos + narrativa) y metadatos EXIF.
+          Listo para Saal Digital, CEWE u otra imprenta.
+        </p>
+        <ExportPdfPanel
+          travelId={travel.id}
+          hasJournal={Boolean(travel.journalMarkdown)}
+          photoCount={travel._count.photos}
         />
       </section>
     </main>
