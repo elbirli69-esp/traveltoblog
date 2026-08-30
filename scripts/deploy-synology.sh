@@ -1,17 +1,73 @@
 #!/usr/bin/env bash
-# Despliegue en Synology NAS — mismo patrón que rodrigo-cv/deploy.sh
+# Despliegue en Synology NAS — LAN o Tailscale (mismo patrón que rodrigo-cv)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 NAS_USER="${NAS_USER:-rodri_adm}"
-NAS_HOST="${NAS_HOST:-192.168.1.137}"
 NAS_PORT="${NAS_PORT:-2222}"
 REMOTE_DIR="${REMOTE_DIR:-/volume1/docker/traveltoblog}"
 APP_PORT="${APP_PORT:-3000}"
+
+# Conectar Tailscale si hay auth key (cloud agent / CI)
+if command -v tailscale >/dev/null 2>&1; then
+  if ! sudo tailscale status >/dev/null 2>&1; then
+    sudo mkdir -p /var/run/tailscale /var/lib/tailscale
+    if ! pgrep -x tailscaled >/dev/null 2>&1; then
+      sudo tailscaled \
+        --state=/var/lib/tailscale/tailscaled.state \
+        --socket=/var/run/tailscale/tailscaled.sock >/tmp/tailscaled.log 2>&1 &
+      sleep 2
+    fi
+  fi
+  if [[ -n "${TAILSCALE_AUTHKEY:-}" ]] && ! sudo tailscale status >/dev/null 2>&1; then
+    echo "→ Uniendo tailnet con Tailscale…"
+    sudo tailscale up --auth-key="${TAILSCALE_AUTHKEY}" --hostname="traveltoblog-deploy" --accept-routes
+  fi
+fi
+
+resolve_nas_host() {
+  if [[ -n "${NAS_TAILSCALE_HOST:-}" ]]; then
+    echo "$NAS_TAILSCALE_HOST"
+    return
+  fi
+  if [[ -n "${NAS_HOST:-}" ]]; then
+    echo "$NAS_HOST"
+    return
+  fi
+  if command -v tailscale >/dev/null 2>&1 && sudo tailscale status >/dev/null 2>&1; then
+    # Busca el NAS en la tailnet (synology, nas, diskstation…)
+    local peer
+    peer=$(sudo tailscale status 2>/dev/null | awk '
+      /synology|diskstation|nas|ds[0-9]/ { print $1; exit }
+    ')
+    if [[ -n "$peer" ]]; then
+      echo "$peer"
+      return
+    fi
+    # Fallback: primer peer con IP 100.x
+    peer=$(sudo tailscale status 2>/dev/null | awk '/100\./ { print $1; exit }')
+    if [[ -n "$peer" ]]; then
+      echo "$peer"
+      return
+    fi
+  fi
+  echo "192.168.1.137"
+}
+
+NAS_HOST="$(resolve_nas_host)"
 APP_URL="${NEXT_PUBLIC_APP_URL:-http://${NAS_HOST}:${APP_PORT}}"
 
-SSH_OPTS=(-p "$NAS_PORT" -o StrictHostKeyChecking=accept-new)
+SSH_OPTS=(-p "$NAS_PORT" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15)
+if [[ -n "${NAS_SSH_KEY:-}" ]]; then
+  KEY_FILE="$(mktemp)"
+  trap 'rm -f "$KEY_FILE"' EXIT
+  printf '%s\n' "$NAS_SSH_KEY" > "$KEY_FILE"
+  chmod 600 "$KEY_FILE"
+  SSH_OPTS+=(-i "$KEY_FILE")
+elif [[ -n "${NAS_SSH_KEY_FILE:-}" ]] && [[ -f "$NAS_SSH_KEY_FILE" ]]; then
+  SSH_OPTS+=(-i "$NAS_SSH_KEY_FILE")
+fi
 SSH_TARGET="${NAS_USER}@${NAS_HOST}"
 
 echo "→ Synology: ${SSH_TARGET}:${NAS_PORT}"

@@ -27,14 +27,40 @@ Abre [http://localhost:3000](http://localhost:3000).
 
 ## Despliegue con Docker (Synology NAS)
 
+### Opción A — script automático (desde tu red local)
+
+Mismo patrón que `rodrigo-cv`: SSH al NAS y `docker compose`.
+
+```bash
+cp .env.example .env
+# Edita DEEPSEEK_API_KEY en .env
+
+npm run deploy:synology
+```
+
+Variables opcionales:
+
+| Variable | Default |
+|----------|---------|
+| `NAS_HOST` | Auto: Tailscale → `192.168.1.137` |
+| `NAS_TAILSCALE_HOST` | Hostname/IP Tailscale del NAS (ej. `nas.tail1234.ts.net`) |
+| `TAILSCALE_AUTHKEY` | Auth key para unir el agente a tu tailnet |
+| `NAS_SSH_KEY` | Clave privada SSH para `rodri_adm` (si no está en `~/.ssh`) |
+| `NAS_PORT` | `2222` |
+| `NAS_USER` | `rodri_adm` |
+| `REMOTE_DIR` | `/volume1/docker/traveltoblog` |
+| `APP_PORT` | `3000` |
+
+La app quedará en `http://192.168.1.137:3000`.
+
+### Opción B — manual en el NAS
+
 ```bash
 cp .env.example .env
 # Configura DEEPSEEK_API_KEY y NEXT_PUBLIC_APP_URL
 
 docker compose up -d --build
 ```
-
-La app estará disponible en el puerto **3000**.
 
 ## Flujo de uso
 
