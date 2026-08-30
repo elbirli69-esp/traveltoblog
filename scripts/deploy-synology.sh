@@ -176,7 +176,7 @@ else
 fi
 
 \$COMPOSE down 2>/dev/null || true
-\$COMPOSE build --no-cache
+\$COMPOSE build
 \$COMPOSE up -d
 
 # Asegurar permisos de escritura en el volumen SQLite
