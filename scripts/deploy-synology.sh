@@ -66,18 +66,19 @@ if [[ -n "${NAS_SSH_KEY:-}" ]]; then
   printf '%s\n' "$NAS_SSH_KEY" > "$KEY_FILE"
   chmod 600 "$KEY_FILE"
   SSH_OPTS+=(-i "$KEY_FILE")
+elif [[ -n "${NAS_SSH_KEY_FILE:-}" ]] && [[ -f "$NAS_SSH_KEY_FILE" ]]; then
+  SSH_OPTS+=(-i "$NAS_SSH_KEY_FILE")
 elif [[ -n "${NAS_SSH_KEY_FILE:-}" ]]; then
-  if [[ ! -f "$NAS_SSH_KEY_FILE" ]]; then
-    echo "❌ NAS_SSH_KEY_FILE apunta a un archivo que no existe: ${NAS_SSH_KEY_FILE}"
-    echo "   Añade el secreto NAS_SSH_KEY (clave privada OpenSSH de rodri_adm) en"
-    echo "   Cursor → Cloud Agents → Environment → Secrets y vuelve a lanzar el agente."
+  echo "⚠️  NAS_SSH_KEY_FILE apunta a un archivo inexistente; ignorando."
+  if [[ -z "${NAS_SSH_KEY:-}" ]]; then
+    echo "❌ Falta NAS_SSH_KEY. Guarda el entorno en Cursor y reinicia el agente"
+    echo "   para que el secreto SSH se inyecte en el pod."
     exit 1
   fi
-  SSH_OPTS+=(-i "$NAS_SSH_KEY_FILE")
 else
   echo "❌ Falta credencial SSH para el NAS."
   echo "   Tailscale alcanza el NAS, pero el despliegue usa SSH (puerto ${NAS_PORT})."
-  echo "   Añade NAS_SSH_KEY en los secrets del entorno de Cloud Agent."
+  echo "   Añade NAS_SSH_KEY en los secrets del entorno y reinicia el agente."
   exit 1
 fi
 SSH_TARGET="${NAS_USER}@${NAS_HOST}"
