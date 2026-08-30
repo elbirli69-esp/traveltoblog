@@ -1,11 +1,4 @@
-# Imagen ligera: build fuera del NAS; aquí solo se empaqueta el artefacto standalone.
-FROM node:22-alpine AS prisma
-WORKDIR /app
-COPY package.json package-lock.json* ./
-COPY prisma ./prisma
-RUN npm ci --omit=dev
-RUN npx prisma generate
-
+# Imagen ligera: build fuera del NAS; Prisma Client se genera en el host con binaryTargets musl.
 FROM node:22-alpine AS runner
 WORKDIR /app
 
@@ -24,8 +17,8 @@ COPY --chown=nextjs:nodejs .next/standalone ./
 COPY --chown=nextjs:nodejs .next/static ./.next/static
 COPY --chown=nextjs:nodejs public ./public
 COPY --chown=nextjs:nodejs prisma ./prisma
-COPY --from=prisma --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=prisma --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+COPY --chown=nextjs:nodejs node_modules/.prisma ./node_modules/.prisma
+COPY --chown=nextjs:nodejs node_modules/@prisma ./node_modules/@prisma
 COPY --chown=nextjs:nodejs package.json ./package.json
 
 USER nextjs

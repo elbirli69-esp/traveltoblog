@@ -60,10 +60,30 @@ APP_URL="${NEXT_PUBLIC_APP_URL:-http://${NAS_HOST}:${APP_PORT}}"
 
 SSH_OPTS=(-p "$NAS_PORT" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes)
 KEY_FILE=""
+write_ssh_key_file() {
+  local dest="$1"
+  python3 - "$dest" <<'PY'
+import os, re, sys, textwrap
+
+raw = os.environ.get("NAS_SSH_KEY", "").strip()
+if not raw:
+    sys.exit("NAS_SSH_KEY vacío")
+
+if "BEGIN" in raw:
+    key = raw if raw.endswith("\n") else raw + "\n"
+else:
+    body = re.sub(r"\s+", "", raw)
+    lines = "\n".join(textwrap.wrap(body, 70))
+    key = f"-----BEGIN OPENSSH PRIVATE KEY-----\n{lines}\n-----END OPENSSH PRIVATE KEY-----\n"
+
+with open(sys.argv[1], "w", encoding="utf-8") as fh:
+    fh.write(key)
+PY
+}
 if [[ -n "${NAS_SSH_KEY:-}" ]]; then
   KEY_FILE="$(mktemp)"
   trap 'rm -f "$KEY_FILE"' EXIT
-  printf '%s\n' "$NAS_SSH_KEY" > "$KEY_FILE"
+  write_ssh_key_file "$KEY_FILE"
   chmod 600 "$KEY_FILE"
   SSH_OPTS+=(-i "$KEY_FILE")
 elif [[ -n "${NAS_SSH_KEY_FILE:-}" ]] && [[ -f "$NAS_SSH_KEY_FILE" ]]; then
@@ -91,6 +111,9 @@ if [[ ! -f .env ]] && [[ -z "${DEEPSEEK_API_KEY:-}" ]]; then
 fi
 
 DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-$(grep -E '^DEEPSEEK_API_KEY=' .env 2>/dev/null | cut -d= -f2- | tr -d '"' || true)}"
+
+echo "→ Generando Prisma Client (incluye binario musl para Alpine)…"
+npx prisma generate
 
 if [[ ! -d .next/standalone ]]; then
   echo "→ Compilando Next.js localmente (evita build pesado en el NAS)…"
@@ -153,7 +176,12 @@ else
 fi
 
 \$COMPOSE down 2>/dev/null || true
-\$COMPOSE up -d --build
+\$COMPOSE build --no-cache
+\$COMPOSE up -d
+
+# Asegurar permisos de escritura en el volumen SQLite
+docker exec -u root traveltoblog sh -c 'chown -R nextjs:nodejs /app/data /app/public/uploads && chmod 775 /app/data && chmod 664 /app/data/travel.db 2>/dev/null || true' 2>/dev/null || true
+\$COMPOSE restart traveltoblog 2>/dev/null || true
 
 # Copiar BD inicial al volumen Docker si aún no existe
 if [ -f prisma/data/travel.db ]; then
