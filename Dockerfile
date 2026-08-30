@@ -19,9 +19,10 @@ COPY --chown=nextjs:nodejs public ./public
 COPY --chown=nextjs:nodejs prisma ./prisma
 COPY --chown=nextjs:nodejs node_modules/.prisma ./node_modules/.prisma
 COPY --chown=nextjs:nodejs node_modules/@prisma ./node_modules/@prisma
+COPY --chown=nextjs:nodejs node_modules/prisma ./node_modules/prisma
 COPY --chown=nextjs:nodejs package.json ./package.json
 
 USER nextjs
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node server.js"]
+CMD ["node", "server.js"]

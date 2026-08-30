@@ -86,6 +86,10 @@ if [[ ! -d .next/standalone ]]; then
   npm run build
 fi
 
+echo "→ Preparando base de datos SQLite local…"
+mkdir -p prisma/data
+DATABASE_URL="file:./prisma/data/travel.db" npx prisma db push --skip-generate 2>/dev/null || true
+
 SSH_CMD=(ssh "${SSH_OPTS[@]}")
 
 echo "→ Sincronizando código (tar por SSH, incluye .next standalone)…"
@@ -93,7 +97,7 @@ echo "→ Sincronizando código (tar por SSH, incluye .next standalone)…"
 tar \
   --exclude='./node_modules' \
   --exclude='./.git' \
-  --exclude='./prisma/data' \
+  --exclude='./prisma/data/*.db-journal' \
   --exclude='./public/uploads' \
   --exclude='./.env' \
   -czf - \
@@ -134,6 +138,15 @@ fi
 
 \$COMPOSE down 2>/dev/null || true
 \$COMPOSE up -d --build
+
+# Copiar BD inicial al volumen Docker si aún no existe
+if [ -f prisma/data/travel.db ]; then
+  if ! \$COMPOSE exec -T traveltoblog test -f /app/data/travel.db 2>/dev/null; then
+    echo "→ Copiando base de datos inicial al volumen…"
+    docker cp prisma/data/travel.db traveltoblog:/app/data/travel.db 2>/dev/null || true
+    \$COMPOSE restart traveltoblog 2>/dev/null || true
+  fi
+fi
 
 echo ""
 echo "✅ TravelToBlog desplegado"
