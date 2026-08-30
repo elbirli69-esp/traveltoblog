@@ -78,18 +78,30 @@ if [[ ! -f .env ]] && [[ -z "${DEEPSEEK_API_KEY:-}" ]]; then
   exit 1
 fi
 
-DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-$(grep -E '^DEEPSEEK_API_KEY=' .env | cut -d= -f2- | tr -d '"')}"
+DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-$(grep -E '^DEEPSEEK_API_KEY=' .env 2>/dev/null | cut -d= -f2- | tr -d '"' || true)}"
 
-echo "→ Sincronizando código (excluye node_modules, .next, .git)…"
-rsync -avz --delete \
-  --exclude node_modules \
-  --exclude .next \
-  --exclude .git \
-  --exclude prisma/data \
-  --exclude 'public/uploads/*' \
-  --exclude .env \
-  -e "ssh ${SSH_OPTS[*]}" \
-  ./ "${SSH_TARGET}:${REMOTE_DIR}/"
+if [[ ! -d .next/standalone ]]; then
+  echo "→ Compilando Next.js localmente (evita build pesado en el NAS)…"
+  npm ci
+  npm run build
+fi
+
+SSH_CMD=(ssh "${SSH_OPTS[@]}")
+
+echo "→ Sincronizando código (tar por SSH, incluye .next standalone)…"
+"${SSH_CMD[@]}" "$SSH_TARGET" "mkdir -p ${REMOTE_DIR}"
+tar \
+  --exclude='./node_modules' \
+  --exclude='./.git' \
+  --exclude='./prisma/data' \
+  --exclude='./public/uploads' \
+  --exclude='./.env' \
+  -czf - \
+  . \
+  node_modules/.prisma \
+  node_modules/@prisma \
+  node_modules/prisma \
+  | "${SSH_CMD[@]}" "$SSH_TARGET" "tar xzf - -C ${REMOTE_DIR}"
 
 echo "→ Escribiendo .env en el NAS…"
 ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "cat > ${REMOTE_DIR}/.env" <<EOF
