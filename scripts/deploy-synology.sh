@@ -58,15 +58,27 @@ resolve_nas_host() {
 NAS_HOST="$(resolve_nas_host)"
 APP_URL="${NEXT_PUBLIC_APP_URL:-http://${NAS_HOST}:${APP_PORT}}"
 
-SSH_OPTS=(-p "$NAS_PORT" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15)
+SSH_OPTS=(-p "$NAS_PORT" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes)
+KEY_FILE=""
 if [[ -n "${NAS_SSH_KEY:-}" ]]; then
   KEY_FILE="$(mktemp)"
   trap 'rm -f "$KEY_FILE"' EXIT
   printf '%s\n' "$NAS_SSH_KEY" > "$KEY_FILE"
   chmod 600 "$KEY_FILE"
   SSH_OPTS+=(-i "$KEY_FILE")
-elif [[ -n "${NAS_SSH_KEY_FILE:-}" ]] && [[ -f "$NAS_SSH_KEY_FILE" ]]; then
+elif [[ -n "${NAS_SSH_KEY_FILE:-}" ]]; then
+  if [[ ! -f "$NAS_SSH_KEY_FILE" ]]; then
+    echo "❌ NAS_SSH_KEY_FILE apunta a un archivo que no existe: ${NAS_SSH_KEY_FILE}"
+    echo "   Añade el secreto NAS_SSH_KEY (clave privada OpenSSH de rodri_adm) en"
+    echo "   Cursor → Cloud Agents → Environment → Secrets y vuelve a lanzar el agente."
+    exit 1
+  fi
   SSH_OPTS+=(-i "$NAS_SSH_KEY_FILE")
+else
+  echo "❌ Falta credencial SSH para el NAS."
+  echo "   Tailscale alcanza el NAS, pero el despliegue usa SSH (puerto ${NAS_PORT})."
+  echo "   Añade NAS_SSH_KEY en los secrets del entorno de Cloud Agent."
+  exit 1
 fi
 SSH_TARGET="${NAS_USER}@${NAS_HOST}"
 
