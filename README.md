@@ -9,14 +9,14 @@ Progressive Web App open-source para registrar viajes con fotos y notas, generar
 - **Backend:** API Routes de Next.js
 - **BD:** SQLite + Prisma ORM
 - **EXIF:** `exifr` (solo cliente)
-- **IA:** OpenAI API (`/api/generate-journal`)
+- **IA:** DeepSeek API (`/api/generate-journal`) — misma clave que el resto de proyectos
 - **Offline:** IndexedDB (`idb`)
 
 ## Inicio rápido (desarrollo)
 
 ```bash
 cp .env.example .env
-# Edita OPENAI_API_KEY en .env
+# Edita DEEPSEEK_API_KEY en .env (la misma clave que CarQuestions / mrWhite)
 
 npm install
 npm run db:push
@@ -29,7 +29,7 @@ Abre [http://localhost:3000](http://localhost:3000).
 
 ```bash
 cp .env.example .env
-# Configura OPENAI_API_KEY y NEXT_PUBLIC_APP_URL
+# Configura DEEPSEEK_API_KEY y NEXT_PUBLIC_APP_URL
 
 docker compose up -d --build
 ```
@@ -62,8 +62,9 @@ docker-compose.yml            # Despliegue NAS
 | Variable | Descripción |
 |----------|-------------|
 | `DATABASE_URL` | Ruta SQLite (`file:./data/travel.db`) |
-| `OPENAI_API_KEY` | Clave API de OpenAI |
-| `OPENAI_MODEL` | Modelo (default: `gpt-4o-mini`) |
+| `DEEPSEEK_API_KEY` | Clave API de DeepSeek (o `OPENAI_API_KEY` como alias) |
+| `OPENAI_BASE_URL` | Endpoint DeepSeek (`https://api.deepseek.com/v1`) |
+| `OPENAI_MODEL` | Modelo (`deepseek-chat` por defecto) |
 | `NEXT_PUBLIC_APP_URL` | URL pública de la app |
 
 ## Licencia

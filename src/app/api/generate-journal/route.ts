@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
+import { createAiClient, getAiConfig } from "@/lib/ai";
 import { buildJournalInput, buildUserPrompt, SYSTEM_PROMPT } from "@/lib/journal";
 
 export async function POST(request: NextRequest) {
@@ -12,9 +12,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "travelId es obligatorio" }, { status: 400 });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    const { apiKey, model } = getAiConfig();
+    if (!apiKey) {
       return NextResponse.json(
-        { error: "OPENAI_API_KEY no configurada" },
+        { error: "DEEPSEEK_API_KEY no configurada" },
         { status: 503 }
       );
     }
@@ -44,10 +45,10 @@ export async function POST(request: NextRequest) {
       travel.notes
     );
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const ai = createAiClient();
 
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+    const completion = await ai.chat.completions.create({
+      model,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: buildUserPrompt(journalInput) },
