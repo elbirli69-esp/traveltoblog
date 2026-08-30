@@ -87,8 +87,7 @@ echo "→ Synology: ${SSH_TARGET}:${NAS_PORT}"
 echo "→ Directorio remoto: ${REMOTE_DIR}"
 
 if [[ ! -f .env ]] && [[ -z "${DEEPSEEK_API_KEY:-}" ]]; then
-  echo "⚠️  Crea .env con DEEPSEEK_API_KEY o exporta la variable antes de desplegar."
-  exit 1
+  echo "⚠️  DEEPSEEK_API_KEY no definido localmente; se conservará el .env remoto si existe."
 fi
 
 DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-$(grep -E '^DEEPSEEK_API_KEY=' .env 2>/dev/null | cut -d= -f2- | tr -d '"' || true)}"
@@ -121,13 +120,17 @@ tar \
   | "${SSH_CMD[@]}" "$SSH_TARGET" "tar xzf - -C ${REMOTE_DIR}"
 
 echo "→ Escribiendo .env en el NAS…"
-ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "cat > ${REMOTE_DIR}/.env" <<EOF
+if [[ -n "$DEEPSEEK_API_KEY" ]]; then
+  ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "cat > ${REMOTE_DIR}/.env" <<EOF
 DATABASE_URL=file:/app/data/travel.db
 DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
 OPENAI_BASE_URL=https://api.deepseek.com/v1
 OPENAI_MODEL=deepseek-chat
 NEXT_PUBLIC_APP_URL=${APP_URL}
 EOF
+else
+  echo "   (sin DEEPSEEK_API_KEY local — no se sobrescribe .env remoto)"
+fi
 
 echo "→ Construyendo y levantando contenedor Docker…"
 ssh "${SSH_OPTS[@]}" "$SSH_TARGET" bash -s <<REMOTE
