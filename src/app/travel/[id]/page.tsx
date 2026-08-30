@@ -7,6 +7,7 @@ import SharePanel from "@/components/SharePanel";
 import NoteForm from "@/components/NoteForm";
 import OfflineSyncBanner from "@/components/OfflineSyncBanner";
 import GenerateJournalButton from "@/components/GenerateJournalButton";
+import ExportHtmlPanel from "@/components/ExportHtmlPanel";
 import { getSessionFromStorage } from "@/lib/utils";
 import type { TravelDateRange } from "@/types";
 
@@ -21,6 +22,8 @@ interface TravelData {
     id: string;
     url: string;
     exifDateTime: string | null;
+    latitude: number | null;
+    longitude: number | null;
     user: { alias: string };
   }[];
   notes: {
@@ -186,6 +189,21 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
           </Link>
         ) : null}
         <GenerateJournalButton travelId={travelId} />
+      </section>
+
+      <section className="rounded-2xl border border-teal-100 bg-teal-50/40 p-6">
+        <h2 className="mb-2 text-lg font-semibold text-teal-900">Exportar viaje</h2>
+        <p className="mb-4 text-sm text-teal-800/80">
+          Al finalizar el viaje, exporta un HTML estático con plantilla visual, crónica y mapa
+          del recorrido.
+        </p>
+        <ExportHtmlPanel
+          travelId={travelId}
+          hasJournal={Boolean(travel.journalMarkdown)}
+          hasGpsPhotos={travel.photos.some(
+            (p) => p.latitude != null && p.longitude != null
+          )}
+        />
       </section>
     </main>
   );

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
+import ExportHtmlPanel from "@/components/ExportHtmlPanel";
 
 export default async function JournalPage({
   params,
@@ -16,10 +17,18 @@ export default async function JournalPage({
       title: true,
       journalMarkdown: true,
       journalGeneratedAt: true,
+      photos: {
+        where: { selected: true },
+        select: { latitude: true, longitude: true },
+      },
     },
   });
 
   if (!travel) notFound();
+
+  const hasGpsPhotos = travel.photos.some(
+    (p) => p.latitude != null && p.longitude != null
+  );
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
@@ -44,14 +53,29 @@ export default async function JournalPage({
       </header>
 
       {travel.journalMarkdown ? (
-        <article className="prose prose-slate max-w-none whitespace-pre-wrap">
+        <article className="prose prose-slate mb-10 max-w-none whitespace-pre-wrap">
           {travel.journalMarkdown}
         </article>
       ) : (
-        <p className="text-slate-500">
+        <p className="mb-10 text-slate-500">
           Aún no se ha generado la crónica. Vuelve al viaje y pulsa &ldquo;Generar diario con IA&rdquo;.
         </p>
       )}
+
+      <section className="rounded-2xl border border-teal-100 bg-teal-50/40 p-6">
+        <h2 className="mb-1 text-lg font-semibold text-teal-900">
+          Exportar viaje
+        </h2>
+        <p className="mb-5 text-sm text-teal-800/80">
+          Genera un paquete HTML estático con tu crónica, fotos y mapa interactivo
+          del recorrido. Listo para publicar o archivar sin depender de la PWA.
+        </p>
+        <ExportHtmlPanel
+          travelId={travel.id}
+          hasJournal={Boolean(travel.journalMarkdown)}
+          hasGpsPhotos={hasGpsPhotos}
+        />
+      </section>
     </main>
   );
 }
