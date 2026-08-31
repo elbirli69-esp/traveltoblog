@@ -142,6 +142,30 @@ tar \
   node_modules/prisma \
   | "${SSH_CMD[@]}" "$SSH_TARGET" "tar xzf - -C ${REMOTE_DIR}"
 
+echo "→ Detectando IP Tailscale del NAS (URL pública)…"
+TAILSCALE_IP="$("${SSH_CMD[@]}" "$SSH_TARGET" bash -s <<'TSIP'
+set -euo pipefail
+export PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH"
+for bin in /var/packages/Tailscale/target/bin/tailscale /usr/local/bin/tailscale tailscale; do
+  if [[ -x "$bin" ]] || command -v "$bin" >/dev/null 2>&1; then
+    ip="$("$bin" ip -4 2>/dev/null | head -1 || true)"
+    if [[ -n "$ip" ]]; then
+      echo "$ip"
+      exit 0
+    fi
+  fi
+done
+exit 1
+TSIP
+)" || true
+TAILSCALE_IP="${TAILSCALE_IP//$'\r'/}"
+if [[ -z "$TAILSCALE_IP" ]]; then
+  echo "❌ No se pudo obtener la IP Tailscale del NAS. Activa Tailscale en el Synology."
+  exit 1
+fi
+echo "   App en 127.0.0.1:${APP_PORT} (LAN bloqueada; acceso vía Tailscale)"
+APP_URL="http://${TAILSCALE_IP}:${APP_PORT}"
+
 echo "→ Escribiendo .env en el NAS…"
 if [[ -n "$DEEPSEEK_API_KEY" ]]; then
   ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "cat > ${REMOTE_DIR}/.env" <<EOF
@@ -152,7 +176,18 @@ OPENAI_MODEL=deepseek-chat
 NEXT_PUBLIC_APP_URL=${APP_URL}
 EOF
 else
-  echo "   (sin DEEPSEEK_API_KEY local — no se sobrescribe .env remoto)"
+  echo "   (sin DEEPSEEK_API_KEY local — actualizando solo NEXT_PUBLIC_APP_URL)"
+  ssh "${SSH_OPTS[@]}" "$SSH_TARGET" bash -s <<ENVPATCH
+set -euo pipefail
+ENV_FILE="${REMOTE_DIR}/.env"
+touch "\$ENV_FILE"
+sed -i '/^TAILSCALE_BIND_IP=/d' "\$ENV_FILE" 2>/dev/null || true
+if grep -q '^NEXT_PUBLIC_APP_URL=' "\$ENV_FILE" 2>/dev/null; then
+  sed -i "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=${APP_URL}|" "\$ENV_FILE"
+else
+  echo "NEXT_PUBLIC_APP_URL=${APP_URL}" >> "\$ENV_FILE"
+fi
+ENVPATCH
 fi
 
 echo "→ Construyendo y levantando contenedor Docker…"
@@ -194,7 +229,8 @@ fi
 
 echo ""
 echo "✅ TravelToBlog desplegado"
-echo "   URL LAN: ${APP_URL}"
+echo "   URL (Tailscale): ${APP_URL}"
+echo "   Puerto ${APP_PORT} escucha solo en 127.0.0.1 — no accesible desde la LAN"
 \$COMPOSE ps
 REMOTE
 

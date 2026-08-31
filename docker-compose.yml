@@ -4,9 +4,11 @@ services:
     container_name: traveltoblog
     restart: unless-stopped
     # Synology Docker bridge (172.x) often blocks outbound internet/DNS.
-    # Host network uses the NAS stack directly — same exposure as port 3000 published.
+    # Host network uses the NAS stack directly.
+    # Bind localhost only — LAN cannot reach :3000; Tailscale userspace still proxies.
     network_mode: host
     environment:
+      - HOSTNAME=127.0.0.1
       - DATABASE_URL=file:/app/data/travel.db
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.deepseek.com/v1}
