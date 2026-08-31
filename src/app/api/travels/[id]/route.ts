@@ -30,11 +30,18 @@ export async function GET(
         orderBy: { exifDateTime: "asc" },
       },
       notes: {
-        include: { user: true, photo: true },
+        include: { user: true, photo: true, place: true },
         orderBy: { createdAt: "asc" },
       },
       places: {
-        include: { user: true },
+        include: {
+          user: true,
+          notes: {
+            where: { type: "PLACE" },
+            include: { user: true },
+            orderBy: { createdAt: "asc" },
+          },
+        },
         orderBy: { createdAt: "asc" },
       },
       startPhoto: true,

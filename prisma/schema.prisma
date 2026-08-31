@@ -95,6 +95,7 @@ enum NoteType {
   PHOTO
   DAY
   TRIP
+  PLACE
 }
 
 model Note {
@@ -103,6 +104,8 @@ model Note {
   userId    String
   /// Required when type = PHOTO
   photoId   String?
+  /// Required when type = PLACE
+  placeId   String?
   type      NoteType
   /// Calendar date for DAY notes (YYYY-MM-DD stored as midnight UTC)
   dayDate   DateTime?
@@ -115,9 +118,11 @@ model Note {
   travel    Travel    @relation(fields: [travelId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   photo     Photo?    @relation(fields: [photoId], references: [id], onDelete: SetNull)
+  place     Place?    @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
   @@index([travelId, type])
   @@index([userId])
+  @@index([placeId])
 }
 
 enum PlaceType {
@@ -142,6 +147,7 @@ model Place {
   type      PlaceType @default(OTHER)
   latitude  Float
   longitude Float
+  /// Deprecated: prefer Note(type=PLACE). Kept nullable for migration.
   comment   String?
   /// Client-side UUID for offline sync deduplication
   localId   String?   @unique
@@ -150,6 +156,7 @@ model Place {
 
   travel    Travel    @relation(fields: [travelId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes     Note[]
 
   @@index([travelId])
   @@index([userId])

@@ -71,8 +71,9 @@ docker compose up -d --build
 5. **Días** — Notas por fecha del calendario del viaje.
 6. **Viaje** — Notas globales (anécdotas del viaje completo) para intro/conclusión de la crónica.
 7. **+ Añadir recuerdo** — CTA flotante con atajos (foto, estoy aquí, cómo fue el día, sobre el viaje). También `?add=photo|place|day|trip`.
-8. **Offline** — Sin conexión, fotos/notas/lugares van a IndexedDB y sincronizan al volver online.
-9. **Generar crónica** — La IA redacta un artículo Markdown con fotos, notas, lugares y vuelos del grupo.
+8. **Notas de lugar** — `Note(type=PLACE)` ligadas al pin (migración desde `Place.comment` con `npm run db:migrate-place-notes`).
+9. **Offline** — Sin conexión, fotos/notas/lugares van a IndexedDB y sincronizan al volver online.
+10. **Generar crónica** — La IA redacta un artículo Markdown con fotos, notas, lugares y vuelos del grupo.
 
 ## Estructura del proyecto
 

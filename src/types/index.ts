@@ -40,7 +40,11 @@ export interface PendingNote {
   travelId: string;
   userId: string;
   photoLocalId: string | null;
-  type: "PHOTO" | "DAY" | "TRIP";
+  /** Server place id when the place is already synced */
+  placeId: string | null;
+  /** Client place localId when the place is still pending */
+  placeLocalId: string | null;
+  type: "PHOTO" | "DAY" | "TRIP" | "PLACE";
   dayDate: string | null;
   text: string;
   createdAt: string;
@@ -54,6 +58,7 @@ export interface PendingPlace {
   type: string;
   latitude: number;
   longitude: number;
+  /** Legacy offline field; sync creates Note(PLACE) instead of Place.comment */
   comment: string | null;
   createdAt: string;
 }
@@ -62,7 +67,7 @@ export interface JournalChronologyEntry {
   fecha_hora: string;
   autor: string;
   ubicacion_gps: { lat: number; lon: number } | null;
-  tipo_nota: "foto" | "dia" | "viaje";
+  tipo_nota: "foto" | "dia" | "viaje" | "lugar";
   texto_nota: string;
   url_foto?: string;
 }

@@ -48,7 +48,14 @@ export async function POST(request: NextRequest) {
           include: { user: true, photo: true },
         },
         places: {
-          include: { user: true },
+          include: {
+            user: true,
+            notes: {
+              where: { type: "PLACE" },
+              include: { user: true },
+              orderBy: { createdAt: "asc" },
+            },
+          },
         },
       },
     });

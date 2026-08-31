@@ -7,13 +7,19 @@ const DEFAULT_LABELS = {
   PHOTO: "Nota para esta foto",
   DAY: "Nota del día",
   TRIP: "Nota del viaje",
+  PLACE: "Nota del lugar",
 } as const;
+
+type NoteFormType = keyof typeof DEFAULT_LABELS;
 
 interface NoteFormProps {
   travelId?: string;
   userId?: string;
   photoId?: string | null;
-  type?: "PHOTO" | "DAY" | "TRIP";
+  placeId?: string | null;
+  /** When the place is still offline-pending */
+  placeLocalId?: string | null;
+  type?: NoteFormType;
   dayDate?: string;
   onCreated?: () => void;
   /** Overrides the default label for `type`, or required when using `onPersist`. */
@@ -22,7 +28,8 @@ interface NoteFormProps {
   submitLabel?: string;
   rows?: number;
   /**
-   * Custom persistence (e.g. Place.comment). When set, skips POST /api/notes.
+   * Custom persistence. When set, skips POST /api/notes.
+   * Prefer type=PLACE + placeId for new code.
    */
   onPersist?: (text: string) => Promise<void>;
 }
@@ -31,6 +38,8 @@ export default function NoteForm({
   travelId,
   userId,
   photoId,
+  placeId,
+  placeLocalId,
   type,
   dayDate,
   onCreated,
@@ -73,7 +82,9 @@ export default function NoteForm({
           localId: createLocalId(),
           travelId,
           userId,
-          photoLocalId: photoId ?? null,
+          photoLocalId: type === "PHOTO" ? (photoId ?? null) : null,
+          placeId: type === "PLACE" ? (placeId ?? null) : null,
+          placeLocalId: type === "PLACE" ? (placeLocalId ?? null) : null,
           type,
           dayDate: dayDate ?? null,
           text: text.trim(),
@@ -91,6 +102,8 @@ export default function NoteForm({
           travelId,
           userId,
           photoId,
+          placeId,
+          placeLocalId,
           type,
           dayDate,
           text: text.trim(),

@@ -31,8 +31,14 @@ export interface TravelPlace {
   type: PlaceType;
   latitude: number;
   longitude: number;
+  /** @deprecated Prefer `notes` (NoteType.PLACE) */
   comment: string | null;
   user: { alias: string };
+  notes?: {
+    id: string;
+    text: string;
+    user: { alias: string };
+  }[];
 }
 
 interface TravelPlacesPanelProps {
@@ -87,17 +93,19 @@ export default function TravelPlacesPanel({
   const selectedPlace = places.find((p) => p.id === selectedPlaceId) ?? null;
   const { outbound, inbound } = resolveFlightLegs(photos);
 
-  const patchPlaceComment = useCallback(
-    async (placeId: string, comment: string | null) => {
-      const res = await fetch(`/api/places/${placeId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comment }),
-      });
-      if (!res.ok) throw new Error("No se pudo guardar la nota del lugar");
-    },
-    []
-  );
+  const placeNotes = (place: TravelPlace) => {
+    if (place.notes && place.notes.length > 0) return place.notes;
+    if (place.comment?.trim()) {
+      return [
+        {
+          id: `legacy-${place.id}`,
+          text: place.comment.trim(),
+          user: place.user,
+        },
+      ];
+    }
+    return [];
+  };
 
   const handleMapClick = useCallback((lat: number, lng: number) => {
     setDraft({
@@ -160,18 +168,35 @@ export default function TravelPlacesPanel({
 
     try {
       if (!navigator.onLine) {
-        const { savePendingPlace } = await import("@/lib/offline-db");
+        const { savePendingPlace, savePendingNote } = await import(
+          "@/lib/offline-db"
+        );
+        const placeLocalId = createLocalId();
         await savePendingPlace({
-          localId: createLocalId(),
+          localId: placeLocalId,
           travelId,
           userId,
           name: draft.name.trim(),
           type: draft.type,
           latitude: draft.lat,
           longitude: draft.lng,
-          comment: draft.comment.trim() || null,
+          comment: null,
           createdAt: new Date().toISOString(),
         });
+        if (draft.comment.trim()) {
+          await savePendingNote({
+            localId: createLocalId(),
+            travelId,
+            userId,
+            photoLocalId: null,
+            placeId: null,
+            placeLocalId,
+            type: "PLACE",
+            dayDate: null,
+            text: draft.comment.trim(),
+            createdAt: new Date().toISOString(),
+          });
+        }
         setDraft(null);
         setAddMode(false);
         onChanged?.();
@@ -188,7 +213,7 @@ export default function TravelPlacesPanel({
           type: draft.type,
           latitude: draft.lat,
           longitude: draft.lng,
-          comment: draft.comment || null,
+          comment: draft.comment.trim() || null,
         }),
       });
 
@@ -458,7 +483,7 @@ export default function TravelPlacesPanel({
                 <span className="ml-2 text-xs text-slate-400">{placeLabel(place.type)}</span>
                 <p className="mt-0.5 text-xs text-slate-500">
                   {place.user.alias}
-                  {place.comment ? " · con nota" : ""}
+                  {placeNotes(place).length > 0 ? " · con nota" : ""}
                 </p>
               </button>
               <div className="flex shrink-0 flex-col items-end gap-1">
@@ -489,30 +514,42 @@ export default function TravelPlacesPanel({
               {placeEmoji(selectedPlace.type)} {selectedPlace.name}
             </p>
             <p className="text-xs text-slate-500">
-              Nota del lugar · {selectedPlace.user.alias}
+              Notas del lugar · {selectedPlace.user.alias}
             </p>
           </div>
-          {selectedPlace.comment ? (
+          {placeNotes(selectedPlace).length > 0 && (
             <ul className="space-y-3">
-              <EditableNote
-                note={{
-                  id: selectedPlace.id,
-                  text: selectedPlace.comment,
-                  user: selectedPlace.user,
-                }}
-                deleteConfirmMessage="¿Eliminar la nota de este lugar?"
-                onSave={(text) => patchPlaceComment(selectedPlace.id, text)}
-                onDelete={() => patchPlaceComment(selectedPlace.id, null)}
-                onChanged={onChanged}
-              />
+              {placeNotes(selectedPlace).map((note) =>
+                note.id.startsWith("legacy-") ? (
+                  <li
+                    key={note.id}
+                    className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                  >
+                    <span className="font-medium text-teal-700">
+                      {note.user.alias}
+                    </span>
+                    <p className="mt-0.5 whitespace-pre-wrap">{note.text}</p>
+                    <p className="mt-1 text-[10px] text-amber-700">
+                      Nota antigua — se migrará al sincronizar el esquema.
+                    </p>
+                  </li>
+                ) : (
+                  <EditableNote
+                    key={note.id}
+                    note={note}
+                    onChanged={onChanged}
+                  />
+                )
+              )}
             </ul>
-          ) : (
-            <NoteForm
-              label="Nota del lugar"
-              onPersist={(text) => patchPlaceComment(selectedPlace.id, text)}
-              onCreated={onChanged}
-            />
           )}
+          <NoteForm
+            travelId={travelId}
+            userId={userId}
+            type="PLACE"
+            placeId={selectedPlace.id}
+            onCreated={onChanged}
+          />
         </div>
       )}
 

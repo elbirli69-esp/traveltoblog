@@ -26,6 +26,7 @@ export interface MapPlace {
   latitude: number;
   longitude: number;
   comment?: string | null;
+  notes?: { text: string }[];
 }
 
 interface TravelPlacesMapProps {
@@ -314,8 +315,12 @@ export default function TravelPlacesMap({
           ev.stopPropagation();
           handlersRef.current.onPlaceClick(place.id);
         });
+        const placeNote =
+          place.notes?.map((n) => n.text).filter(Boolean).join(" · ") ||
+          place.comment?.trim() ||
+          "";
         const popup = new mapboxgl.Popup({ offset: 18, closeButton: false }).setHTML(
-          `<strong>${escapeHtml(place.name)}</strong>${place.comment ? `<br>${escapeHtml(place.comment)}` : ""}`
+          `<strong>${escapeHtml(place.name)}</strong>${placeNote ? `<br>${escapeHtml(placeNote)}` : ""}`
         );
         markersRef.current.push(
           new mapboxgl.Marker({ element: el })
