@@ -341,6 +341,14 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 incomingFiles={incomingFiles}
                 incomingExifByName={incomingExifByName}
                 shareBundleId={activeShareId}
+                places={travel.places
+                  .filter((p) => p.latitude != null && p.longitude != null)
+                  .map((p) => ({
+                    id: p.id,
+                    name: p.name,
+                    latitude: p.latitude!,
+                    longitude: p.longitude!,
+                  }))}
                 onIncomingFilesHandled={handleIncomingFilesHandled}
                 onSyncComplete={() => {
                   if (activeShareId) {
