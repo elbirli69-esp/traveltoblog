@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { extractExifFromBuffer, mergeExifMetadata } from "@/lib/exif";
 import { prisma } from "@/lib/prisma";
 
 interface PhotoMeta {
@@ -42,15 +43,25 @@ export async function POST(request: NextRequest) {
       const buffer = Buffer.from(await file.arrayBuffer());
       await writeFile(filepath, buffer);
 
+      const fileExif = await extractExifFromBuffer(buffer);
+      const exif = mergeExifMetadata(
+        {
+          dateTime: meta.exifDateTime ? new Date(meta.exifDateTime) : null,
+          latitude: meta.latitude,
+          longitude: meta.longitude,
+        },
+        fileExif
+      );
+
       const photo = await prisma.photo.create({
         data: {
           travelId,
           userId,
           filename,
           url: `/uploads/${travelId}/${filename}`,
-          exifDateTime: meta.exifDateTime ? new Date(meta.exifDateTime) : null,
-          latitude: meta.latitude,
-          longitude: meta.longitude,
+          exifDateTime: exif.dateTime,
+          latitude: exif.latitude,
+          longitude: exif.longitude,
           selected: meta.selected,
           isTransportStart: meta.isTransportStart,
           isTransportEnd: meta.isTransportEnd,
@@ -63,7 +74,7 @@ export async function POST(request: NextRequest) {
           where: { id: travelId },
           data: {
             startPhotoId: photo.id,
-            startDate: meta.exifDateTime ? new Date(meta.exifDateTime) : undefined,
+            startDate: exif.dateTime ?? undefined,
           },
         });
       }
@@ -73,7 +84,7 @@ export async function POST(request: NextRequest) {
           where: { id: travelId },
           data: {
             endPhotoId: photo.id,
-            endDate: meta.exifDateTime ? new Date(meta.exifDateTime) : undefined,
+            endDate: exif.dateTime ?? undefined,
           },
         });
       }
