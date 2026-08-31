@@ -830,7 +830,11 @@ export async function readPhotoBuffer(photoUrl: string): Promise<Buffer | null> 
 }
 
 async function getLeafletAssets(): Promise<Record<string, Buffer>> {
-  const base = path.join(process.cwd(), "node_modules", "leaflet", "dist");
+  const candidates = [
+    path.join(process.cwd(), "public", "export-assets", "leaflet"),
+    path.join(process.cwd(), "node_modules", "leaflet", "dist"),
+  ];
+
   const files = [
     "leaflet.css",
     "leaflet.js",
@@ -838,11 +842,24 @@ async function getLeafletAssets(): Promise<Record<string, Buffer>> {
     "images/marker-icon-2x.png",
     "images/marker-shadow.png",
   ];
-  const out: Record<string, Buffer> = {};
-  for (const file of files) {
-    out[file] = await readFile(path.join(base, file));
+
+  for (const base of candidates) {
+    try {
+      const out: Record<string, Buffer> = {};
+      for (const file of files) {
+        out[file] = await readFile(path.join(base, file));
+      }
+      return out;
+    } catch {
+      continue;
+    }
   }
-  return out;
+
+  throw new Error("Leaflet assets not found (public/export-assets/leaflet or node_modules/leaflet/dist)");
+}
+
+function exportHasMap(ctx: ExportContext): boolean {
+  return mergeMapPoints(ctx.photos, ctx.places ?? []).length > 0;
 }
 
 /** Fix Leaflet CSS image paths for zip bundle layout */
@@ -858,12 +875,14 @@ export async function buildExportZip(ctx: ExportContext): Promise<Buffer> {
   const html = buildExportHtml(ctx);
   zip.file("index.html", html);
 
-  const leaflet = await getLeafletAssets();
-  zip.file("assets/leaflet.css", patchLeafletCss(leaflet["leaflet.css"].toString("utf-8")));
-  zip.file("assets/leaflet.js", leaflet["leaflet.js"]);
-  zip.folder("assets/images")?.file("marker-icon.png", leaflet["images/marker-icon.png"]);
-  zip.folder("assets/images")?.file("marker-icon-2x.png", leaflet["images/marker-icon-2x.png"]);
-  zip.folder("assets/images")?.file("marker-shadow.png", leaflet["images/marker-shadow.png"]);
+  if (exportHasMap(ctx)) {
+    const leaflet = await getLeafletAssets();
+    zip.file("assets/leaflet.css", patchLeafletCss(leaflet["leaflet.css"].toString("utf-8")));
+    zip.file("assets/leaflet.js", leaflet["leaflet.js"]);
+    zip.folder("assets/images")?.file("marker-icon.png", leaflet["images/marker-icon.png"]);
+    zip.folder("assets/images")?.file("marker-icon-2x.png", leaflet["images/marker-icon-2x.png"]);
+    zip.folder("assets/images")?.file("marker-shadow.png", leaflet["images/marker-shadow.png"]);
+  }
 
   for (const photo of ctx.photos) {
     const buf = await readPhotoBuffer(photo.url);
@@ -876,21 +895,7 @@ export async function buildExportZip(ctx: ExportContext): Promise<Buffer> {
 export async function buildSingleFileHtml(ctx: ExportContext): Promise<Buffer> {
   const zipBuffer = await buildExportZip(ctx);
   const zip = await JSZip.loadAsync(zipBuffer);
-  const leafletCss = await zip.file("assets/leaflet.css")!.async("string");
-  const leafletJs = await zip.file("assets/leaflet.js")!.async("string");
-  const markerIcon = await zip.file("assets/images/marker-icon.png")!.async("base64");
-  const markerIcon2x = await zip.file("assets/images/marker-icon-2x.png")!.async("base64");
-  const markerShadow = await zip.file("assets/images/marker-shadow.png")!.async("base64");
-
   let html = await zip.file("index.html")!.async("string");
-  html = html.replace(
-    '<link rel="stylesheet" href="assets/leaflet.css">',
-    `<style>${leafletCss}
-.leaflet-marker-icon { background-image: url(data:image/png;base64,${markerIcon}) !important; }
-.leaflet-marker-icon.leaflet-marker-icon-2x { background-image: url(data:image/png;base64,${markerIcon2x}) !important; }
-.leaflet-marker-shadow { background-image: url(data:image/png;base64,${markerShadow}) !important; }
-</style>`
-  );
 
   const photoDataUrls = new Map<string, string>();
   for (const photo of ctx.photos) {
@@ -907,28 +912,44 @@ export async function buildSingleFileHtml(ctx: ExportContext): Promise<Buffer> {
     html = html.split(localPath).join(dataUrl);
   }
 
-  const mapPoints = mergeMapPoints(ctx.photos, ctx.places ?? []).map((p) => ({
-    ...p,
-    photoPath: p.photoPath ? photoDataUrls.get(p.photoPath) ?? p.photoPath : null,
-  }));
+  if (exportHasMap(ctx)) {
+    const leafletCss = await zip.file("assets/leaflet.css")!.async("string");
+    const leafletJs = await zip.file("assets/leaflet.js")!.async("string");
+    const markerIcon = await zip.file("assets/images/marker-icon.png")!.async("base64");
+    const markerIcon2x = await zip.file("assets/images/marker-icon-2x.png")!.async("base64");
+    const markerShadow = await zip.file("assets/images/marker-shadow.png")!.async("base64");
 
-  const iconScript = `delete L.Icon.Default.prototype._getIconUrl;
+    html = html.replace(
+      '<link rel="stylesheet" href="assets/leaflet.css">',
+      `<style>${leafletCss}
+.leaflet-marker-icon { background-image: url(data:image/png;base64,${markerIcon}) !important; }
+.leaflet-marker-icon.leaflet-marker-icon-2x { background-image: url(data:image/png;base64,${markerIcon2x}) !important; }
+.leaflet-marker-shadow { background-image: url(data:image/png;base64,${markerShadow}) !important; }
+</style>`
+    );
+
+    const mapPoints = mergeMapPoints(ctx.photos, ctx.places ?? []).map((p) => ({
+      ...p,
+      photoPath: p.photoPath ? photoDataUrls.get(p.photoPath) ?? p.photoPath : null,
+    }));
+
+    const iconScript = `delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconUrl: "data:image/png;base64,${markerIcon}",
   iconRetinaUrl: "data:image/png;base64,${markerIcon2x}",
   shadowUrl: "data:image/png;base64,${markerShadow}"
 });`;
 
-  const mapScriptBody = buildMapScript(mapPoints, "assets/images")
-    .replace(
+    const mapScriptBody = buildMapScript(mapPoints, "assets/images").replace(
       /delete L\.Icon\.Default\.prototype\._getIconUrl;[\s\S]*?}\);/,
       iconScript
     );
 
-  html = html.replace(
-    /<script src="assets\/leaflet.js"><\/script><script>[\s\S]*?<\/script>/,
-    `<script>${leafletJs}\n${mapScriptBody}</script>`
-  );
+    html = html.replace(
+      /<script src="assets\/leaflet.js"><\/script><script>[\s\S]*?<\/script>/,
+      `<script>${leafletJs}\n${mapScriptBody}</script>`
+    );
+  }
 
   return Buffer.from(html, "utf-8");
 }
