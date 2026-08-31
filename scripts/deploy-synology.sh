@@ -152,6 +152,15 @@ else
   echo "⚠️  Sin NEXT_PUBLIC_MAPBOX_TOKEN — el mapa de Lugares no cargará"
 fi
 
+# HTTPS MagicDNS URL baked into client (GPS requires secure context)
+NEXT_PUBLIC_HTTPS_APP_URL="${NEXT_PUBLIC_HTTPS_APP_URL:-https://syno-nas.tailf9872a.ts.net}"
+export NEXT_PUBLIC_HTTPS_APP_URL
+if grep -q '^NEXT_PUBLIC_HTTPS_APP_URL=' .env 2>/dev/null; then
+  sed -i "s|^NEXT_PUBLIC_HTTPS_APP_URL=.*|NEXT_PUBLIC_HTTPS_APP_URL=${NEXT_PUBLIC_HTTPS_APP_URL}|" .env
+else
+  echo "NEXT_PUBLIC_HTTPS_APP_URL=${NEXT_PUBLIC_HTTPS_APP_URL}" >> .env
+fi
+
 echo "→ Compilando Next.js localmente (evita build pesado en el NAS)…"
 npm ci
 npm run build
@@ -199,6 +208,40 @@ fi
 echo "   App en 127.0.0.1:${APP_PORT} (LAN bloqueada; acceso vía Tailscale)"
 APP_URL="http://${TAILSCALE_IP}:${APP_PORT}"
 
+# Prefer Tailscale HTTPS (MagicDNS) when Serve is active — required for mobile GPS
+HTTPS_DNS="$("${SSH_CMD[@]}" "$SSH_TARGET" bash -s <<'HTTPSDNS' || true
+export PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH"
+TS=/var/packages/Tailscale/target/bin/tailscale
+$TS serve status --json 2>/dev/null | python3 -c 'import json,sys
+try:
+  d=json.load(sys.stdin)
+  # non-empty config means serve is on
+  if d: print("yes")
+except Exception:
+  pass
+' 2>/dev/null || true
+$TS status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))'
+HTTPSDNS
+)"
+HTTPS_DNS="$(echo "$HTTPS_DNS" | tr -d '\r')"
+SERVE_ON="$(echo "$HTTPS_DNS" | head -1)"
+MAGIC_DNS="$(echo "$HTTPS_DNS" | tail -1)"
+if [[ -z "$MAGIC_DNS" || "$MAGIC_DNS" == "yes" ]]; then
+  MAGIC_DNS="syno-nas.tailf9872a.ts.net"
+fi
+HTTPS_APP_URL="https://${MAGIC_DNS}"
+export NEXT_PUBLIC_HTTPS_APP_URL="$HTTPS_APP_URL"
+
+if [[ "$SERVE_ON" == "yes" ]]; then
+  echo "   Tailscale Serve activo → ${HTTPS_APP_URL}"
+  APP_URL="$HTTPS_APP_URL"
+else
+  echo "⚠️  Tailscale Serve NO activo — el GPS del móvil fallará en http://…"
+  echo "   1) Activa Serve: https://login.tailscale.com/f/serve?node=nZWPX2mcyT11CNTRL"
+  echo "   2) En el NAS: sudo /var/packages/Tailscale/target/bin/tailscale serve --bg ${APP_PORT}"
+  echo "   3) Usa ${HTTPS_APP_URL}"
+fi
+
 echo "→ Escribiendo .env en el NAS…"
 if [[ -n "$DEEPSEEK_API_KEY" ]]; then
   ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "cat > ${REMOTE_DIR}/.env" <<EOF
@@ -207,6 +250,7 @@ DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
 OPENAI_BASE_URL=https://api.deepseek.com/v1
 OPENAI_MODEL=deepseek-chat
 NEXT_PUBLIC_APP_URL=${APP_URL}
+NEXT_PUBLIC_HTTPS_APP_URL=${HTTPS_APP_URL}
 NEXT_PUBLIC_MAPBOX_TOKEN=${NEXT_PUBLIC_MAPBOX_TOKEN:-}
 EOF
 else
@@ -220,6 +264,11 @@ if grep -q '^NEXT_PUBLIC_APP_URL=' "\$ENV_FILE" 2>/dev/null; then
   sed -i "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=${APP_URL}|" "\$ENV_FILE"
 else
   echo "NEXT_PUBLIC_APP_URL=${APP_URL}" >> "\$ENV_FILE"
+fi
+if grep -q '^NEXT_PUBLIC_HTTPS_APP_URL=' "\$ENV_FILE" 2>/dev/null; then
+  sed -i "s|^NEXT_PUBLIC_HTTPS_APP_URL=.*|NEXT_PUBLIC_HTTPS_APP_URL=${HTTPS_APP_URL}|" "\$ENV_FILE"
+else
+  echo "NEXT_PUBLIC_HTTPS_APP_URL=${HTTPS_APP_URL}" >> "\$ENV_FILE"
 fi
 if [[ -n "${NEXT_PUBLIC_MAPBOX_TOKEN:-}" ]]; then
   if grep -q '^NEXT_PUBLIC_MAPBOX_TOKEN=' "\$ENV_FILE" 2>/dev/null; then

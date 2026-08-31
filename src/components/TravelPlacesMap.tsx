@@ -10,7 +10,7 @@ import {
   photoGpsPoints,
   resolveFlightLegs,
 } from "@/lib/flights";
-import { computeMapCenter, placeEmoji } from "@/lib/places";
+import { computeMapCenter, placeEmoji, isGeolocationSecureContext } from "@/lib/places";
 import {
   createEmojiMarkerElement,
   loadMapbox,
@@ -127,9 +127,15 @@ export default function TravelPlacesMap({
         });
         geolocate.on("error", () => {
           setLocating(false);
-          setLocateError(
-            "No se pudo obtener tu ubicación. Revisa el permiso de GPS del navegador."
-          );
+          if (!isGeolocationSecureContext()) {
+            setLocateError(
+              "El GPS del móvil solo funciona por HTTPS. Abre la URL segura de Tailscale o usa «Elegir en mapa»."
+            );
+          } else {
+            setLocateError(
+              "No se pudo obtener tu ubicación. Revisa el permiso de GPS del navegador."
+            );
+          }
         });
 
         map.on("click", (e) => {
@@ -169,6 +175,12 @@ export default function TravelPlacesMap({
   useEffect(() => {
     if (!locateSignal || !mapReady) return;
     setLocateError(null);
+    if (!isGeolocationSecureContext()) {
+      setLocateError(
+        "El GPS del móvil solo funciona por HTTPS. Abre la URL segura de Tailscale o usa «Elegir en mapa»."
+      );
+      return;
+    }
     setLocating(true);
     skipAutoFitRef.current = true;
     try {
@@ -354,6 +366,12 @@ export default function TravelPlacesMap({
 
   const locateUser = useCallback(() => {
     setLocateError(null);
+    if (!isGeolocationSecureContext()) {
+      setLocateError(
+        "El GPS del móvil solo funciona por HTTPS. Abre la URL segura de Tailscale o usa «Elegir en mapa»."
+      );
+      return;
+    }
     setLocating(true);
     skipAutoFitRef.current = true;
     const control = geolocateRef.current;

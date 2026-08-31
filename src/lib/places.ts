@@ -43,7 +43,17 @@ export const MAP_TILE_URL =
 export const MAP_TILE_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
-export type GeolocationFailure = "unsupported" | "denied" | "unavailable" | "timeout";
+export type GeolocationFailure =
+  | "unsupported"
+  | "denied"
+  | "unavailable"
+  | "timeout"
+  | "insecure";
+
+export function isGeolocationSecureContext(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.isSecureContext === true;
+}
 
 export function geolocationErrorMessage(code: GeolocationFailure): string {
   const messages: Record<GeolocationFailure, string> = {
@@ -51,6 +61,8 @@ export function geolocationErrorMessage(code: GeolocationFailure): string {
     denied: "Permiso de ubicación denegado. Actívalo en los ajustes del navegador.",
     unavailable: "No se pudo obtener tu ubicación",
     timeout: "Tiempo agotado al buscar tu ubicación",
+    insecure:
+      "El GPS del móvil solo funciona por HTTPS. Abre TravelToBlog con la URL segura de Tailscale (no con http://100.x…).",
   };
   return messages[code];
 }
@@ -61,6 +73,11 @@ export function getCurrentPosition(
   return new Promise((resolve, reject) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       reject(new Error("unsupported" satisfies GeolocationFailure));
+      return;
+    }
+
+    if (!isGeolocationSecureContext()) {
+      reject(new Error("insecure" satisfies GeolocationFailure));
       return;
     }
 
