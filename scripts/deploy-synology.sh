@@ -199,6 +199,7 @@ echo "   URL LAN: ${APP_URL}"
 REMOTE
 
 echo "→ Migrando schema SQLite (db push vía agente)…"
+sleep 3
 "${SSH_CMD[@]}" "$SSH_TARGET" "docker cp traveltoblog:/app/data/travel.db ${REMOTE_DIR}/travel.db.migrate 2>/dev/null || true"
 if "${SSH_CMD[@]}" "$SSH_TARGET" "test -f ${REMOTE_DIR}/travel.db.migrate"; then
   "${SSH_CMD[@]}" "$SSH_TARGET" "cat ${REMOTE_DIR}/travel.db.migrate" > /tmp/traveltoblog-migrate.db
