@@ -13,6 +13,8 @@ import type { FlightLegPhoto } from "@/lib/flights";
 import { formatFlightDate, resolveFlightLegs } from "@/lib/flights";
 import { createLocalId } from "@/lib/utils";
 import SecureLocationHint from "@/components/SecureLocationHint";
+import NoteForm from "@/components/NoteForm";
+import EditableNote from "@/components/EditableNote";
 
 const TravelPlacesMap = dynamic(() => import("@/components/TravelPlacesMap"), {
   ssr: false,
@@ -65,13 +67,24 @@ export default function TravelPlacesPanel({
     id: string;
     name: string;
     type: PlaceType;
-    comment: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedPlace = places.find((p) => p.id === selectedPlaceId) ?? null;
   const { outbound, inbound } = resolveFlightLegs(photos);
+
+  const patchPlaceComment = useCallback(
+    async (placeId: string, comment: string | null) => {
+      const res = await fetch(`/api/places/${placeId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment }),
+      });
+      if (!res.ok) throw new Error("No se pudo guardar la nota del lugar");
+    },
+    []
+  );
 
   const handleMapClick = useCallback((lat: number, lng: number) => {
     setDraft({
@@ -93,7 +106,6 @@ export default function TravelPlacesPanel({
       id: place.id,
       name: place.name,
       type: place.type,
-      comment: place.comment ?? "",
     });
     setError(null);
   };
@@ -112,7 +124,6 @@ export default function TravelPlacesPanel({
         body: JSON.stringify({
           name: editForm.name.trim(),
           type: editForm.type,
-          comment: editForm.comment.trim() || null,
         }),
       });
       if (!res.ok) throw new Error("No se pudo guardar");
@@ -325,15 +336,18 @@ export default function TravelPlacesPanel({
               </select>
             </label>
           </div>
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">Comentario (opcional)</span>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">
+              Nota del lugar (opcional)
+            </label>
             <textarea
               value={draft.comment}
               onChange={(e) => setDraft({ ...draft, comment: e.target.value })}
-              rows={2}
+              rows={3}
+              placeholder="Escribe tu anécdota, impresión o detalle…"
               className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
             />
-          </label>
+          </div>
           <p className="text-xs text-slate-500">
             Coordenadas: {draft.lat.toFixed(5)}, {draft.lng.toFixed(5)}
           </p>
@@ -378,16 +392,10 @@ export default function TravelPlacesPanel({
               </select>
             </label>
           </div>
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">Comentario / nota</span>
-            <textarea
-              value={editForm.comment}
-              onChange={(e) => setEditForm({ ...editForm, comment: e.target.value })}
-              rows={3}
-              placeholder="Añade o corrige la nota de este lugar…"
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-            />
-          </label>
+          <p className="text-xs text-slate-500">
+            Nombre y tipo. La nota se escribe debajo al seleccionar el lugar, con la misma UI que
+            foto, día o viaje.
+          </p>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex flex-wrap gap-2">
             <button
@@ -426,7 +434,10 @@ export default function TravelPlacesPanel({
             >
               <button
                 type="button"
-                onClick={() => setSelectedPlaceId(place.id)}
+                onClick={() => {
+                  setEditForm(null);
+                  setSelectedPlaceId(place.id);
+                }}
                 className="min-w-0 flex-1 text-left"
               >
                 <span className="mr-2 text-lg">{placeEmoji(place.type)}</span>
@@ -434,7 +445,7 @@ export default function TravelPlacesPanel({
                 <span className="ml-2 text-xs text-slate-400">{placeLabel(place.type)}</span>
                 <p className="mt-0.5 text-xs text-slate-500">
                   {place.user.alias}
-                  {place.comment ? ` · ${place.comment}` : ""}
+                  {place.comment ? " · con nota" : ""}
                 </p>
               </button>
               <div className="flex shrink-0 flex-col items-end gap-1">
@@ -458,15 +469,43 @@ export default function TravelPlacesPanel({
         </ul>
       )}
 
+      {selectedPlace && !draft && !editForm && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-800">
+              {placeEmoji(selectedPlace.type)} {selectedPlace.name}
+            </p>
+            <p className="text-xs text-slate-500">
+              Nota del lugar · {selectedPlace.user.alias}
+            </p>
+          </div>
+          {selectedPlace.comment ? (
+            <ul className="space-y-3">
+              <EditableNote
+                note={{
+                  id: selectedPlace.id,
+                  text: selectedPlace.comment,
+                  user: selectedPlace.user,
+                }}
+                deleteConfirmMessage="¿Eliminar la nota de este lugar?"
+                onSave={(text) => patchPlaceComment(selectedPlace.id, text)}
+                onDelete={() => patchPlaceComment(selectedPlace.id, null)}
+                onChanged={onChanged}
+              />
+            </ul>
+          ) : (
+            <NoteForm
+              label="Nota del lugar"
+              onPersist={(text) => patchPlaceComment(selectedPlace.id, text)}
+              onCreated={onChanged}
+            />
+          )}
+        </div>
+      )}
+
       {places.length === 0 && !draft && (
         <p className="text-center text-sm text-slate-500">
           Aún no hay lugares marcados. Pulsa «Marcar lugar» y usa «Mi ubicación» o toca el mapa.
-        </p>
-      )}
-
-      {selectedPlace && !draft && !editForm && (
-        <p className="text-center text-xs text-slate-400">
-          Seleccionado: {placeEmoji(selectedPlace.type)} {selectedPlace.name}
         </p>
       )}
     </div>

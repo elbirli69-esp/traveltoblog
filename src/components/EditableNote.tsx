@@ -11,9 +11,20 @@ export interface EditableNoteData {
 interface EditableNoteProps {
   note: EditableNoteData;
   onChanged?: () => void;
+  /** Custom save (e.g. Place.comment). Defaults to PATCH /api/notes/:id */
+  onSave?: (text: string) => Promise<void>;
+  /** Custom delete. Defaults to DELETE /api/notes/:id */
+  onDelete?: () => Promise<void>;
+  deleteConfirmMessage?: string;
 }
 
-export default function EditableNote({ note, onChanged }: EditableNoteProps) {
+export default function EditableNote({
+  note,
+  onChanged,
+  onSave,
+  onDelete,
+  deleteConfirmMessage = "¿Eliminar esta nota?",
+}: EditableNoteProps) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(note.text);
   const [saving, setSaving] = useState(false);
@@ -39,12 +50,16 @@ export default function EditableNote({ note, onChanged }: EditableNoteProps) {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/notes/${note.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.trim() }),
-      });
-      if (!res.ok) throw new Error("No se pudo guardar");
+      if (onSave) {
+        await onSave(text.trim());
+      } else {
+        const res = await fetch(`/api/notes/${note.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: text.trim() }),
+        });
+        if (!res.ok) throw new Error("No se pudo guardar");
+      }
       setEditing(false);
       onChanged?.();
     } catch {
@@ -55,12 +70,16 @@ export default function EditableNote({ note, onChanged }: EditableNoteProps) {
   };
 
   const remove = async () => {
-    if (!confirm("¿Eliminar esta nota?")) return;
+    if (!confirm(deleteConfirmMessage)) return;
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/notes/${note.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("No se pudo eliminar");
+      if (onDelete) {
+        await onDelete();
+      } else {
+        const res = await fetch(`/api/notes/${note.id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("No se pudo eliminar");
+      }
       onChanged?.();
     } catch {
       setError("Error al eliminar la nota");
