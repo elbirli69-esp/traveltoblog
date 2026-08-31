@@ -111,21 +111,54 @@ if [[ ! -f .env ]] && [[ -z "${DEEPSEEK_API_KEY:-}" ]]; then
 fi
 
 DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-$(grep -E '^DEEPSEEK_API_KEY=' .env 2>/dev/null | cut -d= -f2- | tr -d '"' || true)}"
+SSH_CMD=(ssh "${SSH_OPTS[@]}")
 
 echo "→ Generando Prisma Client (incluye binario musl para Alpine)…"
 npx prisma generate
 
-if [[ ! -d .next/standalone ]]; then
-  echo "→ Compilando Next.js localmente (evita build pesado en el NAS)…"
-  npm ci
-  npm run build
+# Reuse DogTrainer Mapbox token if missing locally (same NAS / same account)
+if [[ -z "${NEXT_PUBLIC_MAPBOX_TOKEN:-}" ]]; then
+  NEXT_PUBLIC_MAPBOX_TOKEN="$(grep -E '^NEXT_PUBLIC_MAPBOX_TOKEN=' .env 2>/dev/null | cut -d= -f2- | tr -d '"' || true)"
 fi
+if [[ -z "${NEXT_PUBLIC_MAPBOX_TOKEN:-}" ]]; then
+  echo "→ Obteniendo token Mapbox desde DogTrainer en el NAS…"
+  NEXT_PUBLIC_MAPBOX_TOKEN="$("${SSH_CMD[@]}" "$SSH_TARGET" python3 - <<'PY' || true
+from pathlib import Path
+import re
+path = Path("/volume1/docker/dogaze/dogtrainer-api/.env")
+if not path.exists():
+    raise SystemExit(0)
+for line in path.read_text().splitlines():
+    m = re.match(r"^VITE_MAPBOX_TOKEN=(.*)$", line.strip())
+    if not m:
+        continue
+    val = m.group(1).strip().strip('"').strip("'")
+    if val.startswith("pk.") and len(val) > 20:
+        print(val)
+        break
+PY
+)"
+  NEXT_PUBLIC_MAPBOX_TOKEN="${NEXT_PUBLIC_MAPBOX_TOKEN//$'\r'/}"
+fi
+if [[ -n "${NEXT_PUBLIC_MAPBOX_TOKEN:-}" ]]; then
+  export NEXT_PUBLIC_MAPBOX_TOKEN
+  if grep -q '^NEXT_PUBLIC_MAPBOX_TOKEN=' .env 2>/dev/null; then
+    sed -i "s|^NEXT_PUBLIC_MAPBOX_TOKEN=.*|NEXT_PUBLIC_MAPBOX_TOKEN=${NEXT_PUBLIC_MAPBOX_TOKEN}|" .env
+  else
+    echo "NEXT_PUBLIC_MAPBOX_TOKEN=${NEXT_PUBLIC_MAPBOX_TOKEN}" >> .env
+  fi
+  echo "   Mapbox token listo para el build del cliente"
+else
+  echo "⚠️  Sin NEXT_PUBLIC_MAPBOX_TOKEN — el mapa de Lugares no cargará"
+fi
+
+echo "→ Compilando Next.js localmente (evita build pesado en el NAS)…"
+npm ci
+npm run build
 
 echo "→ Preparando base de datos SQLite local…"
 mkdir -p prisma/data
 DATABASE_URL="file:./prisma/data/travel.db" npx prisma db push --skip-generate 2>/dev/null || true
-
-SSH_CMD=(ssh "${SSH_OPTS[@]}")
 
 echo "→ Sincronizando código (tar por SSH, incluye .next standalone)…"
 "${SSH_CMD[@]}" "$SSH_TARGET" "mkdir -p ${REMOTE_DIR}"
@@ -174,9 +207,10 @@ DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
 OPENAI_BASE_URL=https://api.deepseek.com/v1
 OPENAI_MODEL=deepseek-chat
 NEXT_PUBLIC_APP_URL=${APP_URL}
+NEXT_PUBLIC_MAPBOX_TOKEN=${NEXT_PUBLIC_MAPBOX_TOKEN:-}
 EOF
 else
-  echo "   (sin DEEPSEEK_API_KEY local — actualizando solo NEXT_PUBLIC_APP_URL)"
+  echo "   (sin DEEPSEEK_API_KEY local — actualizando URL y Mapbox)"
   ssh "${SSH_OPTS[@]}" "$SSH_TARGET" bash -s <<ENVPATCH
 set -euo pipefail
 ENV_FILE="${REMOTE_DIR}/.env"
@@ -186,6 +220,13 @@ if grep -q '^NEXT_PUBLIC_APP_URL=' "\$ENV_FILE" 2>/dev/null; then
   sed -i "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=${APP_URL}|" "\$ENV_FILE"
 else
   echo "NEXT_PUBLIC_APP_URL=${APP_URL}" >> "\$ENV_FILE"
+fi
+if [[ -n "${NEXT_PUBLIC_MAPBOX_TOKEN:-}" ]]; then
+  if grep -q '^NEXT_PUBLIC_MAPBOX_TOKEN=' "\$ENV_FILE" 2>/dev/null; then
+    sed -i "s|^NEXT_PUBLIC_MAPBOX_TOKEN=.*|NEXT_PUBLIC_MAPBOX_TOKEN=${NEXT_PUBLIC_MAPBOX_TOKEN}|" "\$ENV_FILE"
+  else
+    echo "NEXT_PUBLIC_MAPBOX_TOKEN=${NEXT_PUBLIC_MAPBOX_TOKEN}" >> "\$ENV_FILE"
+  fi
 fi
 ENVPATCH
 fi
