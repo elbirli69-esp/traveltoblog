@@ -56,6 +56,8 @@ export default function TravelPlacesPanel({
   onChanged,
 }: TravelPlacesPanelProps) {
   const [addMode, setAddMode] = useState(false);
+  const [pickOnMap, setPickOnMap] = useState(true);
+  const [locateSignal, setLocateSignal] = useState(0);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftPlace | null>(null);
   const [editForm, setEditForm] = useState<{
@@ -194,7 +196,7 @@ export default function TravelPlacesPanel({
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Lugares del viaje</h2>
           <p className="text-sm text-slate-500">
-            Marca hoteles, restaurantes, miradores… Usa «Mi ubicación» en el mapa o toca donde quieras.
+            Marca hoteles, restaurantes, miradores… Igual que en DogTrainer: usa tu GPS o elige en el mapa Mapbox.
           </p>
         </div>
         <button
@@ -204,6 +206,7 @@ export default function TravelPlacesPanel({
             setDraft(null);
             setEditForm(null);
             setError(null);
+            setPickOnMap(true);
           }}
           className={`rounded-xl px-4 py-2 text-sm font-semibold ${
             addMode
@@ -214,6 +217,56 @@ export default function TravelPlacesPanel({
           {addMode ? "Cancelar marcado" : "+ Marcar lugar"}
         </button>
       </div>
+
+      {addMode && (
+        <div className="rounded-2xl border border-teal-200 bg-teal-50/50 p-4 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-teal-800">
+            Ubicación
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setPickOnMap(false);
+                setLocateSignal((n) => n + 1);
+              }}
+              className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold ${
+                !pickOnMap
+                  ? "bg-teal-600 text-white"
+                  : "bg-white text-slate-700 ring-1 ring-slate-200"
+              }`}
+            >
+              📍 Mi ubicación
+            </button>
+            <button
+              type="button"
+              onClick={() => setPickOnMap(true)}
+              className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold ${
+                pickOnMap
+                  ? "bg-teal-600 text-white"
+                  : "bg-white text-slate-700 ring-1 ring-slate-200"
+              }`}
+            >
+              Elegir en mapa
+            </button>
+          </div>
+          {pickOnMap && !draft && (
+            <p className="text-xs font-medium text-teal-800 animate-pulse">
+              Haz clic en el mapa para seleccionar la ubicación
+            </p>
+          )}
+          {!pickOnMap && !draft && (
+            <p className="text-xs text-slate-600">
+              Pulsando «Mi ubicación» se centra el mapa y coloca el pin en tu GPS
+            </p>
+          )}
+          {draft && (
+            <p className="text-xs text-teal-700">
+              ✓ Ubicación seleccionada ({draft.lat.toFixed(4)}, {draft.lng.toFixed(4)})
+            </p>
+          )}
+        </div>
+      )}
 
       <section className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
         <h3 className="text-sm font-semibold text-indigo-900">Vuelos ida / vuelta</h3>
@@ -232,6 +285,8 @@ export default function TravelPlacesPanel({
         photos={photos}
         selectedPlaceId={selectedPlaceId}
         addMode={addMode}
+        clickToPlace={addMode && pickOnMap}
+        locateSignal={locateSignal}
         draftPin={draft ? { lat: draft.lat, lng: draft.lng } : null}
         onMapClick={handleMapClick}
         onPlaceClick={setSelectedPlaceId}
