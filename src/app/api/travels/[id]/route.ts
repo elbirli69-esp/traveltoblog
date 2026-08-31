@@ -12,7 +12,10 @@ export async function GET(
     include: {
       users: true,
       photos: {
-        include: { user: true, notes: true },
+        include: {
+          user: true,
+          notes: { include: { user: true }, orderBy: { createdAt: "asc" } },
+        },
         orderBy: { exifDateTime: "asc" },
       },
       notes: {

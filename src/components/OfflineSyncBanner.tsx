@@ -42,6 +42,8 @@ export default function OfflineSyncBanner({
     setSyncing(true);
 
     try {
+      const photoIdByLocalId = new Map<string, string>();
+
       const pendingPhotos = await getPendingPhotos(travelId);
       if (pendingPhotos.length) {
         const formData = new FormData();
@@ -69,6 +71,14 @@ export default function OfflineSyncBanner({
 
         const res = await fetch("/api/sync", { method: "POST", body: formData });
         if (res.ok) {
+          const data = (await res.json()) as {
+            synced?: Array<{ id: string; localId: string | null }>;
+          };
+          for (const photo of data.synced ?? []) {
+            if (photo.localId) {
+              photoIdByLocalId.set(photo.localId, photo.id);
+            }
+          }
           for (const p of pendingPhotos) {
             await removePendingPhoto(p.localId);
           }
@@ -77,12 +87,19 @@ export default function OfflineSyncBanner({
 
       const pendingNotes = await getPendingNotes(travelId);
       for (const note of pendingNotes) {
+        const resolvedPhotoId =
+          note.photoLocalId != null
+            ? (photoIdByLocalId.get(note.photoLocalId) ?? null)
+            : null;
+
         const res = await fetch("/api/notes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             travelId: note.travelId,
             userId: note.userId,
+            photoId: resolvedPhotoId,
+            photoLocalId: note.photoLocalId,
             type: note.type,
             dayDate: note.dayDate,
             text: note.text,

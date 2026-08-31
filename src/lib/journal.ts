@@ -12,32 +12,66 @@ export function buildJournalInput(
 ): JournalInput {
   const entries: JournalChronologyEntry[] = [];
 
-  for (const photo of photos.filter((p) => p.selected)) {
-    entries.push({
-      fecha_hora: (photo.exifDateTime ?? photo.createdAt).toISOString(),
-      autor: photo.user.alias,
-      ubicacion_gps:
-        photo.latitude != null && photo.longitude != null
-          ? { lat: photo.latitude, lon: photo.longitude }
-          : null,
-      tipo_nota: "foto",
-      texto_nota: photo.isTransportStart
-        ? "Foto de transporte de ida — inicio del viaje"
-        : photo.isTransportEnd
-          ? "Foto de transporte de vuelta — fin del viaje"
-          : "Foto del viaje",
-      url_foto: photo.url,
-    });
-  }
+  const photoNotesByPhotoId = new Map<string, NoteWithUser[]>();
+  const nonPhotoNotes: NoteWithUser[] = [];
 
   for (const note of notes) {
+    if (note.type === "PHOTO" && note.photoId) {
+      const list = photoNotesByPhotoId.get(note.photoId) ?? [];
+      list.push(note);
+      photoNotesByPhotoId.set(note.photoId, list);
+    } else {
+      nonPhotoNotes.push(note);
+    }
+  }
+
+  for (const photo of photos.filter((p) => p.selected)) {
+    const linkedNotes = photoNotesByPhotoId.get(photo.id) ?? [];
+    const defaultText = photo.isTransportStart
+      ? "Foto de transporte de ida — inicio del viaje"
+      : photo.isTransportEnd
+        ? "Foto de transporte de vuelta — fin del viaje"
+        : "Foto del viaje";
+
+    if (linkedNotes.length === 0) {
+      entries.push({
+        fecha_hora: (photo.exifDateTime ?? photo.createdAt).toISOString(),
+        autor: photo.user.alias,
+        ubicacion_gps:
+          photo.latitude != null && photo.longitude != null
+            ? { lat: photo.latitude, lon: photo.longitude }
+            : null,
+        tipo_nota: "foto",
+        texto_nota: defaultText,
+        url_foto: photo.url,
+      });
+      continue;
+    }
+
+    for (const note of linkedNotes) {
+      entries.push({
+        fecha_hora: (photo.exifDateTime ?? note.createdAt).toISOString(),
+        autor: note.user.alias,
+        ubicacion_gps:
+          photo.latitude != null && photo.longitude != null
+            ? { lat: photo.latitude, lon: photo.longitude }
+            : null,
+        tipo_nota: "foto",
+        texto_nota: note.text,
+        url_foto: photo.url,
+      });
+    }
+  }
+
+  for (const note of nonPhotoNotes) {
     const tipoMap = { PHOTO: "foto", DAY: "dia", TRIP: "trayecto" } as const;
     entries.push({
       fecha_hora: (note.dayDate ?? note.createdAt).toISOString(),
       autor: note.user.alias,
-      ubicacion_gps: note.photo?.latitude != null && note.photo?.longitude != null
-        ? { lat: note.photo.latitude, lon: note.photo.longitude! }
-        : null,
+      ubicacion_gps:
+        note.photo?.latitude != null && note.photo?.longitude != null
+          ? { lat: note.photo.latitude, lon: note.photo.longitude! }
+          : null,
       tipo_nota: tipoMap[note.type],
       texto_nota: note.text,
       url_foto: note.photo?.url,
