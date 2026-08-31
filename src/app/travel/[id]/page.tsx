@@ -340,6 +340,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 dateRange={dateRange}
                 incomingFiles={incomingFiles}
                 incomingExifByName={incomingExifByName}
+                shareBundleId={activeShareId}
                 onIncomingFilesHandled={handleIncomingFilesHandled}
                 onSyncComplete={() => {
                   if (activeShareId) {

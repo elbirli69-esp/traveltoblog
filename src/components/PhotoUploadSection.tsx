@@ -15,6 +15,8 @@ interface PhotoUploadSectionProps {
   dateRange: TravelDateRange;
   incomingFiles?: File[];
   incomingExifByName?: Record<string, ExifMetadata>;
+  /** When set, confirm imports originals from server share inbox (preserves EXIF/GPS). */
+  shareBundleId?: string | null;
   onIncomingFilesHandled?: () => void;
   onSyncComplete?: () => void;
   openPickerSignal?: number;
@@ -28,6 +30,7 @@ export default function PhotoUploadSection({
   dateRange,
   incomingFiles,
   incomingExifByName,
+  shareBundleId,
   onIncomingFilesHandled,
   onSyncComplete,
   openPickerSignal,
@@ -52,6 +55,27 @@ export default function PhotoUploadSection({
             createdAt: new Date().toISOString(),
           });
         }
+        return;
+      }
+
+      if (shareBundleId) {
+        const res = await fetch(`/api/travels/${travelId}/photos/import-shared`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bundleId: shareBundleId,
+            userId,
+            photos: photos.map((p) => ({
+              sourceName: p.file.name,
+              localId: p.id,
+              selected: p.selected,
+              isTransportStart: p.isTransportStart,
+              isTransportEnd: p.isTransportEnd,
+            })),
+          }),
+        });
+        if (!res.ok) throw new Error("Import failed");
+        onSyncComplete?.();
         return;
       }
 
@@ -86,7 +110,7 @@ export default function PhotoUploadSection({
 
       onSyncComplete?.();
     },
-    [travelId, userId, onSyncComplete]
+    [travelId, userId, shareBundleId, onSyncComplete]
   );
 
   const handleTransportMarked = useCallback(
