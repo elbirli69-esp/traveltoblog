@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && npm run sync:export-assets && next build",
+    "sync:export-assets": "mkdir -p public/export-assets/leaflet/images && cp node_modules/leaflet/dist/leaflet.css node_modules/leaflet/dist/leaflet.js public/export-assets/leaflet/ && cp node_modules/leaflet/dist/images/* public/export-assets/leaflet/images/",
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
