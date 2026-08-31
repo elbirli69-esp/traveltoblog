@@ -66,21 +66,23 @@ docker compose up -d --build
 
 1. **Crear viaje** — El organizador define título y alias; se genera código QR/enlace.
 2. **Unirse** — Los demás entran con su alias (sin registro complejo).
-3. **Subir fotos** — Selección masiva; EXIF (fecha, GPS) se lee en el dispositivo.
-4. **Marcar transporte** — Foto de ida = inicio; foto de vuelta = fin del viaje.
-5. **Añadir notas** — Por foto, día o trayecto, con autor.
-6. **Offline** — Sin conexión, todo se guarda en IndexedDB y sincroniza al volver online.
-7. **Generar crónica** — La IA redacta un artículo Markdown con las anécdotas del grupo.
+3. **Fotos** — Selección masiva; EXIF (fecha, GPS) se lee en el dispositivo. Ida/Vuelta marcan el inicio y fin del viaje.
+4. **Lugares** — Pins en el mapa (hotel, restaurante, mirador…). El recorrido GPS y el “trayecto aéreo” del mapa son derivados, no se editan a mano.
+5. **Días** — Notas por fecha del calendario del viaje.
+6. **Viaje** — Notas globales (anécdotas del viaje completo) para intro/conclusión de la crónica.
+7. **Offline** — Sin conexión, fotos/notas/lugares van a IndexedDB y sincronizan al volver online.
+8. **Generar crónica** — La IA redacta un artículo Markdown con fotos, notas, lugares y vuelos del grupo.
 
 ## Estructura del proyecto
 
 ```
-prisma/schema.prisma          # Modelos Travel, User, Photo, Note
+prisma/schema.prisma                 # Travel, User, Photo, Note, Place
+src/components/TravelWorkspaceTabs.tsx  # Tabs: Fotos, Lugares, Días, Viaje
 src/components/PhotoUploadGrid.tsx   # Grid + lectura EXIF (cliente)
-src/lib/exif.ts               # Utilidades exifr
-src/lib/offline-db.ts         # IndexedDB para sync offline
-src/app/api/generate-journal/ # Endpoint IA → Markdown
-docker-compose.yml            # Despliegue NAS
+src/lib/exif.ts                      # Utilidades exifr
+src/lib/offline-db.ts                # IndexedDB para sync offline
+src/app/api/generate-journal/        # Endpoint IA → Markdown
+docker-compose.yml                   # Despliegue NAS
 ```
 
 ## Variables de entorno

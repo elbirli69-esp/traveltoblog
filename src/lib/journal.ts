@@ -64,7 +64,7 @@ export function buildJournalInput(
   }
 
   for (const note of nonPhotoNotes) {
-    const tipoMap = { PHOTO: "foto", DAY: "dia", TRIP: "trayecto" } as const;
+    const tipoMap = { PHOTO: "foto", DAY: "dia", TRIP: "viaje" } as const;
     entries.push({
       fecha_hora: (note.dayDate ?? note.createdAt).toISOString(),
       autor: note.user.alias,

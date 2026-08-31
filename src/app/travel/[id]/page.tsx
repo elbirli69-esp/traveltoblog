@@ -264,42 +264,37 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
             />
           </section>
         }
-      />
-
-      {tripNotes.length > 0 && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold">Notas del trayecto</h2>
-          <ul className="space-y-3">
-            {tripNotes.map((note) => (
-              <EditableNote
-                key={note.id}
-                note={note}
-                onChanged={() => setRefreshKey((k) => k + 1)}
+        tripContent={
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-1 text-lg font-semibold text-slate-900">
+              {tripNotes.length > 0 ? "Notas del viaje" : "Nota del viaje"}
+            </h2>
+            <p className="mb-4 text-sm text-slate-500">
+              Anécdotas y comentarios sobre el viaje completo — no ligados a un día o una foto.
+              La crónica las usa sobre todo en la introducción y la conclusión.
+            </p>
+            {tripNotes.length > 0 && (
+              <ul className="mb-4 space-y-3">
+                {tripNotes.map((note) => (
+                  <EditableNote
+                    key={note.id}
+                    note={note}
+                    onChanged={() => setRefreshKey((k) => k + 1)}
+                  />
+                ))}
+              </ul>
+            )}
+            <div className={tripNotes.length > 0 ? "border-t border-slate-100 pt-4" : undefined}>
+              <NoteForm
+                travelId={travelId}
+                userId={session.userId}
+                type="TRIP"
+                onCreated={() => setRefreshKey((k) => k + 1)}
               />
-            ))}
-          </ul>
-          <div className="mt-4 border-t border-slate-100 pt-4">
-            <NoteForm
-              travelId={travelId}
-              userId={session.userId}
-              type="TRIP"
-              onCreated={() => setRefreshKey((k) => k + 1)}
-            />
-          </div>
-        </section>
-      )}
-
-      {tripNotes.length === 0 && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold">Nota del trayecto</h2>
-          <NoteForm
-            travelId={travelId}
-            userId={session.userId}
-            type="TRIP"
-            onCreated={() => setRefreshKey((k) => k + 1)}
-          />
-        </section>
-      )}
+            </div>
+          </section>
+        }
+      />
 
       <section className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-6">
         <h2 className="mb-2 text-lg font-semibold text-indigo-900">Crónica del viaje</h2>

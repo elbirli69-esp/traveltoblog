@@ -26,7 +26,7 @@ export default function NoteForm({
   const labels = {
     PHOTO: "Nota para esta foto",
     DAY: "Nota del día",
-    TRIP: "Nota del trayecto",
+    TRIP: "Nota del viaje",
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

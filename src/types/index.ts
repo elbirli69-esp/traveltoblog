@@ -62,7 +62,7 @@ export interface JournalChronologyEntry {
   fecha_hora: string;
   autor: string;
   ubicacion_gps: { lat: number; lon: number } | null;
-  tipo_nota: "foto" | "dia" | "trayecto";
+  tipo_nota: "foto" | "dia" | "viaje";
   texto_nota: string;
   url_foto?: string;
 }
