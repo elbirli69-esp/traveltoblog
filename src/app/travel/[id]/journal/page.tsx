@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import ExportHtmlPanel from "@/components/ExportHtmlPanel";
 import ExportPdfPanel from "@/components/ExportPdfPanel";
+import JournalMarkdown from "@/components/JournalMarkdown";
 
 export default async function JournalPage({
   params,
@@ -55,9 +56,7 @@ export default async function JournalPage({
       </header>
 
       {travel.journalMarkdown ? (
-        <article className="prose prose-slate mb-10 max-w-none whitespace-pre-wrap">
-          {travel.journalMarkdown}
-        </article>
+        <JournalMarkdown markdown={travel.journalMarkdown} />
       ) : (
         <p className="mb-10 text-slate-500">
           Aún no se ha generado la crónica. Vuelve al viaje y pulsa &ldquo;Generar diario con IA&rdquo;.

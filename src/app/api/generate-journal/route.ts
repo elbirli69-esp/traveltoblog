@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createAiClient, getAiConfig } from "@/lib/ai";
-import { buildJournalInput, buildUserPrompt, SYSTEM_PROMPT } from "@/lib/journal";
+import { getAiConfig } from "@/lib/ai";
+import {
+  buildEnhancedJournalContext,
+  runJournalPipeline,
+  type JournalPipelineEvent,
+} from "@/lib/journal-pipeline";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { travelId } = body as { travelId?: string };
+    const { travelId, stream } = body as { travelId?: string; stream?: boolean };
 
     if (!travelId) {
       return NextResponse.json({ error: "travelId es obligatorio" }, { status: 400 });
     }
 
-    const { apiKey, model } = getAiConfig();
+    const { apiKey } = getAiConfig();
     if (!apiKey) {
       return NextResponse.json(
         { error: "DEEPSEEK_API_KEY no configurada" },
@@ -31,6 +35,9 @@ export async function POST(request: NextRequest) {
         notes: {
           include: { user: true, photo: true },
         },
+        places: {
+          include: { user: true },
+        },
       },
     });
 
@@ -38,25 +45,53 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Viaje no encontrado" }, { status: 404 });
     }
 
-    const journalInput = buildJournalInput(
+    const ctx = buildEnhancedJournalContext(
       travel,
       travel.users,
       travel.photos,
-      travel.notes
+      travel.notes,
+      travel.places
     );
 
-    const ai = createAiClient();
+    if (stream) {
+      const encoder = new TextEncoder();
+      const readable = new ReadableStream({
+        async start(controller) {
+          const send = (event: JournalPipelineEvent) => {
+            controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+          };
 
-    const completion = await ai.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: buildUserPrompt(journalInput) },
-      ],
-      temperature: 0.8,
-    });
+          try {
+            const markdown = await runJournalPipeline(ctx, send);
+            await prisma.travel.update({
+              where: { id: travelId },
+              data: {
+                journalMarkdown: markdown,
+                journalGeneratedAt: new Date(),
+              },
+            });
+          } catch (error) {
+            console.error("Journal pipeline stream", error);
+            send({
+              step: "error",
+              status: "error",
+              message: "Error al generar el diario",
+            });
+          } finally {
+            controller.close();
+          }
+        },
+      });
 
-    const markdown = completion.choices[0]?.message?.content ?? "";
+      return new Response(readable, {
+        headers: {
+          "Content-Type": "application/x-ndjson; charset=utf-8",
+          "Cache-Control": "no-cache",
+        },
+      });
+    }
+
+    const markdown = await runJournalPipeline(ctx);
 
     await prisma.travel.update({
       where: { id: travelId },
@@ -66,10 +101,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({
-      markdown,
-      input: journalInput,
-    });
+    return NextResponse.json({ markdown });
   } catch (error) {
     console.error("POST /api/generate-journal", error);
     return NextResponse.json(
