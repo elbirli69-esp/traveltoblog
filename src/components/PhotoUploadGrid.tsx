@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   extractExifFromFile,
   formatExifDate,
+  isImageFile,
   isPhotoInTravelRange,
 } from "@/lib/exif";
+import { createLocalId } from "@/lib/utils";
 import type { ParsedPhoto, TravelDateRange } from "@/types";
 
 interface PhotoUploadGridProps {
@@ -19,10 +21,6 @@ interface PhotoUploadGridProps {
     type: "start" | "end",
     exifDate: Date | null
   ) => void;
-}
-
-function createLocalId(): string {
-  return crypto.randomUUID();
 }
 
 export default function PhotoUploadGrid({
@@ -72,28 +70,44 @@ export default function PhotoUploadGrid({
 
       try {
         const newPhotos: ParsedPhoto[] = [];
+        let skipped = 0;
 
         for (const file of Array.from(files)) {
-          if (!file.type.startsWith("image/")) continue;
+          if (!isImageFile(file)) {
+            skipped += 1;
+            continue;
+          }
 
-          const exif = await extractExifFromFile(file);
-          const outOfRange = !isPhotoInTravelRange(exif.dateTime, dateRange);
+          try {
+            const exif = await extractExifFromFile(file);
+            const outOfRange = !isPhotoInTravelRange(exif.dateTime, dateRange);
 
-          newPhotos.push({
-            id: createLocalId(),
-            file,
-            previewUrl: URL.createObjectURL(file),
-            exif,
-            selected: !outOfRange,
-            outOfRange,
-            isTransportStart: false,
-            isTransportEnd: false,
-          });
+            newPhotos.push({
+              id: createLocalId(),
+              file,
+              previewUrl: URL.createObjectURL(file),
+              exif,
+              selected: !outOfRange,
+              outOfRange,
+              isTransportStart: false,
+              isTransportEnd: false,
+            });
+          } catch {
+            skipped += 1;
+          }
         }
 
-        setPhotos((prev) => [...prev, ...newPhotos]);
+        if (newPhotos.length === 0) {
+          setError(
+            skipped > 0
+              ? "No se pudieron procesar las imágenes seleccionadas."
+              : "No se encontraron imágenes válidas."
+          );
+        } else {
+          setPhotos((prev) => [...prev, ...newPhotos]);
+        }
       } catch {
-        setError("Error al leer metadatos EXIF de las imágenes.");
+        setError("Error al procesar las imágenes. Prueba de nuevo.");
       } finally {
         setProcessing(false);
         if (inputRef.current) inputRef.current.value = "";

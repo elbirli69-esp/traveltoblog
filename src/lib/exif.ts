@@ -1,15 +1,30 @@
 import exifr from "exifr";
 import type { ExifMetadata } from "@/types";
 
+const IMAGE_EXT = /\.(jpe?g|png|gif|webp|heic|heif|avif|tiff?)$/i;
+
+/** Acepta imágenes aunque el navegador no rellene file.type (común en móvil). */
+export function isImageFile(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  return IMAGE_EXT.test(file.name);
+}
+
 /**
  * Extract EXIF metadata from an image file entirely on the client.
  * Uses exifr — no server upload required for metadata parsing.
  */
 export async function extractExifFromFile(file: File): Promise<ExifMetadata> {
+  const empty: ExifMetadata = { dateTime: null, latitude: null, longitude: null };
+
   try {
     const [dateTime, gps] = await Promise.all([
-      exifr.parse(file, ["DateTimeOriginal", "CreateDate", "ModifyDate"]),
-      exifr.gps(file),
+      exifr
+        .parse(file, {
+          pick: ["DateTimeOriginal", "CreateDate", "ModifyDate"],
+          reviveValues: true,
+        })
+        .catch(() => null),
+      exifr.gps(file).catch(() => null),
     ]);
 
     const rawDate =
@@ -29,7 +44,7 @@ export async function extractExifFromFile(file: File): Promise<ExifMetadata> {
       longitude: typeof gps?.longitude === "number" ? gps.longitude : null,
     };
   } catch {
-    return { dateTime: null, latitude: null, longitude: null };
+    return empty;
   }
 }
 

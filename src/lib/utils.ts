@@ -2,9 +2,22 @@ import { customAlphabet } from "nanoid";
 
 const alphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
 const nanoid = customAlphabet(alphabet, 8);
+const localIdAlphabet = customAlphabet(alphabet, 21);
 
 export function generateShareCode(): string {
   return nanoid();
+}
+
+/** UUID local para fotos/notas offline. Funciona en HTTP (sin contexto seguro). */
+export function createLocalId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      // randomUUID requiere contexto seguro (HTTPS); en http://syno-nas:3000 falla
+    }
+  }
+  return localIdAlphabet();
 }
 
 export function getJoinUrl(shareCode: string): string {

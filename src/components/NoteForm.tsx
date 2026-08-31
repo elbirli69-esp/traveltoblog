@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createLocalId } from "@/lib/utils";
 
 interface NoteFormProps {
   travelId: string;
@@ -37,7 +38,7 @@ export default function NoteForm({
     if (!navigator.onLine) {
       const { savePendingNote } = await import("@/lib/offline-db");
       await savePendingNote({
-        localId: crypto.randomUUID(),
+        localId: createLocalId(),
         travelId,
         userId,
         photoLocalId: photoId ?? null,
