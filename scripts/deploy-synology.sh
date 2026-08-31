@@ -288,6 +288,7 @@ ssh "${SSH_OPTS[@]}" "$SSH_TARGET" bash -s <<REMOTE
 set -euo pipefail
 cd "${REMOTE_DIR}"
 export PATH="/usr/local/bin:/usr/sbin:/usr/bin:\$PATH"
+rm -f public/manifest.webmanifest
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "❌ Docker no encontrado. Instala Container Manager en el Synology."

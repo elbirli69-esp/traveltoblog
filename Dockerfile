@@ -18,6 +18,8 @@ RUN addgroup --system --gid 1001 nodejs \
 COPY --chown=nextjs:nodejs .next/standalone ./
 COPY --chown=nextjs:nodejs .next/static ./.next/static
 COPY --chown=nextjs:nodejs public ./public
+# Manifest dinámico vía app/manifest.ts — no servir copia estática obsoleta
+RUN rm -f ./public/manifest.webmanifest
 COPY --chown=nextjs:nodejs prisma ./prisma
 COPY --chown=nextjs:nodejs node_modules/.prisma ./node_modules/.prisma
 COPY --chown=nextjs:nodejs node_modules/@prisma ./node_modules/@prisma
