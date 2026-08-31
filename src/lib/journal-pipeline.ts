@@ -393,37 +393,111 @@ export function assembleJournalMarkdown(
 
 export type PipelineProgressCallback = (event: JournalPipelineEvent) => void;
 
+export function isAiUnreachableError(error: unknown): boolean {
+  const parts: string[] = [];
+  let current: unknown = error;
+  for (let i = 0; i < 4 && current; i++) {
+    if (current instanceof Error) {
+      parts.push(current.message);
+      current = (current as Error & { cause?: unknown }).cause;
+    } else {
+      parts.push(String(current));
+      break;
+    }
+  }
+  const msg = parts.join(" ");
+  return /EAI_AGAIN|ENOTFOUND|ETIMEDOUT|ECONNREFUSED|Connection error|fetch failed|getaddrinfo/i.test(
+    msg
+  );
+}
+
+/** Template journal when DeepSeek API is unreachable (e.g. NAS DNS issues). */
+export function buildLocalJournalMarkdown(ctx: EnhancedJournalContext): string {
+  const intro = `Diario colaborativo del viaje **${ctx.title}**, con la participación de ${ctx.participants.join(", ")}.`;
+
+  const daySummaries: DaySummaryRow[] = ctx.days.map((d) => ({
+    date: d.date,
+    summary:
+      d.dayNotes.map((n) => `**${n.author}:** ${n.text}`).join("\n\n") ||
+      "Recorrido y momentos compartidos durante este día.",
+  }));
+
+  const captions: PhotoCaptionRow[] = ctx.days.flatMap((d) =>
+    d.photos.map((p) => ({
+      url: p.url,
+      caption:
+        p.comments.join(" · ") ||
+        (p.isTransportStart
+          ? "Salida — inicio del viaje"
+          : p.isTransportEnd
+            ? "Regreso — fin del viaje"
+            : `Foto de ${p.author}`),
+    }))
+  );
+
+  const conclusion = `Fin del relato de **${ctx.title}**. Gracias a todos los participantes por compartir este viaje.`;
+
+  const body = assembleJournalMarkdown(ctx, intro, daySummaries, captions, conclusion);
+  return `> ⚠️ *Crónica generada sin IA: el servidor no pudo contactar el servicio de IA (revisa DNS/red del NAS). Puedes volver a generar cuando haya conexión.*\n\n${body}`;
+}
+
 export async function runJournalPipeline(
   ctx: EnhancedJournalContext,
   onProgress?: PipelineProgressCallback
 ): Promise<string> {
-  const ai = createAiClient();
-  const { model } = getAiConfig();
-
   const emit = (event: JournalPipelineEvent) => onProgress?.(event);
 
-  emit({ step: "context", status: "done", message: "Datos del viaje preparados" });
+  try {
+    const ai = createAiClient();
+    const { model } = getAiConfig();
 
-  emit({ step: "intro", status: "running", message: "Escribiendo introducción…" });
-  const intro = await generateIntroduction(ai, model, ctx);
-  emit({ step: "intro", status: "done" });
+    emit({ step: "context", status: "done", message: "Datos del viaje preparados" });
 
-  emit({ step: "days", status: "running", message: "Resumiendo cada día…" });
-  const daySummaries = await generateDaySummaries(ai, model, ctx);
-  emit({ step: "days", status: "done" });
+    emit({ step: "intro", status: "running", message: "Escribiendo introducción…" });
+    const intro = await generateIntroduction(ai, model, ctx);
+    emit({ step: "intro", status: "done" });
 
-  emit({ step: "captions", status: "running", message: "Mejorando leyendas de fotos…" });
-  const captions = await generatePhotoCaptions(ai, model, ctx);
-  emit({ step: "captions", status: "done" });
+    emit({ step: "days", status: "running", message: "Resumiendo cada día…" });
+    const daySummaries = await generateDaySummaries(ai, model, ctx);
+    emit({ step: "days", status: "done" });
 
-  emit({ step: "conclusion", status: "running", message: "Cerrando el relato…" });
-  const conclusion = await generateConclusion(ai, model, ctx, intro, daySummaries);
-  emit({ step: "conclusion", status: "done" });
+    emit({ step: "captions", status: "running", message: "Mejorando leyendas de fotos…" });
+    const captions = await generatePhotoCaptions(ai, model, ctx);
+    emit({ step: "captions", status: "done" });
 
-  emit({ step: "assemble", status: "running", message: "Ensamblando artículo…" });
-  const markdown = assembleJournalMarkdown(ctx, intro, daySummaries, captions, conclusion);
-  emit({ step: "assemble", status: "done" });
+    emit({ step: "conclusion", status: "running", message: "Cerrando el relato…" });
+    const conclusion = await generateConclusion(ai, model, ctx, intro, daySummaries);
+    emit({ step: "conclusion", status: "done" });
 
-  emit({ step: "complete", status: "done", markdown });
-  return markdown;
+    emit({ step: "assemble", status: "running", message: "Ensamblando artículo…" });
+    const markdown = assembleJournalMarkdown(ctx, intro, daySummaries, captions, conclusion);
+    emit({ step: "assemble", status: "done" });
+
+    emit({ step: "complete", status: "done", markdown });
+    return markdown;
+  } catch (error) {
+    if (!isAiUnreachableError(error)) throw error;
+
+    console.warn("IA no disponible, usando crónica local:", error);
+    emit({
+      step: "intro",
+      status: "running",
+      message: "IA no disponible — generando crónica local…",
+    });
+    emit({ step: "intro", status: "done" });
+    emit({ step: "days", status: "done" });
+    emit({ step: "captions", status: "done" });
+    emit({ step: "conclusion", status: "done" });
+    emit({ step: "assemble", status: "running", message: "Ensamblando artículo…" });
+
+    const markdown = buildLocalJournalMarkdown(ctx);
+    emit({ step: "assemble", status: "done" });
+    emit({
+      step: "complete",
+      status: "done",
+      markdown,
+      message: "Crónica local generada (sin IA — sin conexión a DeepSeek)",
+    });
+    return markdown;
+  }
 }

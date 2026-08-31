@@ -18,6 +18,7 @@ export default function GenerateJournalButton({ travelId }: { travelId: string }
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<string | null>(null);
   const [stepMessage, setStepMessage] = useState<string | null>(null);
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
@@ -25,6 +26,7 @@ export default function GenerateJournalButton({ travelId }: { travelId: string }
   const handleGenerate = async () => {
     setLoading(true);
     setError(null);
+    setWarning(null);
     setCurrentStep(null);
     setStepMessage(null);
     setCompletedSteps([]);
@@ -75,6 +77,9 @@ export default function GenerateJournalButton({ travelId }: { travelId: string }
           }
 
           if (event.step === "complete" && event.status === "done") {
+            if (event.message?.includes("sin IA")) {
+              setWarning(event.message);
+            }
             router.push(`/travel/${travelId}/journal`);
             router.refresh();
           }
@@ -124,6 +129,9 @@ export default function GenerateJournalButton({ travelId }: { travelId: string }
       )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {warning && !loading && (
+        <p className="text-sm text-amber-700">{warning}</p>
+      )}
     </div>
   );
 }
