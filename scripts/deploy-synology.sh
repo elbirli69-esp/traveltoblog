@@ -326,7 +326,7 @@ REMOTE
 
 if [[ "${MIGRATE_DB:-}" == "1" ]]; then
   echo "→ Migrando schema SQLite (db push vía agente, sin pérdida de datos)…"
-  "${SSH_CMD[@]}" "$SSH_TARGET" "docker cp traveltoblog:/app/data/travel.db ${REMOTE_DIR}/travel.db.migrate 2>/dev/null || true"
+  "${SSH_CMD[@]}" "$SSH_TARGET" 'export PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH"; docker cp traveltoblog:/app/data/travel.db '"${REMOTE_DIR}"'/travel.db.migrate 2>/dev/null || true'
   if "${SSH_CMD[@]}" "$SSH_TARGET" "test -f ${REMOTE_DIR}/travel.db.migrate"; then
     "${SSH_CMD[@]}" "$SSH_TARGET" "cat ${REMOTE_DIR}/travel.db.migrate" > /tmp/traveltoblog-migrate.db
     if DATABASE_URL="file:/tmp/traveltoblog-migrate.db" npx prisma db push --skip-generate; then
