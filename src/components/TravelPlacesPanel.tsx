@@ -12,6 +12,7 @@ import {
 import type { FlightLegPhoto } from "@/lib/flights";
 import { formatFlightDate, resolveFlightLegs } from "@/lib/flights";
 import { createLocalId } from "@/lib/utils";
+import SecureLocationHint from "@/components/SecureLocationHint";
 
 const TravelPlacesMap = dynamic(() => import("@/components/TravelPlacesMap"), {
   ssr: false,
@@ -217,6 +218,8 @@ export default function TravelPlacesPanel({
           {addMode ? "Cancelar marcado" : "+ Marcar lugar"}
         </button>
       </div>
+
+      <SecureLocationHint />
 
       {addMode && (
         <div className="rounded-2xl border border-teal-200 bg-teal-50/50 p-4 space-y-2">
