@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import EditableNote from "@/components/EditableNote";
+import EmptyMemoryState from "@/components/EmptyMemoryState";
 import NoteForm from "@/components/NoteForm";
 import { findNearby, formatDistanceM, NEARBY_THRESHOLD_M } from "@/lib/geo";
 
@@ -40,6 +41,7 @@ interface PhotoGalleryProps {
   /** Expand this photo when set (mapa / Días / sinergias). */
   focusPhotoId?: string | null;
   onOpenPlace?: (placeId: string) => void;
+  onAddPhoto?: () => void;
 }
 
 function formatPhotoDate(iso: string | null): string {
@@ -61,6 +63,7 @@ export default function PhotoGallery({
   onNoteCreated,
   focusPhotoId = null,
   onOpenPlace,
+  onAddPhoto,
 }: PhotoGalleryProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [transportBusy, setTransportBusy] = useState<string | null>(null);
@@ -112,9 +115,12 @@ export default function PhotoGallery({
 
   if (sortedPhotos.length === 0) {
     return (
-      <p className="text-sm text-slate-500">
-        Aún no hay fotos en el viaje. Sube la primera arriba.
-      </p>
+      <EmptyMemoryState
+        title="Aún no hay fotos"
+        description="Sube la primera desde arriba o usa el botón para abrir el selector."
+        actionLabel="Subir foto"
+        onAction={onAddPhoto}
+      />
     );
   }
 

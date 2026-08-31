@@ -73,8 +73,9 @@ docker compose up -d --build
 7. **+ Añadir recuerdo** — CTA flotante con atajos (foto, estoy aquí, cómo fue el día, sobre el viaje). También `?add=photo|place|day|trip`.
 8. **Notas de lugar** — `Note(type=PLACE)` ligadas al pin (migración desde `Place.comment` con `npm run db:migrate-place-notes`).
 9. **Sinergias** — Notas de foto desde Días; Ida/Vuelta editable en galería; sugerencias foto↔lugar por GPS (~120 m); mapa con fotos clicables.
-10. **Offline** — Sin conexión, fotos/notas/lugares van a IndexedDB y sincronizan al volver online.
-11. **Generar crónica** — La IA redacta un artículo Markdown con fotos, notas, lugares y vuelos del grupo.
+10. **Estados vacíos y checklist** — Cada pestaña invita a «+ Añadir recuerdo»; contadores en tabs; checklist opcional antes de generar la crónica.
+11. **Offline** — Sin conexión, fotos/notas/lugares van a IndexedDB y sincronizan al volver online.
+12. **Generar crónica** — La IA redacta un artículo Markdown con fotos, notas, lugares y vuelos del grupo.
 
 ## Estructura del proyecto
 

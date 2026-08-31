@@ -21,8 +21,11 @@ import TravelCollaborationBar from "@/components/TravelCollaborationBar";
 import AddMemorySheet, {
   type AddMemoryKind,
 } from "@/components/AddMemorySheet";
+import EmptyMemoryState from "@/components/EmptyMemoryState";
+import JournalReadinessChecklist from "@/components/JournalReadinessChecklist";
 import type { PlaceType } from "@prisma/client";
 import { getSessionFromStorage, rememberTravel, touchTravelHistory } from "@/lib/utils";
+import { isoToDateKey } from "@/lib/travel-dates";
 import {
   consumePendingShareId,
   discardSharedBundle,
@@ -256,6 +259,15 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   const tripNotes = travel.notes.filter((n) => n.type === "TRIP");
   const dayNotes = travel.notes.filter((n) => n.type === "DAY");
 
+  const tabCounts = {
+    photos: travel.photos.length,
+    places: travel.places.length,
+    days: new Set(
+      dayNotes.filter((n) => n.dayDate).map((n) => isoToDateKey(n.dayDate!))
+    ).size,
+    trip: tripNotes.length,
+  };
+
   return (
     <main className="relative mx-auto max-w-3xl space-y-8 px-4 py-8 pb-28">
       <header>
@@ -293,6 +305,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
       <TravelWorkspaceTabs
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        tabCounts={tabCounts}
         photosContent={
           <div className="space-y-8">
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -320,6 +333,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                   setFocusPlaceId(placeId);
                   setActiveTab("places");
                 }}
+                onAddPhoto={() => applyAddMemory("photo")}
                 onNoteCreated={() => setRefreshKey((k) => k + 1)}
               />
             </section>
@@ -337,6 +351,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
               onNoteCreated={() => setRefreshKey((k) => k + 1)}
               focusDate={focusDayDate}
               focusNoteSignal={dayNoteSignal}
+              onAddDayNote={(dateKey) => applyAddMemory("day", dateKey)}
             />
           </section>
         }
@@ -355,6 +370,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 setFocusPhotoId(photoId);
                 setActiveTab("photos");
               }}
+              onAddPlace={() => applyAddMemory("place")}
             />
           </section>
         }
@@ -367,6 +383,16 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
               Anécdotas y comentarios sobre el viaje completo — no ligados a un día o una foto.
               La crónica las usa sobre todo en la introducción y la conclusión.
             </p>
+            {tripNotes.length === 0 && (
+              <div className="mb-4">
+                <EmptyMemoryState
+                  title="Aún no hay notas del viaje"
+                  description="Cuénta anécdotas generales, impresiones o conclusiones del viaje completo."
+                  actionLabel="Escribir nota del viaje"
+                  onAction={() => applyAddMemory("trip")}
+                />
+              </div>
+            )}
             {tripNotes.length > 0 && (
               <ul className="mb-4 space-y-3">
                 {tripNotes.map((note) => (
@@ -400,6 +426,14 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
           Elige el estilo y genera un artículo en varios pasos: introducción, resumen por día,
           leyendas de fotos y conclusión.
         </p>
+        <JournalReadinessChecklist
+          startDate={travel.startDate}
+          endDate={travel.endDate}
+          photos={travel.photos}
+          dayNotes={dayNotes}
+          tripNoteCount={tripNotes.length}
+          onFix={(kind, dayDate) => applyAddMemory(kind, dayDate)}
+        />
         {travel.journalMarkdown ? (
           <Link
             href={`/travel/${travelId}/journal`}
