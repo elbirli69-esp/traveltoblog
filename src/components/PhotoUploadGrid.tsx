@@ -211,8 +211,22 @@ export default function PhotoUploadGrid({
     async (item: NativePickedPhoto): Promise<ParsedPhoto | null> => {
       try {
         const file = await nativePhotoToFile(item);
-        const previewUrl = await createPhotoPreviewUrl(file);
-        const clientExif = await extractExifFromFile(file);
+        let previewUrl: string;
+        try {
+          previewUrl = await createPhotoPreviewUrl(file);
+        } catch {
+          previewUrl = URL.createObjectURL(file);
+        }
+        let clientExif;
+        try {
+          clientExif = await extractExifFromFile(file);
+        } catch {
+          clientExif = {
+            dateTime: item.dateTime ? new Date(item.dateTime) : null,
+            latitude: item.latitude,
+            longitude: item.longitude,
+          };
+        }
         const hint = {
           latitude: item.latitude,
           longitude: item.longitude,
@@ -244,7 +258,10 @@ export default function PhotoUploadGrid({
     setError(null);
     try {
       const { photos: picked } = await PhotoExif.pickImages({ limit: 20 });
-      if (!picked.length) return;
+      if (!picked.length) {
+        setError("No se seleccionaron imágenes o el sistema no permitió leerlas.");
+        return;
+      }
 
       const newPhotos: ParsedPhoto[] = [];
       for (const item of picked) {
@@ -253,7 +270,9 @@ export default function PhotoUploadGrid({
       }
 
       if (newPhotos.length === 0) {
-        setError("No se pudieron procesar las imágenes seleccionadas.");
+        setError(
+          "No se pudieron procesar las imágenes. Prueba de nuevo o actualiza la app desde /download/android."
+        );
       } else {
         setPhotos((prev) => [...prev, ...newPhotos]);
       }

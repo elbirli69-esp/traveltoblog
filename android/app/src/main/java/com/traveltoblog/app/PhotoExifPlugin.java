@@ -8,6 +8,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
+import android.util.Base64;
 import androidx.activity.result.ActivityResult;
 import androidx.exifinterface.media.ExifInterface;
 import com.getcapacitor.Bridge;
@@ -21,6 +22,7 @@ import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -40,6 +42,8 @@ import java.util.TimeZone;
     }
 )
 public class PhotoExifPlugin extends Plugin {
+
+    private static final int MAX_BASE64_BYTES = 4 * 1024 * 1024;
 
     @PluginMethod
     public void pickImages(PluginCall call) {
@@ -121,10 +125,15 @@ public class PhotoExifPlugin extends Plugin {
     }
 
     private JSObject processUri(Uri uri) {
+        File cacheFile = null;
         try {
             Uri readUri = uri;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                readUri = MediaStore.setRequireOriginal(uri);
+                try {
+                    readUri = MediaStore.setRequireOriginal(uri);
+                } catch (Exception ignored) {
+                    readUri = uri;
+                }
             }
 
             String name = queryDisplayName(uri);
@@ -137,8 +146,20 @@ public class PhotoExifPlugin extends Plugin {
                 mimeType = "image/jpeg";
             }
 
-            File cacheFile = new File(getContext().getCacheDir(), "picked_" + System.currentTimeMillis() + "_" + sanitize(name));
-            copyUriToFile(readUri, cacheFile);
+            cacheFile = new File(
+                getContext().getCacheDir(),
+                "picked_" + System.currentTimeMillis() + "_" + sanitize(name)
+            );
+
+            try {
+                copyUriToFile(readUri, cacheFile);
+            } catch (Exception first) {
+                if (!readUri.equals(uri)) {
+                    copyUriToFile(uri, cacheFile);
+                } else {
+                    throw first;
+                }
+            }
 
             Double latitude = null;
             Double longitude = null;
@@ -162,11 +183,13 @@ public class PhotoExifPlugin extends Plugin {
                 dateTime = parseExifDate(exifDate);
             }
 
-            String webPath = getBridge().getLocalUrl() + Bridge.CAPACITOR_FILE_START + cacheFile.getAbsolutePath();
+            String absolutePath = cacheFile.getAbsolutePath();
+            String webPath = getBridge().getLocalUrl() + Bridge.CAPACITOR_FILE_START + absolutePath;
 
             JSObject obj = new JSObject();
             obj.put("name", name);
             obj.put("mimeType", mimeType);
+            obj.put("path", absolutePath);
             obj.put("webPath", webPath);
             if (latitude != null) {
                 obj.put("latitude", latitude);
@@ -184,9 +207,31 @@ public class PhotoExifPlugin extends Plugin {
                 obj.put("dateTime", JSObject.NULL);
             }
             obj.put("gpsStripped", gpsStripped);
+
+            long fileSize = cacheFile.length();
+            if (fileSize > 0 && fileSize <= MAX_BASE64_BYTES) {
+                obj.put("base64", readFileBase64(cacheFile));
+            }
+
             return obj;
         } catch (Exception e) {
+            if (cacheFile != null && cacheFile.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                cacheFile.delete();
+            }
             return null;
+        }
+    }
+
+    private String readFileBase64(File file) throws Exception {
+        try (InputStream in = new java.io.FileInputStream(file);
+            ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+            }
+            return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
         }
     }
 
@@ -215,7 +260,10 @@ public class PhotoExifPlugin extends Plugin {
     private String queryDisplayName(Uri uri) {
         Cursor cursor = null;
         try {
-            cursor = getContext().getContentResolver().query(uri, new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null);
+            cursor =
+                getContext()
+                    .getContentResolver()
+                    .query(uri, new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null);
             if (cursor != null && cursor.moveToFirst()) {
                 int idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
                 if (idx >= 0) {
