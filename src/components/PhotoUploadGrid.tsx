@@ -9,8 +9,10 @@ import {
   isPhotoInTravelRange,
   isValidGps,
   mergeExifMetadata,
+  wasAndroidGpsStripped,
 } from "@/lib/exif";
 import { applyCurrentLocationToPhotos, isAndroidDevice } from "@/lib/geolocation-photo";
+import { pickImagesFromFileExplorer } from "@/lib/photo-picker";
 import { createPhotoPreviewUrl } from "@/lib/photo-preview";
 import { createLocalId } from "@/lib/utils";
 import type { ParsedPhoto, TravelDateRange } from "@/types";
@@ -55,8 +57,10 @@ export default function PhotoUploadGrid({
   const [processing, setProcessing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [locationBusy, setLocationBusy] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
+  const explorerInputRef = useRef<HTMLInputElement>(null);
   const sectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -90,6 +94,19 @@ export default function PhotoUploadGrid({
     [photos]
   );
 
+  const missingGpsCount = useMemo(
+    () =>
+      photos.filter(
+        (p) => p.selected && !p.outOfRange && !isValidGps(p.exif.latitude, p.exif.longitude)
+      ).length,
+    [photos]
+  );
+
+  const strippedGpsCount = useMemo(
+    () => photos.filter((p) => p.gpsStripped).length,
+    [photos]
+  );
+
   const processFiles = useCallback(
     async (files: File[], serverExif: Record<string, import("@/types").ExifMetadata> = {}) => {
       if (!files.length) return;
@@ -109,6 +126,7 @@ export default function PhotoUploadGrid({
             const previewUrl = await createPhotoPreviewUrl(file);
             try {
               const clientExif = await extractExifFromFile(file);
+              const gpsStripped = await wasAndroidGpsStripped(file);
               const hint = serverExif[file.name];
               const exif = hint ? mergeExifMetadata(clientExif, hint) : clientExif;
               const outOfRange = !isPhotoInTravelRange(exif.dateTime, dateRange);
@@ -117,6 +135,7 @@ export default function PhotoUploadGrid({
                 file,
                 previewUrl,
                 exif,
+                gpsStripped,
                 selected: !outOfRange,
                 outOfRange,
                 isTransportStart: false,
@@ -152,6 +171,51 @@ export default function PhotoUploadGrid({
     },
     [dateRange]
   );
+
+  const handleExplorerSelect = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (!files?.length) return;
+      await processFiles(Array.from(files));
+      if (explorerInputRef.current) explorerInputRef.current.value = "";
+    },
+    [processFiles]
+  );
+
+  const openExplorerPicker = useCallback(async () => {
+    setError(null);
+    try {
+      const files = await pickImagesFromFileExplorer();
+      if (files.length) await processFiles(files);
+    } catch {
+      explorerInputRef.current?.click();
+    }
+  }, [processFiles]);
+
+  const applyLocationToSelected = useCallback(async () => {
+    const targets = photos.filter(
+      (p) => p.selected && !isValidGps(p.exif.latitude, p.exif.longitude)
+    );
+    if (!targets.length) return;
+
+    setLocationBusy(true);
+    setError(null);
+    try {
+      const updated = await applyCurrentLocationToPhotos(targets);
+      const byId = new Map(updated.map((p) => [p.id, p]));
+      setPhotos((prev) =>
+        prev.map((p) => {
+          const next = byId.get(p.id);
+          if (!next) return p;
+          return { ...next, gpsStripped: false };
+        })
+      );
+    } catch {
+      setError("No se pudo obtener tu ubicación. Revisa el permiso de GPS del navegador.");
+    } finally {
+      setLocationBusy(false);
+    }
+  }, [photos]);
 
   const handleFileSelect = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -293,41 +357,59 @@ export default function PhotoUploadGrid({
         </div>
       </div>
 
-      {/* File input */}
-      <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-teal-200 bg-teal-50/50 px-6 py-10 transition hover:border-teal-400 hover:bg-teal-50">
-        <input
-          ref={inputRef}
-          type="file"
-          accept={PHOTO_INPUT_ACCEPT}
-          multiple
-          className="hidden"
-          onChange={handleFileSelect}
-          disabled={processing}
-        />
-        <svg
-          className="mb-3 h-10 w-10 text-teal-500"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+      {/* Pickers */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-teal-200 bg-teal-50/50 px-4 py-8 transition hover:border-teal-400 hover:bg-teal-50">
+          <input
+            ref={inputRef}
+            type="file"
+            accept={PHOTO_INPUT_ACCEPT}
+            multiple
+            className="hidden"
+            onChange={handleFileSelect}
+            disabled={processing}
           />
-        </svg>
-        <span className="text-sm font-medium text-teal-800">
-          {processing ? "Leyendo EXIF…" : "Seleccionar fotos de la galería"}
-        </span>
-        <span className="mt-1 text-xs text-teal-600">
-          También puedes compartir desde la galería del móvil a TravelToBlog
-        </span>
-        <span className="mt-2 max-w-sm text-center text-[11px] text-slate-500">
-          En Android el selector de fotos suele quitar el GPS. Comparte desde la galería, usa el
-          explorador de archivos o confirma con «usar ubicación actual».
-        </span>
-      </label>
+          <span className="text-sm font-medium text-teal-800">
+            {processing ? "Leyendo EXIF…" : "Galería / selector rápido"}
+          </span>
+          <span className="mt-1 text-center text-[11px] text-slate-500">
+            En Android puede quitar el GPS. Si aparece el toggle «Incluir ubicación», actívalo.
+          </span>
+        </label>
+
+        <button
+          type="button"
+          onClick={() => void openExplorerPicker()}
+          disabled={processing}
+          className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-8 text-center transition hover:border-indigo-400 hover:bg-indigo-50 disabled:opacity-50"
+        >
+          <input
+            ref={explorerInputRef}
+            type="file"
+            accept="*/*"
+            multiple
+            className="hidden"
+            onChange={handleExplorerSelect}
+            disabled={processing}
+          />
+          <span className="text-sm font-medium text-indigo-900">Explorador de archivos</span>
+          <span className="mt-1 text-[11px] text-slate-500">
+            Mejor opción en Android para conservar GPS (DCIM/Camera…)
+          </span>
+        </button>
+      </div>
+
+      {isAndroidDevice() && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-medium">Android y ubicación en fotos</p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-900/90">
+            La galería del móvil sí ve el GPS, pero el selector de fotos de Android suele enviar
+            una copia sin coordenadas (no es un fallo de la app). Usa el explorador de archivos,
+            comparte a TravelToBlog, activa «Incluir ubicación» si tu móvil lo muestra, o el botón
+            «Usar mi ubicación».
+          </p>
+        </div>
+      )}
 
       {/* Date range info */}
       {(dateRange.start || dateRange.end) && (
@@ -343,6 +425,13 @@ export default function PhotoUploadGrid({
               ({outOfRangeCount} fuera de rango)
             </span>
           )}
+        </div>
+      )}
+
+      {strippedGpsCount > 0 && (
+        <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-950">
+          {strippedGpsCount} foto{strippedGpsCount === 1 ? "" : "s"} con GPS borrado por Android
+          antes de llegar a la app. Prueba el explorador de archivos o «Usar mi ubicación».
         </div>
       )}
 
@@ -403,7 +492,9 @@ export default function PhotoUploadGrid({
                     </p>
                   )}
                   {!isValidGps(photo.exif.latitude, photo.exif.longitude) && (
-                    <p className="text-[10px] font-medium text-amber-200">Sin GPS en archivo</p>
+                    <p className="text-[10px] font-medium text-amber-200">
+                      {photo.gpsStripped ? "GPS quitado por Android" : "Sin GPS en archivo"}
+                    </p>
                   )}
                   {photo.outOfRange && (
                     <p className="text-[10px] font-medium text-amber-300">
@@ -456,18 +547,31 @@ export default function PhotoUploadGrid({
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-slate-500">
               {selectedCount} de {photos.length} seleccionadas
+              {missingGpsCount > 0 && ` · ${missingGpsCount} sin GPS`}
             </p>
-            <button
-              type="button"
-              onClick={handleConfirm}
-              disabled={uploading || selectedCount === 0}
-              className="rounded-xl bg-teal-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {uploading ? "Guardando…" : isOnline ? "Confirmar fotos" : "Guardar offline"}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              {missingGpsCount > 0 && navigator.geolocation && (
+                <button
+                  type="button"
+                  onClick={() => void applyLocationToSelected()}
+                  disabled={locationBusy || uploading}
+                  className="rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-sm font-semibold text-indigo-800 hover:bg-indigo-50 disabled:opacity-50"
+                >
+                  {locationBusy ? "Obteniendo GPS…" : "Usar mi ubicación"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleConfirm}
+                disabled={uploading || selectedCount === 0 || locationBusy}
+                className="rounded-xl bg-teal-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {uploading ? "Guardando…" : isOnline ? "Confirmar fotos" : "Guardar offline"}
+              </button>
+            </div>
           </div>
         </>
       )}

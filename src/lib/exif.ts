@@ -164,6 +164,35 @@ async function readDateTime(source: ExifSource): Promise<Date | null> {
   return parseExifDate(rawDate);
 }
 
+/** True when GPS IFD exists but coordinates were redacted (typical Android photo picker). */
+export async function wasAndroidGpsStripped(source: ExifSource): Promise<boolean> {
+  try {
+    const input = await toArrayBuffer(source);
+    const parsed = await exifr
+      .parse(input, {
+        pick: ["GPSLatitude", "GPSLongitude", "latitude", "longitude"],
+        gps: true,
+        tiff: true,
+        reviveValues: true,
+      })
+      .catch(() => null);
+
+    if (!parsed || typeof parsed !== "object") return false;
+
+    const data = parsed as Record<string, unknown>;
+    const hasGpsIfd =
+      "GPSLatitude" in data || "GPSLongitude" in data || "latitude" in data;
+    if (!hasGpsIfd) return false;
+
+    return !isValidGps(
+      data.latitude as number | null,
+      data.longitude as number | null
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Extract EXIF from a Blob/File (client) or Buffer (server). */
 export async function extractExifFromSource(source: ExifSource): Promise<ExifMetadata> {
   try {
