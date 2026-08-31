@@ -9,14 +9,14 @@ import {
   type ExportTemplateId,
 } from "@/lib/export-html";
 
-const TEMPLATES: ExportTemplateId[] = ["editorial-clean", "dark-photo-journey"];
+const TEMPLATES: ExportTemplateId[] = ["visual-journey", "editorial-clean", "dark-photo-journey"];
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
       travelId,
-      template = "editorial-clean",
+      template = "visual-journey",
       format = "zip",
     } = body as {
       travelId?: string;
@@ -119,6 +119,11 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     templates: [
+      {
+        id: "visual-journey",
+        name: "Visual Journey",
+        description: "Hero a pantalla, galería, lightbox y animaciones al scroll",
+      },
       { id: "editorial-clean", name: "Editorial Clean", description: "Tipografía editorial clara, fondo claro" },
       {
         id: "dark-photo-journey",

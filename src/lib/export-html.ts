@@ -4,7 +4,7 @@ import path from "path";
 import { readFile } from "fs/promises";
 import type { Photo, Travel, User } from "@prisma/client";
 
-export type ExportTemplateId = "editorial-clean" | "dark-photo-journey";
+export type ExportTemplateId = "visual-journey" | "editorial-clean" | "dark-photo-journey";
 export type ExportFormat = "html" | "zip";
 
 export interface MapPoint {
@@ -38,6 +38,7 @@ export interface ExportContext {
 }
 
 const TEMPLATE_LABELS: Record<ExportTemplateId, string> = {
+  "visual-journey": "Visual Journey",
   "editorial-clean": "Editorial Clean",
   "dark-photo-journey": "Dark Photo Journey",
 };
@@ -167,7 +168,365 @@ function markdownToHtml(markdown: string): string {
   return marked.parse(markdown, { async: false }) as string;
 }
 
+function pickCoverPhoto(photos: ExportPhoto[]): ExportPhoto | null {
+  const candidates = photos.filter((p) => !p.isTransportStart && !p.isTransportEnd);
+  return candidates[0] ?? photos[0] ?? null;
+}
+
+function enhanceArticleHtml(html: string): string {
+  let out = html
+    .replace(/<h2([^>]*)>/g, '<h2 class="section-title"$1>')
+    .replace(/<h3([^>]*)>/g, '<h3 class="day-marker"$1>')
+    .replace(/<blockquote([^>]*)>/g, '<blockquote class="pull-quote"$1>')
+    .replace(/<hr\s*\/?>/g, '<hr class="section-divider">');
+
+  out = out.replace(/<img([^>]*?)src="([^"]+)"([^>]*)>/g, (_match, before, src, after) => {
+    const altMatch = `${before}${after}`.match(/alt="([^"]*)"/);
+    const alt = altMatch?.[1] ?? "Foto del viaje";
+    return `<figure class="photo-block reveal"><div class="photo-frame"><img${before}src="${src}"${after} loading="lazy"></div><figcaption>${escapeHtml(alt)}</figcaption></figure>`;
+  });
+
+  return out.replace(/<p>\*([^*]+)\*<\/p>/g, '<p class="photo-credit">$1</p>');
+}
+
+function buildInteractiveScripts(template: ExportTemplateId): string {
+  if (template === "editorial-clean") return "";
+
+  return `
+(function () {
+  var lightbox = document.getElementById("lightbox");
+  var lightboxImg = lightbox && lightbox.querySelector("img");
+  var lightboxCap = lightbox && lightbox.querySelector(".lightbox-caption");
+
+  document.querySelectorAll(".photo-block img, .gallery-tile img").forEach(function (img) {
+    img.addEventListener("click", function () {
+      if (!lightbox || !lightboxImg) return;
+      lightboxImg.src = img.src;
+      lightboxImg.alt = img.alt || "";
+      if (lightboxCap) {
+        var fig = img.closest("figure");
+        var cap = fig && fig.querySelector("figcaption");
+        lightboxCap.textContent = cap ? cap.textContent : "";
+      }
+      lightbox.classList.add("open");
+      document.body.style.overflow = "hidden";
+    });
+  });
+
+  if (lightbox) {
+    lightbox.addEventListener("click", function () {
+      lightbox.classList.remove("open");
+      document.body.style.overflow = "";
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        lightbox.classList.remove("open");
+        document.body.style.overflow = "";
+      }
+    });
+  }
+
+  if ("IntersectionObserver" in window) {
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) entry.target.classList.add("visible");
+      });
+    }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
+    document.querySelectorAll(".reveal").forEach(function (el) { observer.observe(el); });
+  } else {
+    document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("visible"); });
+  }
+
+  var nav = document.querySelector(".section-nav");
+  if (nav) {
+    window.addEventListener("scroll", function () {
+      nav.classList.toggle("scrolled", window.scrollY > 80);
+    });
+    nav.querySelectorAll("a[href^='#']").forEach(function (link) {
+      link.addEventListener("click", function (e) {
+        var id = link.getAttribute("href");
+        if (!id || id === "#") return;
+        var target = document.querySelector(id);
+        if (target) {
+          e.preventDefault();
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      });
+    });
+  }
+})();
+`;
+}
+
+function buildGallerySection(photos: ExportPhoto[]): string {
+  const galleryPhotos = photos.filter((p) => !p.isTransportStart && !p.isTransportEnd);
+  if (galleryPhotos.length === 0) return "";
+
+  const tiles = galleryPhotos
+    .map(
+      (p, i) =>
+        `<figure class="gallery-tile reveal" style="animation-delay:${Math.min(i * 40, 400)}ms"><img src="${escapeHtml(p.localPath)}" alt="Foto de ${escapeHtml(p.alias)}" loading="lazy"><figcaption>${escapeHtml(p.alias)}</figcaption></figure>`
+    )
+    .join("\n");
+
+  return `
+<section id="galeria" class="gallery-section reveal">
+  <h2 class="section-title">Galería del viaje</h2>
+  <p class="gallery-lead">${galleryPhotos.length} momentos capturados</p>
+  <div class="gallery-grid">${tiles}</div>
+</section>`;
+}
+
 function templateStyles(template: ExportTemplateId): string {
+  if (template === "visual-journey") {
+    return `
+:root {
+  --bg: #0c0a09;
+  --surface: #1c1917;
+  --text: #fafaf9;
+  --muted: #a8a29e;
+  --accent: #2dd4bf;
+  --accent-2: #f59e0b;
+  --border: rgba(255,255,255,.08);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.65;
+}
+.hero {
+  position: relative;
+  min-height: 72vh;
+  display: flex;
+  align-items: flex-end;
+  background: linear-gradient(135deg, #134e4a 0%, #0c0a09 50%, #1e1b4b 100%);
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+}
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(12,10,9,.92) 0%, rgba(12,10,9,.35) 55%, rgba(12,10,9,.15) 100%);
+}
+.hero-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 2.5rem;
+}
+.hero-badge {
+  display: inline-block;
+  padding: .35rem .85rem;
+  border-radius: 999px;
+  background: rgba(45,212,191,.15);
+  border: 1px solid rgba(45,212,191,.35);
+  color: var(--accent);
+  font-size: .75rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+.hero h1 {
+  font-size: clamp(2.2rem, 6vw, 3.8rem);
+  font-weight: 800;
+  letter-spacing: -.03em;
+  line-height: 1.05;
+  margin: 0 0 .75rem;
+  text-shadow: 0 4px 30px rgba(0,0,0,.4);
+}
+.hero-meta { color: var(--muted); font-size: 1.05rem; margin: 0 0 1.5rem; }
+.hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+}
+.stat-pill {
+  padding: .5rem 1rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid var(--border);
+  font-size: .85rem;
+  backdrop-filter: blur(8px);
+}
+.section-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  gap: .5rem;
+  padding: .75rem 1.25rem;
+  background: rgba(12,10,9,.75);
+  border-bottom: 1px solid transparent;
+  backdrop-filter: blur(12px);
+  overflow-x: auto;
+  transition: border-color .2s, background .2s;
+}
+.section-nav.scrolled { border-bottom-color: var(--border); background: rgba(12,10,9,.92); }
+.section-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: .85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: .4rem .85rem;
+  border-radius: 999px;
+  transition: color .2s, background .2s;
+}
+.section-nav a:hover { color: var(--text); background: rgba(255,255,255,.06); }
+.wrap { max-width: 920px; margin: 0 auto; padding: 0 1.25rem 4rem; }
+.map-section {
+  margin: 2.5rem 0;
+  padding: 1.5rem;
+  border-radius: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 25px 50px rgba(0,0,0,.25);
+}
+.map-section h2 {
+  margin: 0 0 1rem;
+  font-size: .8rem;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  color: var(--accent);
+}
+#map {
+  height: 420px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #292524;
+}
+article { font-size: 1.08rem; padding-top: 1rem; }
+article .section-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin: 2.5rem 0 1.25rem;
+  padding-bottom: .5rem;
+  border-bottom: 2px solid rgba(45,212,191,.3);
+}
+article .day-marker {
+  position: relative;
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 2rem 0 1rem;
+  padding-left: 1rem;
+  border-left: 4px solid var(--accent-2);
+  color: #fde68a;
+}
+article .section-divider {
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+  margin: 2.5rem 0;
+}
+article .pull-quote {
+  margin: 1.75rem 0;
+  padding: 1.25rem 1.5rem;
+  border-left: 4px solid var(--accent);
+  background: rgba(45,212,191,.08);
+  border-radius: 0 12px 12px 0;
+  font-size: 1.05rem;
+  font-style: italic;
+  color: #e7e5e4;
+}
+article p { margin: 1rem 0; color: #d6d3d1; }
+article .photo-credit { text-align: center; font-size: .85rem; color: var(--muted); font-style: italic; }
+.photo-block {
+  margin: 2rem 0;
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity .6s ease, transform .6s ease;
+}
+.photo-block.visible { opacity: 1; transform: translateY(0); }
+.photo-frame {
+  border-radius: 16px;
+  overflow: hidden;
+  cursor: zoom-in;
+  box-shadow: 0 20px 50px rgba(0,0,0,.45);
+  transition: transform .35s ease, box-shadow .35s ease;
+}
+.photo-frame:hover { transform: scale(1.015); box-shadow: 0 28px 60px rgba(0,0,0,.55); }
+.photo-block img { width: 100%; display: block; aspect-ratio: 4/3; object-fit: cover; }
+.photo-block figcaption {
+  margin-top: .65rem;
+  text-align: center;
+  font-size: .9rem;
+  color: var(--muted);
+}
+.gallery-section { margin: 3rem 0 1rem; }
+.gallery-lead { color: var(--muted); margin: -.5rem 0 1.5rem; }
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: .75rem;
+}
+.gallery-tile {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  aspect-ratio: 1;
+  opacity: 0;
+  transform: scale(.96);
+  transition: opacity .5s ease, transform .5s ease;
+}
+.gallery-tile.visible { opacity: 1; transform: scale(1); }
+.gallery-tile img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .4s ease; }
+.gallery-tile:hover img { transform: scale(1.08); }
+.gallery-tile figcaption {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: .5rem .65rem;
+  background: linear-gradient(transparent, rgba(0,0,0,.75));
+  font-size: .75rem;
+  color: #fff;
+}
+.reveal { opacity: 0; transform: translateY(20px); transition: opacity .6s ease, transform .6s ease; }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+#lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(0,0,0,.92);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease;
+}
+#lightbox.open { opacity: 1; pointer-events: auto; }
+#lightbox img {
+  max-width: min(96vw, 1100px);
+  max-height: 80vh;
+  border-radius: 8px;
+  box-shadow: 0 30px 80px rgba(0,0,0,.6);
+}
+.lightbox-caption { margin-top: 1rem; color: #d6d3d1; font-size: .95rem; text-align: center; max-width: 640px; }
+footer {
+  text-align: center;
+  padding: 2rem 1rem 3rem;
+  color: var(--muted);
+  font-size: .85rem;
+  border-top: 1px solid var(--border);
+}
+.leaflet-container { background: #292524 !important; font-family: inherit; }
+@media (max-width: 640px) {
+  .hero { min-height: 60vh; }
+  .gallery-grid { grid-template-columns: repeat(2, 1fr); }
+}
+`;
+  }
+
   if (template === "dark-photo-journey") {
     return `
 :root {
@@ -203,6 +562,20 @@ article h2, article h3 { color: #fff; margin-top: 2rem; }
 article img { width: 100%; border-radius: 12px; margin: 1.5rem 0; box-shadow: 0 20px 50px rgba(0,0,0,.45); }
 article a { color: var(--accent); }
 article p { color: #d1d5db; }
+article .section-title { color: #fff; font-size: 1.5rem; border-bottom: 2px solid rgba(251,191,36,.35); padding-bottom: .4rem; }
+article .day-marker { color: #fde68a; border-left: 4px solid var(--accent); padding-left: .85rem; }
+article .pull-quote { border-left-color: var(--accent); background: rgba(251,191,36,.08); }
+.photo-block { margin: 2rem 0; opacity: 0; transform: translateY(20px); transition: opacity .5s ease, transform .5s ease; }
+.photo-block.visible { opacity: 1; transform: none; }
+.photo-frame { border-radius: 14px; overflow: hidden; cursor: zoom-in; box-shadow: 0 20px 50px rgba(0,0,0,.45); }
+.photo-block img { width: 100%; display: block; margin: 0; border-radius: 0; box-shadow: none; }
+.photo-block figcaption { text-align: center; color: var(--muted); font-size: .9rem; margin-top: .5rem; }
+.reveal { opacity: 0; transform: translateY(16px); transition: opacity .5s ease, transform .5s ease; }
+.reveal.visible { opacity: 1; transform: none; }
+#lightbox { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem; background: rgba(0,0,0,.92); opacity: 0; pointer-events: none; transition: opacity .25s; }
+#lightbox.open { opacity: 1; pointer-events: auto; }
+#lightbox img { max-width: min(96vw, 1000px); max-height: 80vh; border-radius: 8px; }
+.lightbox-caption { margin-top: 1rem; color: #d1d5db; text-align: center; }
 footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.85rem; }
 .leaflet-container { background: #1e293b !important; font-family: inherit; }
 `;
@@ -311,9 +684,57 @@ export function buildExportHtml(ctx: ExportContext): string {
   const mapPoints = mergeMapPoints(photos, places);
   const markdown = travel.journalMarkdown ?? buildFallbackMarkdown(travel, users, photos);
   const urlToLocal = new Map(photos.map((p) => [p.url, p.localPath]));
-  const contentHtml = markdownToHtml(rewriteMarkdownImagePaths(markdown, urlToLocal));
+  const rawHtml = markdownToHtml(rewriteMarkdownImagePaths(markdown, urlToLocal));
+  const contentHtml =
+    template === "editorial-clean" ? rawHtml : enhanceArticleHtml(rawHtml);
   const dateRange = formatDateRange(travel.startDate, travel.endDate);
   const hasMap = mapPoints.length > 0;
+  const coverPhoto = pickCoverPhoto(photos);
+  const isVisual = template === "visual-journey";
+  const isInteractive = template !== "editorial-clean";
+
+  const heroStyle = coverPhoto
+    ? `background-image: linear-gradient(to top, rgba(12,10,9,.88), rgba(12,10,9,.25)), url('${coverPhoto.localPath}');`
+    : "";
+
+  const headerBlock = isVisual
+    ? `<header class="hero" style="${heroStyle}">
+      <div class="hero-content reveal">
+        <span class="hero-badge">Diario de viaje</span>
+        <h1>${escapeHtml(travel.title)}</h1>
+        <p class="hero-meta">${escapeHtml(dateRange)} · ${users.map((u) => escapeHtml(u.alias)).join(", ")}</p>
+        <div class="hero-stats">
+          <span class="stat-pill">📷 ${photos.length} fotos</span>
+          <span class="stat-pill">👥 ${users.length} viajeros</span>
+          ${places.length > 0 ? `<span class="stat-pill">📍 ${places.length} lugares</span>` : ""}
+        </div>
+      </div>
+    </header>
+    <nav class="section-nav">
+      ${hasMap ? '<a href="#mapa">Mapa</a>' : ""}
+      <a href="#historia">Historia</a>
+      <a href="#galeria">Galería</a>
+    </nav>`
+    : `<header>
+      <h1>${escapeHtml(travel.title)}</h1>
+      <p class="meta">${escapeHtml(dateRange)} · ${users.map((u) => escapeHtml(u.alias)).join(", ")}</p>
+    </header>`;
+
+  const mapBlock = hasMap
+    ? `<section class="map-section reveal" id="mapa">
+      <h2>Recorrido</h2>
+      <div id="map"></div>
+    </section>`
+    : "";
+
+  const galleryBlock = isVisual ? buildGallerySection(photos) : "";
+  const storyAnchor = isVisual ? ' id="historia"' : "";
+
+  const lightboxBlock = isInteractive
+    ? `<div id="lightbox" role="dialog" aria-label="Visor de fotos"><img src="" alt=""><p class="lightbox-caption"></p></div>`
+    : "";
+
+  const interactiveScript = isInteractive ? `<script>${buildInteractiveScripts(template)}</script>` : "";
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -325,23 +746,16 @@ export function buildExportHtml(ctx: ExportContext): string {
   <style>${templateStyles(template)}</style>
 </head>
 <body>
+  ${headerBlock}
   <div class="wrap">
-    <header>
-      <h1>${escapeHtml(travel.title)}</h1>
-      <p class="meta">${escapeHtml(dateRange)} · ${users.map((u) => escapeHtml(u.alias)).join(", ")}</p>
-    </header>
-    ${
-      hasMap
-        ? `<section class="map-section">
-      <h2>Recorrido</h2>
-      <div id="map"></div>
-    </section>`
-        : ""
-    }
-    <article>${contentHtml}</article>
-    <footer>Exportado con TravelToBlog · Plantilla ${escapeHtml(getTemplateLabel(template))}</footer>
+    ${mapBlock}
+    <article${storyAnchor}>${contentHtml}</article>
+    ${galleryBlock}
+    <footer>Exportado con TravelToBlog · ${escapeHtml(getTemplateLabel(template))}</footer>
   </div>
+  ${lightboxBlock}
   ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, "assets/images")}</script>` : ""}
+  ${interactiveScript}
 </body>
 </html>`;
 }
@@ -493,7 +907,7 @@ export async function buildSingleFileHtml(ctx: ExportContext): Promise<Buffer> {
     html = html.split(localPath).join(dataUrl);
   }
 
-  const mapPoints = buildMapPoints(ctx.photos).map((p) => ({
+  const mapPoints = mergeMapPoints(ctx.photos, ctx.places ?? []).map((p) => ({
     ...p,
     photoPath: p.photoPath ? photoDataUrls.get(p.photoPath) ?? p.photoPath : null,
   }));

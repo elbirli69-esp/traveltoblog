@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export type ExportTemplateId = "editorial-clean" | "dark-photo-journey";
+export type ExportTemplateId = "visual-journey" | "editorial-clean" | "dark-photo-journey";
 export type ExportFormat = "zip" | "html";
 
 const TEMPLATES: {
@@ -12,15 +12,22 @@ const TEMPLATES: {
   preview: string;
 }[] = [
   {
+    id: "visual-journey",
+    name: "Visual Journey",
+    description:
+      "Hero con foto de portada, galería tipo mosaico, lightbox, animaciones y navegación sticky.",
+    preview: "bg-gradient-to-br from-teal-900 to-stone-900 text-teal-200 border-teal-700",
+  },
+  {
     id: "editorial-clean",
     name: "Editorial Clean",
-    description: "Estilo revista: fondo claro, tipografía serif y acentos teal.",
+    description: "Estilo revista clásica: fondo claro, tipografía serif y acentos teal.",
     preview: "bg-stone-50 text-stone-800 border-stone-200",
   },
   {
     id: "dark-photo-journey",
     name: "Dark Photo Journey",
-    description: "Tema oscuro cinematográfico con fotos a pantalla completa.",
+    description: "Tema oscuro cinematográfico con fotos destacadas.",
     preview: "bg-slate-900 text-amber-300 border-slate-700",
   },
 ];
@@ -36,7 +43,7 @@ export default function ExportHtmlPanel({
   hasJournal = false,
   hasGpsPhotos = false,
 }: ExportHtmlPanelProps) {
-  const [template, setTemplate] = useState<ExportTemplateId>("editorial-clean");
+  const [template, setTemplate] = useState<ExportTemplateId>("visual-journey");
   const [format, setFormat] = useState<ExportFormat>("zip");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +114,7 @@ export default function ExportHtmlPanel({
 
       <div>
         <h3 className="mb-2 text-sm font-semibold text-slate-700">Formato</h3>
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
           <label className="flex cursor-pointer items-center gap-2 text-sm">
             <input
               type="radio"
@@ -116,7 +123,7 @@ export default function ExportHtmlPanel({
               onChange={() => setFormat("zip")}
               className="accent-teal-600"
             />
-            ZIP (recomendado — incluye fotos y mapa offline)
+            ZIP (recomendado — fotos + mapa offline)
           </label>
           <label className="flex cursor-pointer items-center gap-2 text-sm">
             <input
@@ -126,7 +133,7 @@ export default function ExportHtmlPanel({
               onChange={() => setFormat("html")}
               className="accent-teal-600"
             />
-            HTML único
+            HTML único (todo embebido)
           </label>
         </div>
       </div>
@@ -137,13 +144,19 @@ export default function ExportHtmlPanel({
         </p>
       )}
 
+      {template === "visual-journey" && (
+        <p className="rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-900">
+          ✨ Incluye hero con portada, galería interactiva, lightbox al pulsar fotos y animaciones al hacer scroll.
+        </p>
+      )}
+
       {hasGpsPhotos ? (
         <p className="rounded-lg bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          🗺️ Se incluirá un mapa Leaflet con la ruta cronológica y marcadores por foto.
+          🗺️ Mapa Leaflet con ruta, vuelos y lugares marcados.
         </p>
       ) : (
         <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
-          No hay fotos con GPS: el export no incluirá mapa interactivo.
+          Sin GPS en fotos: el export no incluirá mapa interactivo.
         </p>
       )}
 
@@ -153,7 +166,7 @@ export default function ExportHtmlPanel({
         disabled={loading}
         className="w-full rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
       >
-        {loading ? "Generando exportación…" : "📦 Exportar viaje (HTML + mapa)"}
+        {loading ? "Generando exportación…" : "📦 Exportar blog visual (HTML + mapa)"}
       </button>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
