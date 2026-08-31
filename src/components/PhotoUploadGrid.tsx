@@ -11,7 +11,7 @@ import {
   mergeExifMetadata,
   wasAndroidGpsStripped,
 } from "@/lib/exif";
-import { applyCurrentLocationToPhotos, isAndroidDevice } from "@/lib/geolocation-photo";
+import { applyCurrentLocationToPhotos, applyPlaceToPhoto, isAndroidDevice } from "@/lib/geolocation-photo";
 import { pickImagesFromFileExplorer } from "@/lib/photo-picker";
 import { createPhotoPreviewUrl } from "@/lib/photo-preview";
 import { createLocalId } from "@/lib/utils";
@@ -21,11 +21,19 @@ import type { ParsedPhoto, TravelDateRange } from "@/types";
 const PHOTO_INPUT_ACCEPT =
   ".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif,text/plain,application/octet-stream";
 
+export interface UploadPlaceOption {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+}
+
 interface PhotoUploadGridProps {
   travelId: string;
   userId: string;
   userAlias: string;
   dateRange: TravelDateRange;
+  places?: UploadPlaceOption[];
   incomingFiles?: File[];
   incomingExifByName?: Record<string, import("@/types").ExifMetadata>;
   onIncomingFilesHandled?: () => void;
@@ -45,6 +53,7 @@ export default function PhotoUploadGrid({
   userId,
   userAlias,
   dateRange,
+  places = [],
   incomingFiles,
   incomingExifByName,
   onIncomingFilesHandled,
@@ -192,6 +201,42 @@ export default function PhotoUploadGrid({
     }
   }, [processFiles]);
 
+  const applyLocationToPhoto = useCallback(async (photoId: string) => {
+    setLocationBusy(true);
+    setError(null);
+    try {
+      const updated = await applyCurrentLocationToPhotos(
+        photos.filter((p) => p.id === photoId)
+      );
+      const next = updated[0];
+      if (!next) return;
+      setPhotos((prev) =>
+        prev.map((p) =>
+          p.id === photoId ? { ...next, gpsStripped: false } : p
+        )
+      );
+    } catch {
+      setError("No se pudo obtener tu ubicación.");
+    } finally {
+      setLocationBusy(false);
+    }
+  }, [photos]);
+
+  const assignPlaceToPhoto = useCallback(
+    (photoId: string, placeId: string) => {
+      const place = places.find((p) => p.id === placeId);
+      if (!place) return;
+      setPhotos((prev) =>
+        prev.map((p) =>
+          p.id === photoId
+            ? { ...applyPlaceToPhoto(p, place), gpsStripped: false }
+            : p
+        )
+      );
+    },
+    [places]
+  );
+
   const applyLocationToSelected = useCallback(async () => {
     const targets = photos.filter(
       (p) => p.selected && !isValidGps(p.exif.latitude, p.exif.longitude)
@@ -286,17 +331,32 @@ export default function PhotoUploadGrid({
       (p) => !isValidGps(p.exif.latitude, p.exif.longitude)
     );
 
-    if (missingGps && navigator.geolocation) {
-      const prompt = isAndroidDevice()
-        ? "Android suele quitar el GPS de las fotos al seleccionarlas. ¿Usar tu ubicación actual para las fotos sin coordenadas?"
-        : "Algunas fotos no tienen GPS en el archivo. ¿Usar tu ubicación actual para esas fotos?";
+    if (missingGps && navigator.geolocation && isAndroidDevice()) {
+      try {
+        toUpload = await applyCurrentLocationToPhotos(toUpload);
+        setPhotos((prev) =>
+          prev.map((p) => {
+            const updated = toUpload.find((u) => u.id === p.id);
+            return updated ? { ...updated, gpsStripped: false } : p;
+          })
+        );
+      } catch {
+        const proceed = window.confirm(
+          "No se pudo obtener tu ubicación. ¿Guardar las fotos sin coordenadas GPS?"
+        );
+        if (!proceed) {
+          setError("Activa el permiso de ubicación del navegador o asigna un lugar a cada foto.");
+          return;
+        }
+      }
+    } else if (missingGps && navigator.geolocation) {
+      const prompt =
+        "Algunas fotos no tienen GPS en el archivo. ¿Usar tu ubicación actual para esas fotos?";
       if (window.confirm(prompt)) {
         try {
           toUpload = await applyCurrentLocationToPhotos(toUpload);
         } catch {
-          setError(
-            "No se pudo obtener tu ubicación. Revisa el permiso de GPS del navegador."
-          );
+          setError("No se pudo obtener tu ubicación.");
           return;
         }
       }
@@ -394,19 +454,19 @@ export default function PhotoUploadGrid({
           />
           <span className="text-sm font-medium text-indigo-900">Explorador de archivos</span>
           <span className="mt-1 text-[11px] text-slate-500">
-            Mejor opción en Android para conservar GPS (DCIM/Camera…)
+            Alternativa al selector; en muchos Android el GPS sigue sin llegar
           </span>
         </button>
       </div>
 
       {isAndroidDevice() && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <p className="font-medium">Android y ubicación en fotos</p>
+          <p className="font-medium">En Android la web no puede leer el GPS de las fotos</p>
           <p className="mt-1 text-xs leading-relaxed text-amber-900/90">
-            La galería del móvil sí ve el GPS, pero el selector de fotos de Android suele enviar
-            una copia sin coordenadas (no es un fallo de la app). Usa el explorador de archivos,
-            comparte a TravelToBlog, activa «Incluir ubicación» si tu móvil lo muestra, o el botón
-            «Usar mi ubicación».
+            El sistema envía una copia sin coordenadas (aunque la galería sí las muestre). No es
+            un fallo de esta app: las webs no tienen permiso para leer la ubicación embebida. Usa
+            <strong> «Usar mi ubicación»</strong> si estás en el sitio de la foto, o asigna un
+            <strong> lugar del viaje</strong> debajo de cada imagen.
           </p>
         </div>
       )}
@@ -430,8 +490,13 @@ export default function PhotoUploadGrid({
 
       {strippedGpsCount > 0 && (
         <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-950">
-          {strippedGpsCount} foto{strippedGpsCount === 1 ? "" : "s"} con GPS borrado por Android
-          antes de llegar a la app. Prueba el explorador de archivos o «Usar mi ubicación».
+          <p className="font-medium">
+            {strippedGpsCount} foto{strippedGpsCount === 1 ? "" : "s"} sin GPS en el archivo recibido
+          </p>
+          <p className="mt-1 text-xs">
+            Pulsa <strong>Usar mi ubicación</strong> (arriba) o elige un lugar en cada foto antes
+            de confirmar.
+          </p>
         </div>
       )}
 
@@ -448,7 +513,7 @@ export default function PhotoUploadGrid({
             {photos.map((photo) => (
               <div
                 key={photo.id}
-                className={`group relative overflow-hidden rounded-xl border-2 transition ${
+                className={`group flex flex-col overflow-hidden rounded-xl border-2 transition ${
                   photo.outOfRange
                     ? "border-amber-300 opacity-60"
                     : photo.selected
@@ -456,6 +521,7 @@ export default function PhotoUploadGrid({
                       : "border-slate-200 opacity-50"
                 }`}
               >
+                <div className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={photo.previewUrl}
@@ -542,6 +608,46 @@ export default function PhotoUploadGrid({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
+                </div>
+
+                {!isValidGps(photo.exif.latitude, photo.exif.longitude) && (
+                  <div className="space-y-1.5 border-t border-slate-100 bg-slate-50 p-2">
+                    {photo.gpsStripped && (
+                      <p className="text-[10px] leading-tight text-amber-800">
+                        GPS quitado por Android
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-1">
+                      <button
+                        type="button"
+                        onClick={() => void applyLocationToPhoto(photo.id)}
+                        disabled={locationBusy}
+                        className="rounded bg-indigo-100 px-2 py-0.5 text-[10px] font-medium text-indigo-900 hover:bg-indigo-200 disabled:opacity-50"
+                      >
+                        {locationBusy ? "…" : "📍 Aquí"}
+                      </button>
+                      {places.length > 0 && (
+                        <select
+                          className="min-w-0 flex-1 rounded border border-slate-200 bg-white px-1 py-0.5 text-[10px]"
+                          defaultValue=""
+                          onChange={(e) => {
+                            const placeId = e.target.value;
+                            if (placeId) assignPlaceToPhoto(photo.id, placeId);
+                          }}
+                        >
+                          <option value="" disabled>
+                            Lugar…
+                          </option>
+                          {places.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

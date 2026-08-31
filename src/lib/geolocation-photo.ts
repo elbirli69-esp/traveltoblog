@@ -44,3 +44,17 @@ export async function applyCurrentLocationToPhotos<T extends { exif: ExifMetadat
     };
   });
 }
+
+export function applyPlaceToPhoto<T extends { exif: ExifMetadata }>(
+  photo: T,
+  place: { latitude: number; longitude: number }
+): T {
+  return {
+    ...photo,
+    exif: {
+      ...photo.exif,
+      latitude: place.latitude,
+      longitude: place.longitude,
+    },
+  };
+}

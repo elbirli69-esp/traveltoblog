@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import PhotoUploadGrid from "@/components/PhotoUploadGrid";
+import PhotoUploadGrid, { type UploadPlaceOption } from "@/components/PhotoUploadGrid";
 import {
   savePendingPhoto,
   removePendingPhoto,
@@ -17,6 +17,7 @@ interface PhotoUploadSectionProps {
   incomingExifByName?: Record<string, ExifMetadata>;
   /** When set, confirm imports originals from server share inbox (preserves EXIF/GPS). */
   shareBundleId?: string | null;
+  places?: UploadPlaceOption[];
   onIncomingFilesHandled?: () => void;
   onSyncComplete?: () => void;
   openPickerSignal?: number;
@@ -31,6 +32,7 @@ export default function PhotoUploadSection({
   incomingFiles,
   incomingExifByName,
   shareBundleId,
+  places = [],
   onIncomingFilesHandled,
   onSyncComplete,
   openPickerSignal,
@@ -129,6 +131,7 @@ export default function PhotoUploadSection({
       dateRange={dateRange}
       incomingFiles={incomingFiles}
       incomingExifByName={incomingExifByName}
+      places={places}
       onIncomingFilesHandled={onIncomingFilesHandled}
       onPhotosConfirmed={handlePhotosConfirmed}
       onTransportPhotoMarked={handleTransportMarked}
