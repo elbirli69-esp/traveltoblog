@@ -20,12 +20,24 @@ export async function PATCH(
     }
 
     const photo = await prisma.photo.findFirst({
-      where: { travelId, localId: photoLocalId },
+      where: {
+        travelId,
+        OR: [{ localId: photoLocalId }, { id: photoLocalId }],
+      },
     });
 
     if (!photo) {
       return NextResponse.json({ error: "Foto no encontrada" }, { status: 404 });
     }
+
+    await prisma.photo.updateMany({
+      where: {
+        travelId,
+        id: { not: photo.id },
+        ...(type === "start" ? { isTransportStart: true } : { isTransportEnd: true }),
+      },
+      data: type === "start" ? { isTransportStart: false } : { isTransportEnd: false },
+    });
 
     await prisma.photo.update({
       where: { id: photo.id },

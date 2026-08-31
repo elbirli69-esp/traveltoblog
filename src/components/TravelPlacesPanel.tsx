@@ -9,6 +9,8 @@ import {
   placeEmoji,
   placeLabel,
 } from "@/lib/places";
+import type { FlightLegPhoto } from "@/lib/flights";
+import { formatFlightDate, resolveFlightLegs } from "@/lib/flights";
 
 const TravelPlacesMap = dynamic(() => import("@/components/TravelPlacesMap"), {
   ssr: false,
@@ -33,7 +35,7 @@ interface TravelPlacesPanelProps {
   travelId: string;
   userId: string;
   places: TravelPlace[];
-  photos: { latitude: number | null; longitude: number | null }[];
+  photos: FlightLegPhoto[];
   onChanged?: () => void;
 }
 
@@ -59,6 +61,7 @@ export default function TravelPlacesPanel({
   const [error, setError] = useState<string | null>(null);
 
   const selectedPlace = places.find((p) => p.id === selectedPlaceId) ?? null;
+  const { outbound, inbound } = resolveFlightLegs(photos);
 
   const handleMapClick = useCallback((lat: number, lng: number) => {
     setDraft({
@@ -142,6 +145,18 @@ export default function TravelPlacesPanel({
           {addMode ? "Cancelar marcado" : "+ Marcar lugar"}
         </button>
       </div>
+
+      <section className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
+        <h3 className="text-sm font-semibold text-indigo-900">Vuelos ida / vuelta</h3>
+        <p className="mt-1 text-xs text-indigo-700/80">
+          Marca fotos como Ida o Vuelta en la pestaña Fotos. Si tienen GPS de aeropuerto, aparecen
+          en el mapa con línea discontinua entre ambos.
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <FlightLegCard leg={outbound} emptyLabel="Sin foto de ida marcada" />
+          <FlightLegCard leg={inbound} emptyLabel="Sin foto de vuelta marcada" />
+        </div>
+      </section>
 
       <TravelPlacesMap
         places={places}
@@ -254,6 +269,47 @@ export default function TravelPlacesPanel({
           Seleccionado: {placeEmoji(selectedPlace.type)} {selectedPlace.name}
         </p>
       )}
+    </div>
+  );
+}
+
+function FlightLegCard({
+  leg,
+  emptyLabel,
+}: {
+  leg: ReturnType<typeof resolveFlightLegs>["outbound"];
+  emptyLabel: string;
+}) {
+  if (!leg) {
+    return (
+      <div className="rounded-xl border border-dashed border-indigo-200 bg-white/60 px-3 py-4 text-xs text-slate-500">
+        {emptyLabel}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-3 rounded-xl border border-indigo-200 bg-white px-3 py-3">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={leg.photo.url}
+        alt=""
+        className="h-16 w-16 shrink-0 rounded-lg object-cover"
+      />
+      <div className="min-w-0 text-sm">
+        <p className="font-semibold text-slate-800">
+          {leg.emoji} {leg.label}
+        </p>
+        <p className="text-xs text-slate-500">{leg.photo.user.alias}</p>
+        <p className="text-xs text-slate-500">{formatFlightDate(leg.photo.exifDateTime)}</p>
+        <p
+          className={`mt-1 text-xs font-medium ${leg.hasGps ? "text-teal-700" : "text-amber-700"}`}
+        >
+          {leg.hasGps
+            ? "Visible en el mapa"
+            : "Sin GPS — marca el aeropuerto como lugar Transporte"}
+        </p>
+      </div>
     </div>
   );
 }
