@@ -6,7 +6,7 @@ import { PLACE_TYPES } from "@/lib/places";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { travelId, userId, name, type, latitude, longitude, comment, localId } = body as {
+    const { travelId, userId, name, type, latitude, longitude, comment, localId, visitedAt } = body as {
       travelId?: string;
       userId?: string;
       name?: string;
@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
       /** Legacy: converted to Note(type=PLACE), not stored on Place.comment */
       comment?: string | null;
       localId?: string;
+      visitedAt?: string | null;
     };
 
     if (
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
         latitude,
         longitude,
         comment: null,
+        visitedAt: visitedAt ? new Date(visitedAt) : new Date(),
         localId: localId ?? null,
         ...(noteText
           ? {

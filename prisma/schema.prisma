@@ -11,6 +11,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum TravelType {
+  GENERIC
+  CITY_BREAK
+  ROAD_TRIP
+  INTERNATIONAL
+  BEACH_RESORT
+  TREKKING
+  SLOW_TRAVEL
+}
+
 /// A shared travel room. Participants join via shareCode / QR URL.
 model Travel {
   id           String   @id @default(cuid())
@@ -24,6 +34,8 @@ model Travel {
   /// Generated blog article in Markdown
   journalMarkdown String?
   journalGeneratedAt DateTime?
+  /// Export / narrative typology (null = auto-suggest on export)
+  travelType   TravelType?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -31,6 +43,7 @@ model Travel {
   photos       Photo[]
   notes        Note[]
   places       Place[]
+  gpsTracks    GpsTrack[]
 
   /// Transport photo that opens the trip
   startPhoto   Photo?   @relation("TravelStartPhoto", fields: [startPhotoId], references: [id], onDelete: SetNull)
@@ -52,6 +65,7 @@ model User {
   photos    Photo[]
   notes     Note[]
   places    Place[]
+  gpsTracks GpsTrack[]
 
   @@unique([travelId, alias])
   @@index([travelId])
@@ -149,6 +163,8 @@ model Place {
   longitude Float
   /// Deprecated: prefer Note(type=PLACE). Kept nullable for migration.
   comment   String?
+  /// When the place was actually visited (falls back to createdAt in timeline)
+  visitedAt DateTime?
   /// Client-side UUID for offline sync deduplication
   localId   String?   @unique
   createdAt DateTime  @default(now())
@@ -157,6 +173,26 @@ model Place {
   travel    Travel    @relation(fields: [travelId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   notes     Note[]
+
+  @@index([travelId])
+  @@index([userId])
+}
+
+/// Optional continuous GPS trail (opt-in recording during trip)
+model GpsTrack {
+  id              String    @id @default(cuid())
+  travelId        String
+  userId          String
+  startedAt       DateTime
+  endedAt         DateTime?
+  /// JSON array of { lat, lng, at } — sampled ~1/min
+  points          String    @default("[]")
+  includeInExport Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  travel Travel @relation(fields: [travelId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([travelId])
   @@index([userId])

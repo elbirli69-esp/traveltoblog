@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { TravelType } from "@prisma/client";
 
 export type ExportTemplateId = "visual-journey" | "editorial-clean" | "dark-photo-journey";
 export type ExportFormat = "zip" | "html";
+export type ExportTypologyId = TravelType | "auto";
 
 const TEMPLATES: {
   id: ExportTemplateId;
@@ -32,6 +34,12 @@ const TEMPLATES: {
   },
 ];
 
+interface TypologyOption {
+  id: ExportTypologyId;
+  label: string;
+  description: string;
+}
+
 interface ExportHtmlPanelProps {
   travelId: string;
   hasJournal?: boolean;
@@ -44,19 +52,54 @@ export default function ExportHtmlPanel({
   hasGpsPhotos = false,
 }: ExportHtmlPanelProps) {
   const [template, setTemplate] = useState<ExportTemplateId>("visual-journey");
+  const [typology, setTypology] = useState<ExportTypologyId>("auto");
+  const [typologies, setTypologies] = useState<TypologyOption[]>([]);
+  const [suggestion, setSuggestion] = useState<{ type: TravelType; reason: string } | null>(
+    null
+  );
+  const [includeGpsTrail, setIncludeGpsTrail] = useState(false);
   const [format, setFormat] = useState<ExportFormat>("zip");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void fetch(`/api/travels/${travelId}/suggest-type`)
+      .then((r) => r.json())
+      .then((data) => {
+        const list: TypologyOption[] = [
+          { id: "auto", label: "Auto (sugerir)", description: "Detecta el tipo según tus datos" },
+          ...(data.typologies ?? []).map((t: { id: TravelType; label: string; description: string }) => ({
+            id: t.id as ExportTypologyId,
+            label: t.label,
+            description: t.description,
+          })),
+        ];
+        setTypologies(list);
+        if (data.suggestion) {
+          setSuggestion({ type: data.suggestion.type, reason: data.suggestion.reason });
+        }
+        if (data.travelType) setTypology(data.travelType);
+      })
+      .catch(() => {});
+  }, [travelId]);
 
   const handleExport = async () => {
     setLoading(true);
     setError(null);
 
     try {
+      if (typology !== "auto") {
+        await fetch(`/api/travels/${travelId}/travel-type`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ travelType: typology }),
+        });
+      }
+
       const res = await fetch("/api/export-html", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ travelId, template, format }),
+        body: JSON.stringify({ travelId, template, typology, format, includeGpsTrail }),
       });
 
       if (!res.ok) {
@@ -86,9 +129,36 @@ export default function ExportHtmlPanel({
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-slate-700">
-          Plantilla visual
-        </h3>
+        <h3 className="mb-3 text-sm font-semibold text-slate-700">Tipología de viaje</h3>
+        <p className="mb-2 text-xs text-slate-500">
+          Define la estructura del HTML (cronología, mapa, reproducción). La plantilla visual es independiente.
+        </p>
+        {suggestion && typology === "auto" && (
+          <p className="mb-2 rounded-lg bg-teal-50 px-3 py-2 text-xs text-teal-800">
+            Sugerencia: <strong>{suggestion.type.replace(/_/g, " ").toLowerCase()}</strong> — {suggestion.reason}
+          </p>
+        )}
+        <div className="grid gap-2 sm:grid-cols-2">
+          {typologies.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTypology(t.id)}
+              className={`rounded-xl border-2 p-3 text-left transition ${
+                typology === t.id
+                  ? "border-teal-500 ring-2 ring-teal-500/20"
+                  : "border-slate-200 hover:border-slate-300"
+              }`}
+            >
+              <p className="text-sm font-semibold text-slate-800">{t.label}</p>
+              <p className="mt-0.5 text-xs text-slate-500">{t.description}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="mb-3 text-sm font-semibold text-slate-700">Plantilla visual</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           {TEMPLATES.map((t) => (
             <button
@@ -111,6 +181,16 @@ export default function ExportHtmlPanel({
           ))}
         </div>
       </div>
+
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          checked={includeGpsTrail}
+          onChange={(e) => setIncludeGpsTrail(e.target.checked)}
+          className="accent-teal-600"
+        />
+        Incluir recorridos GPS grabados en el export
+      </label>
 
       <div>
         <h3 className="mb-2 text-sm font-semibold text-slate-700">Formato</h3>
@@ -140,39 +220,19 @@ export default function ExportHtmlPanel({
 
       {!hasJournal && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Sin crónica IA: se exportará una galería con las fotos seleccionadas.
-        </p>
-      )}
-
-      {template === "visual-journey" && (
-        <p className="rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-900">
-          ✨ Incluye hero con portada, galería interactiva, lightbox al pulsar fotos y animaciones al hacer scroll.
+          Sin crónica IA: se exportará cronología unificada y galería con las fotos seleccionadas.
         </p>
       )}
 
       {hasGpsPhotos ? (
         <p className="rounded-lg bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          🗺️ Mapa interactivo con ruta numerada, lugares, vuelos y tiles CartoDB (requiere internet al abrir el HTML).
+          🗺️ Incluye cronología interactiva, mapa sincronizado y modo reproducir por días.
         </p>
       ) : (
         <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
-          Sin GPS en fotos ni lugares en el mapa: se mostrará una cronología visual por días. Añade lugares o fotos con GPS para el mapa completo.
+          Sin GPS: cronología textual unificada (fotos, lugares, notas). Añade GPS para mapa completo.
         </p>
       )}
-
-      <details className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
-        <summary className="cursor-pointer font-medium text-slate-800">
-          ¿ZIP o HTML único?
-        </summary>
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li>
-            <strong>ZIP (recomendado):</strong> fotos en calidad original, HTML más ligero, carga más rápida. Ideal para archivar o compartir la carpeta completa.
-          </li>
-          <li>
-            <strong>HTML único:</strong> un solo archivo con todo embebido (fotos en base64). Puede pesar mucho (decenas de MB) y tardar en abrir, pero es cómodo para enviar por email.
-          </li>
-        </ul>
-      </details>
 
       <button
         type="button"
@@ -180,7 +240,7 @@ export default function ExportHtmlPanel({
         disabled={loading}
         className="w-full rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
       >
-        {loading ? "Generando exportación…" : "📦 Exportar blog visual (HTML + mapa)"}
+        {loading ? "Generando exportación…" : "📦 Exportar diario interactivo (HTML)"}
       </button>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

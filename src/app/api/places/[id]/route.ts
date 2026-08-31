@@ -10,12 +10,13 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, type, latitude, longitude, comment } = body as {
+    const { name, type, latitude, longitude, comment, visitedAt } = body as {
       name?: string;
       type?: PlaceType;
       latitude?: number;
       longitude?: number;
       comment?: string | null;
+      visitedAt?: string | null;
     };
 
     const data: {
@@ -24,6 +25,7 @@ export async function PATCH(
       latitude?: number;
       longitude?: number;
       comment?: string | null;
+      visitedAt?: Date | null;
     } = {};
 
     if (name != null) data.name = name.trim();
@@ -31,6 +33,7 @@ export async function PATCH(
     if (latitude != null) data.latitude = latitude;
     if (longitude != null) data.longitude = longitude;
     if (comment !== undefined) data.comment = comment?.trim() || null;
+    if (visitedAt !== undefined) data.visitedAt = visitedAt ? new Date(visitedAt) : null;
 
     const place = await prisma.place.update({
       where: { id },

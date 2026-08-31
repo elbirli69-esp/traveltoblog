@@ -23,6 +23,9 @@ import AddMemorySheet, {
 } from "@/components/AddMemorySheet";
 import EmptyMemoryState from "@/components/EmptyMemoryState";
 import JournalReadinessChecklist from "@/components/JournalReadinessChecklist";
+import TravelTimeline from "@/components/TravelTimeline";
+import GpsTrailRecorder from "@/components/GpsTrailRecorder";
+import type { TimelineEvent } from "@/lib/timeline";
 import type { PlaceType } from "@prisma/client";
 import { getSessionFromStorage, rememberTravel, touchTravelHistory } from "@/lib/utils";
 import { isoToDateKey } from "@/lib/travel-dates";
@@ -113,6 +116,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   const [tripNoteSignal, setTripNoteSignal] = useState(0);
   const [focusPhotoId, setFocusPhotoId] = useState<string | null>(null);
   const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
+  const [activeTimelineEventId, setActiveTimelineEventId] = useState<string | null>(null);
   const deepLinkHandled = useRef<string | null>(null);
   const tripNoteRef = useRef<HTMLDivElement>(null);
 
@@ -265,7 +269,25 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
     days: new Set(
       dayNotes.filter((n) => n.dayDate).map((n) => isoToDateKey(n.dayDate!))
     ).size,
+    timeline: travel.photos.length + travel.places.length + travel.notes.length,
     trip: tripNotes.length,
+  };
+
+  const handleTimelineEvent = (event: TimelineEvent) => {
+    setActiveTimelineEventId(event.id);
+    if (event.meta?.placeId) {
+      setFocusPlaceId(event.meta.placeId);
+      setActiveTab("places");
+      return;
+    }
+    if (event.meta?.photoId) {
+      setFocusPhotoId(event.meta.photoId);
+      setActiveTab("photos");
+      return;
+    }
+    if (event.lat != null && event.lng != null) {
+      setActiveTab("places");
+    }
   };
 
   return (
@@ -374,6 +396,26 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
             />
           </section>
         }
+        timelineContent={
+          <section className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Cronología unificada</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Fotos, lugares, notas y vuelos en un solo hilo temporal — la misma base que el export HTML.
+              </p>
+            </div>
+            <TravelTimeline
+              travelId={travelId}
+              activeEventId={activeTimelineEventId}
+              onEventSelect={handleTimelineEvent}
+            />
+            <GpsTrailRecorder
+              travelId={travelId}
+              userId={session.userId}
+              onSaved={() => setRefreshKey((k) => k + 1)}
+            />
+          </section>
+        }
         tripContent={
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-1 text-lg font-semibold text-slate-900">
@@ -451,8 +493,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
       <section className="rounded-2xl border border-teal-100 bg-teal-50/40 p-6">
         <h2 className="mb-2 text-lg font-semibold text-teal-900">Exportar viaje</h2>
         <p className="mb-4 text-sm text-teal-800/80">
-          Al finalizar el viaje, exporta un HTML estático con plantilla visual, crónica y mapa
-          del recorrido.
+          Exporta un diario HTML interactivo con cronología, mapa sincronizado, tipología de viaje y modo reproducir.
         </p>
         <ExportHtmlPanel
           travelId={travelId}
