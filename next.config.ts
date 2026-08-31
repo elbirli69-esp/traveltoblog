@@ -14,6 +14,19 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "50mb",
     },
   },
+  async headers() {
+    return [
+      {
+        source: "/releases/:file*.apk",
+        headers: [
+          {
+            key: "Content-Type",
+            value: "application/vnd.android.package-archive",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default withSerwist(nextConfig);
