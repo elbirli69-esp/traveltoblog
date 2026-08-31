@@ -53,6 +53,100 @@ export interface EnhancedJournalContext {
   tripNotes: { text: string; author: string }[];
 }
 
+export type JournalStyle = "narrative" | "factual";
+
+export const JOURNAL_STYLE_LABELS: Record<
+  JournalStyle,
+  { title: string; description: string }
+> = {
+  narrative: {
+    title: "Narrativo",
+    description:
+      "Relato más épico y literario. Puede ampliar el ambiente y el tono, inspirándose en las notas.",
+  },
+  factual: {
+    title: "Fiel a las notas",
+    description:
+      "Se ciñe a lo que escribisteis. Solo reescribe mejor, sin inventar hechos ni añadir escenas.",
+  },
+};
+
+interface JournalPromptConfig {
+  intro: { system: string; temperature: number };
+  days: { system: string; temperature: number };
+  captions: { system: string; temperature: number };
+  conclusion: { system: string; temperature: number };
+}
+
+function getJournalPromptConfig(style: JournalStyle): JournalPromptConfig {
+  if (style === "factual") {
+    return {
+      intro: {
+        system: `Eres un editor de diarios de viaje. Escribe SOLO la introducción (1-3 párrafos en Markdown).
+REGLAS ESTRICTAS:
+- Usa ÚNICAMENTE la información explícita en notas_trayecto, participantes, fechas y vuelos.
+- Puedes mejorar redacción, orden y claridad, pero NO inventes lugares, anécdotas, emociones ni detalles no mencionados.
+- Si hay poca información, escribe una intro breve y sobria.
+- No uses encabezados (#).`,
+        temperature: 0.35,
+      },
+      days: {
+        system: `Eres un editor de diarios de viaje. Recibirás días con notas y comentarios de fotos.
+Responde SOLO un JSON array: [{"date":"YYYY-MM-DD","summary":"texto markdown"}].
+REGLAS ESTRICTAS:
+- Un elemento por cada día del input.
+- Cada párrafo debe basarse SOLO en notas_dia y comentarios de fotos de ese día.
+- Cita autores cuando corresponda. No añadas clima, reflexiones ni eventos no documentados.
+- Si un día tiene poca información, resume en 1-2 frases sin rellenar.
+- No incluyas imágenes.`,
+        temperature: 0.3,
+      },
+      captions: {
+        system: `Reescribe leyendas de fotos para un diario de viaje.
+Responde SOLO JSON: [{"url":"...","caption":"leyenda max 120 chars"}].
+REGLAS ESTRICTAS:
+- Basa cada caption en comentarios del usuario. Si hay comentarios, reescríbelos con mejor estilo sin cambiar el significado.
+- Si no hay comentarios, usa una leyenda neutra y breve ("Foto de {autor}") sin inventar el lugar o la escena.`,
+        temperature: 0.25,
+      },
+      conclusion: {
+        system: `Eres un editor de diarios de viaje. Escribe SOLO la conclusión (1-2 párrafos Markdown).
+REGLAS ESTRICTAS:
+- Cierra el relato usando SOLO lo documentado en intro_resumen y dias_resumen.
+- No inventes moralejas ni experiencias no mencionadas. Sin encabezados.`,
+        temperature: 0.35,
+      },
+    };
+  }
+
+  return {
+    intro: {
+      system: `Eres un cronista de viajes con estilo literario. Escribe SOLO la introducción (2-4 párrafos en Markdown) de un artículo de blog colaborativo.
+Puedes dar épica, atmósfera y ritmo narrativo, pero respeta los hechos de las notas y participantes.
+No uses encabezados (#).`,
+      temperature: 0.8,
+    },
+    days: {
+      system: `Eres un cronista de viajes. Recibirás días del viaje con notas y fotos.
+Responde SOLO un JSON array: [{"date":"YYYY-MM-DD","summary":"texto markdown 1-3 párrafos"}].
+Un elemento por cada día del input. Integra anécdotas citando autores con tono evocador.
+Puedes ambientar y conectar momentos, pero no contradigas las notas. No incluyas imágenes.`,
+      temperature: 0.75,
+    },
+    captions: {
+      system: `Mejora leyendas de fotos de viaje para un blog con tono evocador.
+Responde SOLO JSON: [{"url":"...","caption":"leyenda max 120 chars"}].
+Basa cada caption en comentarios del usuario; si no hay, describe el momento con sensibilidad sin inventar lugares específicos.`,
+      temperature: 0.8,
+    },
+    conclusion: {
+      system: `Eres un cronista de viajes. Escribe SOLO la conclusión (1-3 párrafos Markdown) cerrando el relato con tono reflexivo.
+No repitas la intro literalmente. Sin encabezados.`,
+      temperature: 0.75,
+    },
+  };
+}
+
 interface DaySummaryRow {
   date: string;
   summary: string;
@@ -198,9 +292,10 @@ function extractJsonArray<T>(text: string): T[] {
 export async function generateIntroduction(
   ai: OpenAI,
   model: string,
-  ctx: EnhancedJournalContext
+  ctx: EnhancedJournalContext,
+  style: JournalStyle = "narrative"
 ): Promise<string> {
-  const system = `Eres un cronista de viajes. Escribe SOLO la introducción (2-4 párrafos en Markdown) de un artículo de blog colaborativo. Presenta el viaje, participantes y tono del relato. No uses encabezados (#). No inventes hechos.`;
+  const prompts = getJournalPromptConfig(style);
   const user = JSON.stringify(
     {
       titulo: ctx.title,
@@ -213,17 +308,18 @@ export async function generateIntroduction(
     null,
     2
   );
-  return callAi(ai, model, system, user);
+  return callAi(ai, model, prompts.intro.system, user, prompts.intro.temperature);
 }
 
 export async function generateDaySummaries(
   ai: OpenAI,
   model: string,
-  ctx: EnhancedJournalContext
+  ctx: EnhancedJournalContext,
+  style: JournalStyle = "narrative"
 ): Promise<DaySummaryRow[]> {
   if (ctx.days.length === 0) return [];
 
-  const system = `Eres un cronista de viajes. Recibirás días del viaje con notas y fotos. Responde SOLO un JSON array: [{"date":"YYYY-MM-DD","summary":"texto markdown 1-3 párrafos"}]. Un elemento por cada día del input. Integra anécdotas citando autores. No incluyas imágenes.`;
+  const prompts = getJournalPromptConfig(style);
   const user = JSON.stringify(
     ctx.days.map((d) => ({
       date: d.date,
@@ -239,7 +335,7 @@ export async function generateDaySummaries(
     2
   );
 
-  const raw = await callAi(ai, model, system, user, 0.7);
+  const raw = await callAi(ai, model, prompts.days.system, user, prompts.days.temperature);
   const parsed = extractJsonArray<DaySummaryRow>(raw);
 
   if (parsed.length > 0) return parsed;
@@ -255,7 +351,8 @@ export async function generateDaySummaries(
 export async function generatePhotoCaptions(
   ai: OpenAI,
   model: string,
-  ctx: EnhancedJournalContext
+  ctx: EnhancedJournalContext,
+  style: JournalStyle = "narrative"
 ): Promise<PhotoCaptionRow[]> {
   const allPhotos = ctx.days.flatMap((d) =>
     d.photos.map((p) => ({
@@ -268,9 +365,9 @@ export async function generatePhotoCaptions(
 
   if (allPhotos.length === 0) return [];
 
-  const system = `Mejora leyendas de fotos de viaje para un blog. Responde SOLO JSON: [{"url":"...","caption":"leyenda evocadora max 120 chars"}]. Basa cada caption en comentarios del usuario; si no hay, describe el momento sin inventar lugares específicos.`;
+  const prompts = getJournalPromptConfig(style);
   const user = JSON.stringify(allPhotos, null, 2);
-  const raw = await callAi(ai, model, system, user, 0.8);
+  const raw = await callAi(ai, model, prompts.captions.system, user, prompts.captions.temperature);
   const parsed = extractJsonArray<PhotoCaptionRow>(raw);
 
   if (parsed.length > 0) return parsed;
@@ -288,9 +385,10 @@ export async function generateConclusion(
   model: string,
   ctx: EnhancedJournalContext,
   intro: string,
-  daySummaries: DaySummaryRow[]
+  daySummaries: DaySummaryRow[],
+  style: JournalStyle = "narrative"
 ): Promise<string> {
-  const system = `Eres un cronista de viajes. Escribe SOLO la conclusión (1-3 párrafos Markdown) cerrando el relato. Reflexiona sobre el viaje sin encabezados. No repitas la intro literalmente.`;
+  const prompts = getJournalPromptConfig(style);
   const user = JSON.stringify(
     {
       titulo: ctx.title,
@@ -302,7 +400,7 @@ export async function generateConclusion(
     null,
     2
   );
-  return callAi(ai, model, system, user);
+  return callAi(ai, model, prompts.conclusion.system, user, prompts.conclusion.temperature);
 }
 
 export function assembleJournalMarkdown(
@@ -443,7 +541,8 @@ export function buildLocalJournalMarkdown(ctx: EnhancedJournalContext): string {
 
 export async function runJournalPipeline(
   ctx: EnhancedJournalContext,
-  onProgress?: PipelineProgressCallback
+  onProgress?: PipelineProgressCallback,
+  style: JournalStyle = "narrative"
 ): Promise<string> {
   const emit = (event: JournalPipelineEvent) => onProgress?.(event);
 
@@ -454,19 +553,19 @@ export async function runJournalPipeline(
     emit({ step: "context", status: "done", message: "Datos del viaje preparados" });
 
     emit({ step: "intro", status: "running", message: "Escribiendo introducción…" });
-    const intro = await generateIntroduction(ai, model, ctx);
+    const intro = await generateIntroduction(ai, model, ctx, style);
     emit({ step: "intro", status: "done" });
 
     emit({ step: "days", status: "running", message: "Resumiendo cada día…" });
-    const daySummaries = await generateDaySummaries(ai, model, ctx);
+    const daySummaries = await generateDaySummaries(ai, model, ctx, style);
     emit({ step: "days", status: "done" });
 
     emit({ step: "captions", status: "running", message: "Mejorando leyendas de fotos…" });
-    const captions = await generatePhotoCaptions(ai, model, ctx);
+    const captions = await generatePhotoCaptions(ai, model, ctx, style);
     emit({ step: "captions", status: "done" });
 
     emit({ step: "conclusion", status: "running", message: "Cerrando el relato…" });
-    const conclusion = await generateConclusion(ai, model, ctx, intro, daySummaries);
+    const conclusion = await generateConclusion(ai, model, ctx, intro, daySummaries, style);
     emit({ step: "conclusion", status: "done" });
 
     emit({ step: "assemble", status: "running", message: "Ensamblando artículo…" });
