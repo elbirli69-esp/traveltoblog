@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveSession } from "@/lib/utils";
+import { buildTravelUrlWithPendingShare } from "@/lib/share-client";
 
 export default function CreateTravelForm() {
   const router = useRouter();
@@ -32,7 +33,7 @@ export default function CreateTravelForm() {
         travelId: data.travel.id,
       });
 
-      router.push(`/travel/${data.travel.id}`);
+      router.push(buildTravelUrlWithPendingShare(data.travel.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al crear viaje");
     } finally {
