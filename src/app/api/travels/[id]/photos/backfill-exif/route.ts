@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isValidGps } from "@/lib/exif";
 import { resolvePhotoExifFromFile } from "@/lib/photo-gps";
 import { prisma } from "@/lib/prisma";
 
@@ -9,12 +10,7 @@ export async function POST(
   try {
     const { id: travelId } = await params;
 
-    const photos = await prisma.photo.findMany({
-      where: {
-        travelId,
-        OR: [{ latitude: null }, { longitude: null }, { exifDateTime: null }],
-      },
-    });
+    const photos = await prisma.photo.findMany({ where: { travelId } });
 
     let updated = 0;
     for (const photo of photos) {
@@ -38,12 +34,16 @@ export async function POST(
       updated += 1;
     }
 
+    const all = await prisma.photo.findMany({
+      where: { travelId },
+      select: { latitude: true, longitude: true },
+    });
+    const withGps = all.filter((p) => isValidGps(p.latitude, p.longitude)).length;
+
     return NextResponse.json({
       scanned: photos.length,
       updated,
-      withGps: await prisma.photo.count({
-        where: { travelId, latitude: { not: null }, longitude: { not: null } },
-      }),
+      withGps,
     });
   } catch (error) {
     console.error("POST /api/travels/[id]/photos/backfill-exif", error);

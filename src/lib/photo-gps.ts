@@ -1,6 +1,6 @@
 import { readFile } from "fs/promises";
 import path from "path";
-import { extractExifFromBuffer, mergeExifMetadata } from "@/lib/exif";
+import { extractExifFromBuffer, mergeExifMetadata, sanitizeGpsPair } from "@/lib/exif";
 import type { ExifMetadata } from "@/types";
 
 export interface StoredPhotoExifInput {
@@ -24,16 +24,17 @@ export async function readStoredPhotoBuffer(photoUrl: string): Promise<Buffer | 
 export async function resolvePhotoExifFromFile(
   photo: StoredPhotoExifInput
 ): Promise<ExifMetadata & { changed: boolean }> {
+  const dbGps = sanitizeGpsPair(photo.latitude, photo.longitude);
   const current: ExifMetadata = {
     dateTime: photo.exifDateTime,
-    latitude: photo.latitude,
-    longitude: photo.longitude,
+    latitude: dbGps.latitude,
+    longitude: dbGps.longitude,
   };
 
-  const needsGps = photo.latitude == null || photo.longitude == null;
+  const needsGps = current.latitude == null || current.longitude == null;
   const needsDate = photo.exifDateTime == null;
   if (!needsGps && !needsDate) {
-    return { ...current, changed: false };
+    return { ...current, changed: dbGps.latitude !== photo.latitude || dbGps.longitude !== photo.longitude };
   }
 
   const buffer = await readStoredPhotoBuffer(photo.url);
@@ -44,8 +45,8 @@ export async function resolvePhotoExifFromFile(
   const fromFile = await extractExifFromBuffer(buffer);
   const merged = mergeExifMetadata(current, fromFile);
   const changed =
-    merged.latitude !== photo.latitude ||
-    merged.longitude !== photo.longitude ||
+    merged.latitude !== dbGps.latitude ||
+    merged.longitude !== dbGps.longitude ||
     merged.dateTime?.getTime() !== photo.exifDateTime?.getTime();
 
   return { ...merged, changed };

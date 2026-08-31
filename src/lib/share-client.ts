@@ -1,19 +1,46 @@
-export const PENDING_SHARE_KEY = "traveltoblog_pending_share";
+import type { ExifMetadata } from "@/types";
+
+export interface SharedFileResponse {
+  name: string;
+  type: string;
+  size: number;
+  url: string;
+  exifDateTime?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+}
 
 export interface SharedBundleResponse {
   bundle: {
     id: string;
     createdAt: string;
-    files: { name: string; type: string; size: number; url: string }[];
+    files: SharedFileResponse[];
   };
 }
 
-export async function fetchSharedFiles(bundleId: string): Promise<File[]> {
+export interface FetchedSharedBatch {
+  files: File[];
+  /** Server-extracted EXIF keyed by sanitized filename. */
+  exifByName: Record<string, ExifMetadata>;
+}
+
+export const PENDING_SHARE_KEY = "traveltoblog_pending_share";
+
+export async function fetchSharedFiles(bundleId: string): Promise<FetchedSharedBatch> {
   const res = await fetch(`/api/share-target/${bundleId}`);
   if (!res.ok) throw new Error("shared-not-found");
   const data = (await res.json()) as SharedBundleResponse;
 
-  return Promise.all(
+  const exifByName: Record<string, ExifMetadata> = {};
+  for (const file of data.bundle.files) {
+    exifByName[file.name] = {
+      dateTime: file.exifDateTime ? new Date(file.exifDateTime) : null,
+      latitude: file.latitude ?? null,
+      longitude: file.longitude ?? null,
+    };
+  }
+
+  const files = await Promise.all(
     data.bundle.files.map(async (file) => {
       const fileRes = await fetch(file.url);
       if (!fileRes.ok) throw new Error("shared-file-missing");
@@ -21,6 +48,8 @@ export async function fetchSharedFiles(bundleId: string): Promise<File[]> {
       return new File([blob], file.name, { type: file.type || blob.type || "image/jpeg" });
     })
   );
+
+  return { files, exifByName };
 }
 
 export function storePendingShareId(bundleId: string): void {
