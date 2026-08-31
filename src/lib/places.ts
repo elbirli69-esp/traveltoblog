@@ -43,6 +43,50 @@ export const MAP_TILE_URL =
 export const MAP_TILE_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
+export type GeolocationFailure = "unsupported" | "denied" | "unavailable" | "timeout";
+
+export function geolocationErrorMessage(code: GeolocationFailure): string {
+  const messages: Record<GeolocationFailure, string> = {
+    unsupported: "Tu navegador no soporta geolocalización",
+    denied: "Permiso de ubicación denegado. Actívalo en los ajustes del navegador.",
+    unavailable: "No se pudo obtener tu ubicación",
+    timeout: "Tiempo agotado al buscar tu ubicación",
+  };
+  return messages[code];
+}
+
+export function getCurrentPosition(
+  options?: PositionOptions
+): Promise<GeolocationCoordinates> {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      reject(new Error("unsupported" satisfies GeolocationFailure));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve(pos.coords),
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          reject(new Error("denied" satisfies GeolocationFailure));
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          reject(new Error("unavailable" satisfies GeolocationFailure));
+        } else if (err.code === err.TIMEOUT) {
+          reject(new Error("timeout" satisfies GeolocationFailure));
+        } else {
+          reject(new Error("unavailable" satisfies GeolocationFailure));
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 30000,
+        ...options,
+      }
+    );
+  });
+}
+
 export function computeMapCenter(
   places: { latitude: number; longitude: number }[],
   photos: { latitude: number | null; longitude: number | null }[]

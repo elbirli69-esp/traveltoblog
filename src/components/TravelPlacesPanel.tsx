@@ -146,7 +146,7 @@ export default function TravelPlacesPanel({
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Lugares del viaje</h2>
           <p className="text-sm text-slate-500">
-            Marca hoteles, restaurantes, miradores… Pin con emoji según tipo.
+            Marca hoteles, restaurantes, miradores… Usa «Mi ubicación» en el mapa o toca donde quieras.
           </p>
         </div>
         <button
@@ -280,7 +280,7 @@ export default function TravelPlacesPanel({
 
       {places.length === 0 && !draft && (
         <p className="text-center text-sm text-slate-500">
-          Aún no hay lugares marcados. Pulsa «Marcar lugar» y toca el mapa.
+          Aún no hay lugares marcados. Pulsa «Marcar lugar» y usa «Mi ubicación» o toca el mapa.
         </p>
       )}
 

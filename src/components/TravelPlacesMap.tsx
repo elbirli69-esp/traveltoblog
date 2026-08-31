@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PlaceType } from "@prisma/client";
 import type { FlightLegPhoto } from "@/lib/flights";
 import {
@@ -12,9 +12,12 @@ import {
 } from "@/lib/flights";
 import {
   computeMapCenter,
+  geolocationErrorMessage,
+  getCurrentPosition,
   MAP_TILE_ATTRIBUTION,
   MAP_TILE_URL,
   placeEmoji,
+  type GeolocationFailure,
 } from "@/lib/places";
 import type { Layer, Map as LeafletMap } from "leaflet";
 
@@ -50,11 +53,27 @@ export default function TravelPlacesMap({
   const mapRef = useRef<LeafletMap | null>(null);
   const layersRef = useRef<Layer[]>([]);
   const handlersRef = useRef({ onMapClick, onPlaceClick, addMode });
+  const skipAutoFitRef = useRef(false);
+  const placesCountRef = useRef(places.length);
+  const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<{
+    lat: number;
+    lng: number;
+    accuracy: number;
+  } | null>(null);
 
   handlersRef.current = { onMapClick, onPlaceClick, addMode };
 
   const { outbound, inbound } = resolveFlightLegs(photos);
   const routePhotos = photoGpsPoints(photos);
+
+  useEffect(() => {
+    if (places.length !== placesCountRef.current) {
+      placesCountRef.current = places.length;
+      skipAutoFitRef.current = false;
+    }
+  }, [places.length]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -109,7 +128,36 @@ export default function TravelPlacesMap({
       renderLayers(L, map);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [places, photos, selectedPlaceId, draftPin, addMode, outbound, inbound]);
+  }, [places, photos, selectedPlaceId, draftPin, addMode, outbound, inbound, userLocation]);
+
+  const locateUser = useCallback(async () => {
+    setLocating(true);
+    setLocateError(null);
+
+    try {
+      const coords = await getCurrentPosition();
+      const lat = coords.latitude;
+      const lng = coords.longitude;
+      const accuracy = coords.accuracy;
+
+      skipAutoFitRef.current = true;
+      setUserLocation({ lat, lng, accuracy });
+
+      const map = mapRef.current;
+      if (map) {
+        map.setView([lat, lng], 16, { animate: true });
+      }
+
+      if (handlersRef.current.addMode) {
+        handlersRef.current.onMapClick(lat, lng);
+      }
+    } catch (err) {
+      const code = (err instanceof Error ? err.message : "unavailable") as GeolocationFailure;
+      setLocateError(geolocationErrorMessage(code));
+    } finally {
+      setLocating(false);
+    }
+  }, []);
 
   function clearLayers() {
     for (const layer of layersRef.current) {
@@ -198,6 +246,28 @@ export default function TravelPlacesMap({
       addLayer(marker);
     }
 
+    if (userLocation) {
+      addLayer(
+        L.circle([userLocation.lat, userLocation.lng], {
+          radius: Math.max(userLocation.accuracy, 25),
+          color: "#2563eb",
+          fillColor: "#3b82f6",
+          fillOpacity: 0.12,
+          weight: 2,
+          opacity: 0.45,
+        }).addTo(map)
+      );
+      addLayer(
+        L.circleMarker([userLocation.lat, userLocation.lng], {
+          radius: 7,
+          color: "#fff",
+          fillColor: "#2563eb",
+          fillOpacity: 1,
+          weight: 3,
+        }).addTo(map)
+      );
+    }
+
     if (draftPin) {
       const icon = L.divIcon({
         html: `<div style="font-size:28px;line-height:1;opacity:.85">📍</div>`,
@@ -207,6 +277,8 @@ export default function TravelPlacesMap({
       });
       addLayer(L.marker([draftPin.lat, draftPin.lng], { icon }).addTo(map));
     }
+
+    if (skipAutoFitRef.current) return;
 
     const boundsCoords: [number, number][] = [
       ...places.map((p) => [p.latitude, p.longitude] as [number, number]),
@@ -257,9 +329,33 @@ export default function TravelPlacesMap({
           </span>
         )}
       </div>
+      <button
+        type="button"
+        onClick={locateUser}
+        disabled={locating}
+        className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-md ring-1 ring-slate-200 transition hover:bg-slate-50 disabled:opacity-60"
+        aria-label="Centrar mapa en mi ubicación"
+      >
+        {locating ? (
+          <>
+            <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-teal-600" />
+            Localizando…
+          </>
+        ) : (
+          <>
+            <span aria-hidden>📍</span>
+            Mi ubicación
+          </>
+        )}
+      </button>
+      {locateError && (
+        <p className="absolute bottom-14 right-3 max-w-[220px] rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700 shadow ring-1 ring-red-200">
+          {locateError}
+        </p>
+      )}
       {addMode && (
         <p className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-teal-700/90 px-3 py-1 text-xs font-medium text-white shadow">
-          Toca el mapa para colocar el pin
+          Toca el mapa o «Mi ubicación» para colocar el pin
         </p>
       )}
     </div>
