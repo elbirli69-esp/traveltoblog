@@ -1,0 +1,235 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import NoteForm from "@/components/NoteForm";
+import {
+  addDaysToKey,
+  clampDateKey,
+  formatDateKey,
+  isoToDateKey,
+  resolveTravelDayRange,
+  todayKey,
+} from "@/lib/travel-dates";
+
+interface DayNote {
+  id: string;
+  text: string;
+  dayDate: string | null;
+  user: { alias: string };
+}
+
+interface DayPhoto {
+  id: string;
+  url: string;
+  exifDateTime: string | null;
+  user: { alias: string };
+}
+
+interface TravelDayCalendarProps {
+  travelId: string;
+  userId: string;
+  startDate: string | null;
+  endDate: string | null;
+  photos: DayPhoto[];
+  dayNotes: DayNote[];
+  onNoteCreated?: () => void;
+}
+
+export default function TravelDayCalendar({
+  travelId,
+  userId,
+  startDate,
+  endDate,
+  photos,
+  dayNotes,
+  onNoteCreated,
+}: TravelDayCalendarProps) {
+  const range = useMemo(
+    () =>
+      resolveTravelDayRange({
+        startDate,
+        endDate,
+        photoExifDates: photos.map((p) => p.exifDateTime),
+      }),
+    [startDate, endDate, photos]
+  );
+
+  const initialDate = clampDateKey(todayKey(), range.startKey, range.endKey);
+  const [selectedDate, setSelectedDate] = useState(initialDate);
+
+  const activeDate = clampDateKey(selectedDate, range.startKey, range.endKey);
+
+  const notesForDay = useMemo(
+    () =>
+      dayNotes.filter(
+        (n) => n.dayDate != null && isoToDateKey(n.dayDate) === activeDate
+      ),
+    [dayNotes, activeDate]
+  );
+
+  const photosForDay = useMemo(
+    () =>
+      photos.filter(
+        (p) => p.exifDateTime != null && isoToDateKey(p.exifDateTime) === activeDate
+      ),
+    [photos, activeDate]
+  );
+
+  const daysWithContent = useMemo(() => {
+    const set = new Set<string>();
+    for (const n of dayNotes) {
+      if (n.dayDate) set.add(isoToDateKey(n.dayDate));
+    }
+    for (const p of photos) {
+      if (p.exifDateTime) set.add(isoToDateKey(p.exifDateTime));
+    }
+    return set;
+  }, [dayNotes, photos]);
+
+  const changeDate = (delta: number) => {
+    setSelectedDate((prev) =>
+      clampDateKey(addDaysToKey(prev, delta), range.startKey, range.endKey)
+    );
+  };
+
+  const atStart = activeDate <= range.startKey;
+  const atEnd = activeDate >= range.endKey;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Calendario del viaje</h2>
+          <p className="text-sm text-slate-500">
+            {range.dayKeys.length} día{range.dayKeys.length !== 1 ? "s" : ""} ·{" "}
+            {formatDateKey(range.startKey, "short")} — {formatDateKey(range.endKey, "short")}
+          </p>
+        </div>
+
+        <div className="flex items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => changeDate(-1)}
+            disabled={atStart}
+            aria-label="Día anterior"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-lg text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+          >
+            ◀
+          </button>
+          <div className="min-w-[11rem] rounded-xl bg-teal-50 px-4 py-2 text-center">
+            <span className="mr-1.5" aria-hidden>
+              📅
+            </span>
+            <span className="text-sm font-semibold text-teal-900">
+              {formatDateKey(activeDate, "short")}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => changeDate(1)}
+            disabled={atEnd}
+            aria-label="Día siguiente"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-lg text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+          >
+            ▶
+          </button>
+        </div>
+      </div>
+
+      {range.dayKeys.length <= 21 && (
+        <div className="flex flex-wrap gap-1.5">
+          {range.dayKeys.map((key) => {
+            const isActive = key === activeDate;
+            const hasContent = daysWithContent.has(key);
+            const dayNum = parseDateKeyLocal(key);
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setSelectedDate(key)}
+                className={`relative flex h-9 min-w-[2.25rem] items-center justify-center rounded-lg px-2 text-xs font-semibold transition-colors ${
+                  isActive
+                    ? "bg-teal-600 text-white"
+                    : hasContent
+                      ? "bg-teal-50 text-teal-800 hover:bg-teal-100"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+                title={formatDateKey(key, "long")}
+              >
+                {dayNum}
+                {hasContent && !isActive && (
+                  <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-teal-500" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="mb-1 text-base font-semibold text-slate-800">
+          Resumen del día
+        </h3>
+        <p className="mb-4 text-xs text-slate-500">
+          {photosForDay.length} foto{photosForDay.length !== 1 ? "s" : ""} ·{" "}
+          {notesForDay.length} nota{notesForDay.length !== 1 ? "s" : ""}
+        </p>
+
+        {photosForDay.length > 0 && (
+          <div className="mb-5">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+              Fotos del día
+            </p>
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+              {photosForDay.map((photo) => (
+                <div key={photo.id} className="overflow-hidden rounded-lg">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photo.url}
+                    alt=""
+                    className="aspect-square w-full object-cover"
+                  />
+                  <p className="truncate px-0.5 text-[9px] text-slate-500">
+                    {photo.user.alias}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {notesForDay.length > 0 ? (
+          <ul className="mb-5 space-y-2">
+            {notesForDay.map((note) => (
+              <li
+                key={note.id}
+                className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700"
+              >
+                <span className="font-medium text-teal-700">{note.user.alias}</span>
+                <p className="mt-1">{note.text}</p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mb-5 text-sm text-slate-500">
+            Aún no hay comentarios para este día.
+          </p>
+        )}
+
+        <div className="border-t border-slate-100 pt-4">
+          <NoteForm
+            travelId={travelId}
+            userId={userId}
+            type="DAY"
+            dayDate={activeDate}
+            onCreated={() => onNoteCreated?.()}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function parseDateKeyLocal(key: string): number {
+  return Number(key.split("-")[2]);
+}

@@ -11,6 +11,7 @@ import GenerateJournalButton from "@/components/GenerateJournalButton";
 import ExportHtmlPanel from "@/components/ExportHtmlPanel";
 import ExportPdfPanel from "@/components/ExportPdfPanel";
 import TravelWorkspaceTabs from "@/components/TravelWorkspaceTabs";
+import TravelDayCalendar from "@/components/TravelDayCalendar";
 import { getSessionFromStorage } from "@/lib/utils";
 import type { TravelDateRange } from "@/types";
 
@@ -149,6 +150,19 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
             </section>
           </div>
         }
+        daysContent={
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <TravelDayCalendar
+              travelId={travelId}
+              userId={session.userId}
+              startDate={travel.startDate}
+              endDate={travel.endDate}
+              photos={travel.photos}
+              dayNotes={dayNotes}
+              onNoteCreated={() => setRefreshKey((k) => k + 1)}
+            />
+          </section>
+        }
       />
 
       {tripNotes.length > 0 && (
@@ -182,29 +196,6 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
             type="TRIP"
             onCreated={() => setRefreshKey((k) => k + 1)}
           />
-        </section>
-      )}
-
-      {dayNotes.length > 0 && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold">Notas de días (vista previa)</h2>
-          <p className="mb-4 text-xs text-slate-500">
-            El calendario completo llegará en la pestaña Días. Aquí se muestran las notas ya
-            guardadas.
-          </p>
-          <ul className="space-y-3">
-            {dayNotes.map((note) => (
-              <li key={note.id} className="rounded-xl bg-slate-50 px-4 py-3 text-sm">
-                <span className="font-medium text-teal-700">{note.user.alias}</span>
-                {note.dayDate && (
-                  <span className="ml-2 text-xs text-slate-400">
-                    {new Date(note.dayDate).toLocaleDateString("es-ES")}
-                  </span>
-                )}
-                <p className="mt-1 text-slate-700">{note.text}</p>
-              </li>
-            ))}
-          </ul>
         </section>
       )}
 
