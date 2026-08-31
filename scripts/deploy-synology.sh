@@ -162,6 +162,16 @@ else
 fi
 
 echo "→ Compilando Next.js localmente (evita build pesado en el NAS)…"
+if [[ ! -f public/releases/traveltoblog-latest.apk ]]; then
+  if [[ -d "${ANDROID_HOME:-/opt/android-sdk}/platform-tools" ]]; then
+    echo "→ Generando APK Android (no encontrado en public/releases)…"
+    npm run build:android || echo "⚠️  No se pudo generar el APK"
+  else
+    echo "   ⚠️  Sin APK en public/releases — ejecuta npm run build:android antes del deploy"
+  fi
+elif [[ -f public/releases/traveltoblog-latest.apk ]]; then
+  echo "   APK Android: public/releases/traveltoblog-latest.apk ($(du -h public/releases/traveltoblog-latest.apk | cut -f1))"
+fi
 npm ci
 npm run build
 
@@ -174,6 +184,9 @@ echo "→ Sincronizando código (tar por SSH, incluye .next standalone)…"
 tar \
   --exclude='./node_modules' \
   --exclude='./.git' \
+  --exclude='./android/.gradle' \
+  --exclude='./android/build' \
+  --exclude='./android/app/build' \
   --exclude='./prisma/data/*.db-journal' \
   --exclude='./public/uploads' \
   --exclude='./.env' \

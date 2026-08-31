@@ -13,9 +13,15 @@
     "db:migrate-place-notes": "prisma db push && npx --yes tsx scripts/migrate-place-comments.ts",
     "db:studio": "prisma studio",
     "test:timeline": "npx --yes tsx scripts/test-timeline.mjs",
+    "build:android": "bash scripts/build-android-apk.sh",
+    "cap:sync": "npx cap sync android",
     "deploy:synology": "bash scripts/deploy-synology.sh"
   },
   "dependencies": {
+    "@capacitor/android": "^6.2.2",
+    "@capacitor/app": "^6.0.3",
+    "@capacitor/cli": "^6.2.2",
+    "@capacitor/core": "^6.2.2",
     "@prisma/client": "^6.5.0",
     "exifr": "^7.1.3",
     "heic-convert": "^2.1.0",

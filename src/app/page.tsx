@@ -31,8 +31,13 @@ export default function HomePage() {
         </Link>
       </p>
 
-      <footer className="mt-12 text-center text-xs text-slate-400">
-        PWA · Offline-first · Self-hosted
+      <footer className="mt-12 space-y-2 text-center text-xs text-slate-400">
+        <p>
+          <Link href="/download/android" className="font-medium text-teal-600 hover:underline">
+            App Android (GPS en fotos)
+          </Link>
+        </p>
+        <p>PWA · Offline-first · Self-hosted</p>
       </footer>
     </main>
   );

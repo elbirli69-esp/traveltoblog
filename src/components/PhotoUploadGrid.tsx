@@ -12,6 +12,12 @@ import {
   wasAndroidGpsStripped,
 } from "@/lib/exif";
 import { applyCurrentLocationToPhotos, applyPlaceToPhoto, isAndroidDevice } from "@/lib/geolocation-photo";
+import {
+  isCapacitorAndroid,
+  nativePhotoToFile,
+  PhotoExif,
+  type NativePickedPhoto,
+} from "@/lib/capacitor-native";
 import { pickImagesFromFileExplorer } from "@/lib/photo-picker";
 import { createPhotoPreviewUrl } from "@/lib/photo-preview";
 import { createLocalId } from "@/lib/utils";
@@ -200,6 +206,63 @@ export default function PhotoUploadGrid({
       explorerInputRef.current?.click();
     }
   }, [processFiles]);
+
+  const buildPhotoFromNativePick = useCallback(
+    async (item: NativePickedPhoto): Promise<ParsedPhoto | null> => {
+      try {
+        const file = await nativePhotoToFile(item);
+        const previewUrl = await createPhotoPreviewUrl(file);
+        const clientExif = await extractExifFromFile(file);
+        const hint = {
+          latitude: item.latitude,
+          longitude: item.longitude,
+          dateTime: item.dateTime ? new Date(item.dateTime) : clientExif.dateTime,
+        };
+        const exif = mergeExifMetadata(clientExif, hint);
+        const outOfRange = !isPhotoInTravelRange(exif.dateTime, dateRange);
+        return {
+          id: createLocalId(),
+          file,
+          previewUrl,
+          exif,
+          gpsStripped: item.gpsStripped,
+          selected: !outOfRange,
+          outOfRange,
+          isTransportStart: false,
+          isTransportEnd: false,
+        };
+      } catch {
+        return null;
+      }
+    },
+    [dateRange]
+  );
+
+  const openNativeGalleryPicker = useCallback(async () => {
+    if (!isCapacitorAndroid()) return;
+    setProcessing(true);
+    setError(null);
+    try {
+      const { photos: picked } = await PhotoExif.pickImages({ limit: 20 });
+      if (!picked.length) return;
+
+      const newPhotos: ParsedPhoto[] = [];
+      for (const item of picked) {
+        const built = await buildPhotoFromNativePick(item);
+        if (built) newPhotos.push(built);
+      }
+
+      if (newPhotos.length === 0) {
+        setError("No se pudieron procesar las imágenes seleccionadas.");
+      } else {
+        setPhotos((prev) => [...prev, ...newPhotos]);
+      }
+    } catch {
+      setError("No se pudo abrir la galería nativa.");
+    } finally {
+      setProcessing(false);
+    }
+  }, [buildPhotoFromNativePick]);
 
   const applyLocationToPhoto = useCallback(async (photoId: string) => {
     setLocationBusy(true);
@@ -418,7 +481,23 @@ export default function PhotoUploadGrid({
       </div>
 
       {/* Pickers */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className={`grid gap-3 ${isCapacitorAndroid() ? "sm:grid-cols-1" : "sm:grid-cols-2"}`}>
+        {isCapacitorAndroid() ? (
+          <button
+            type="button"
+            onClick={() => void openNativeGalleryPicker()}
+            disabled={processing}
+            className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/70 px-4 py-8 text-center transition hover:border-emerald-500 hover:bg-emerald-50 disabled:opacity-50"
+          >
+            <span className="text-sm font-medium text-emerald-900">
+              {processing ? "Leyendo EXIF…" : "Galería nativa (GPS)"}
+            </span>
+            <span className="mt-1 text-[11px] text-slate-600">
+              Lee ubicación embebida con permisos de la app Android
+            </span>
+          </button>
+        ) : (
+          <>
         <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-teal-200 bg-teal-50/50 px-4 py-8 transition hover:border-teal-400 hover:bg-teal-50">
           <input
             ref={inputRef}
@@ -457,9 +536,11 @@ export default function PhotoUploadGrid({
             Alternativa al selector; en muchos Android el GPS sigue sin llegar
           </span>
         </button>
+          </>
+        )}
       </div>
 
-      {isAndroidDevice() && (
+      {isAndroidDevice() && !isCapacitorAndroid() && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <p className="font-medium">En Android la web no puede leer el GPS de las fotos</p>
           <p className="mt-1 text-xs leading-relaxed text-amber-900/90">

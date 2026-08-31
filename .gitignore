@@ -51,3 +51,12 @@ next-env.d.ts
 
 # uploads
 /public/uploads/*
+
+# android build artifacts
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+/android/keystore.properties
+/android/traveltoblog-release.keystore
+/public/releases/*.apk
