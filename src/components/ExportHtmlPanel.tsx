@@ -152,13 +152,27 @@ export default function ExportHtmlPanel({
 
       {hasGpsPhotos ? (
         <p className="rounded-lg bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          🗺️ Mapa Leaflet con ruta, vuelos y lugares marcados.
+          🗺️ Mapa interactivo con ruta numerada, lugares, vuelos y tiles CartoDB (requiere internet al abrir el HTML).
         </p>
       ) : (
         <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
-          Sin GPS en fotos: el export no incluirá mapa interactivo.
+          Sin GPS en fotos ni lugares en el mapa: se mostrará una cronología visual por días. Añade lugares o fotos con GPS para el mapa completo.
         </p>
       )}
+
+      <details className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+        <summary className="cursor-pointer font-medium text-slate-800">
+          ¿ZIP o HTML único?
+        </summary>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li>
+            <strong>ZIP (recomendado):</strong> fotos en calidad original, HTML más ligero, carga más rápida. Ideal para archivar o compartir la carpeta completa.
+          </li>
+          <li>
+            <strong>HTML único:</strong> un solo archivo con todo embebido (fotos en base64). Puede pesar mucho (decenas de MB) y tardar en abrir, pero es cómodo para enviar por email.
+          </li>
+        </ul>
+      </details>
 
       <button
         type="button"
