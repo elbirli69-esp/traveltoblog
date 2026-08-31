@@ -1,5 +1,6 @@
 import Link from "next/link";
 import CreateTravelForm from "@/components/CreateTravelForm";
+import RecentTravels from "@/components/RecentTravels";
 
 export default function HomePage() {
   return (
@@ -15,6 +16,8 @@ export default function HomePage() {
           Diario colaborativo de viajes con fotos, notas e IA
         </p>
       </header>
+
+      <RecentTravels />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-lg font-semibold">Nuevo viaje</h2>

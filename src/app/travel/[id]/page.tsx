@@ -15,7 +15,7 @@ import TravelDayCalendar from "@/components/TravelDayCalendar";
 import TravelPlacesPanel from "@/components/TravelPlacesPanel";
 import TravelCollaborationBar from "@/components/TravelCollaborationBar";
 import type { PlaceType } from "@prisma/client";
-import { getSessionFromStorage } from "@/lib/utils";
+import { getSessionFromStorage, rememberTravel, touchTravelHistory } from "@/lib/utils";
 import type { TravelDateRange } from "@/types";
 
 interface TravelData {
@@ -80,6 +80,17 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
     if (res.ok) {
       const data = await res.json();
       setTravel(data.travel);
+      const currentSession = getSessionFromStorage();
+      if (currentSession && currentSession.travelId === travelId) {
+        rememberTravel({
+          userId: currentSession.userId,
+          alias: currentSession.alias,
+          travelId,
+          title: data.travel.title,
+          shareCode: data.travel.shareCode,
+        });
+        touchTravelHistory(travelId);
+      }
     }
   }, [travelId]);
 

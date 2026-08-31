@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { saveSession } from "@/lib/utils";
+import { saveSession, rememberTravel } from "@/lib/utils";
 
 export default function CreateTravelForm() {
   const router = useRouter();
@@ -30,6 +30,13 @@ export default function CreateTravelForm() {
         userId: data.user.id,
         alias: data.user.alias,
         travelId: data.travel.id,
+      });
+      rememberTravel({
+        userId: data.user.id,
+        alias: data.user.alias,
+        travelId: data.travel.id,
+        title: data.travel.title,
+        shareCode: data.travel.shareCode,
       });
 
       router.push(`/travel/${data.travel.id}`);
