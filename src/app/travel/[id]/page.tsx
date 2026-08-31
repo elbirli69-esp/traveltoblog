@@ -12,6 +12,8 @@ import ExportHtmlPanel from "@/components/ExportHtmlPanel";
 import ExportPdfPanel from "@/components/ExportPdfPanel";
 import TravelWorkspaceTabs from "@/components/TravelWorkspaceTabs";
 import TravelDayCalendar from "@/components/TravelDayCalendar";
+import TravelPlacesPanel from "@/components/TravelPlacesPanel";
+import type { PlaceType } from "@prisma/client";
 import { getSessionFromStorage } from "@/lib/utils";
 import type { TravelDateRange } from "@/types";
 
@@ -48,6 +50,15 @@ interface TravelData {
     user: { alias: string };
   }[];
   journalMarkdown: string | null;
+  places: {
+    id: string;
+    name: string;
+    type: PlaceType;
+    latitude: number;
+    longitude: number;
+    comment: string | null;
+    user: { alias: string };
+  }[];
 }
 
 export default function TravelPage({ params }: { params: Promise<{ id: string }> }) {
@@ -160,6 +171,17 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
               photos={travel.photos}
               dayNotes={dayNotes}
               onNoteCreated={() => setRefreshKey((k) => k + 1)}
+            />
+          </section>
+        }
+        placesContent={
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <TravelPlacesPanel
+              travelId={travelId}
+              userId={session.userId}
+              places={travel.places}
+              photos={travel.photos}
+              onChanged={() => setRefreshKey((k) => k + 1)}
             />
           </section>
         }

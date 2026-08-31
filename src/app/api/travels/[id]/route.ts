@@ -22,6 +22,10 @@ export async function GET(
         include: { user: true, photo: true },
         orderBy: { createdAt: "asc" },
       },
+      places: {
+        include: { user: true },
+        orderBy: { createdAt: "asc" },
+      },
       startPhoto: true,
       endPhoto: true,
     },

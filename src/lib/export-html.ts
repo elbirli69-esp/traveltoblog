@@ -13,6 +13,7 @@ export interface MapPoint {
   label: string;
   photoPath: string | null;
   date: string;
+  emoji?: string;
 }
 
 export interface ExportPhoto {
@@ -29,6 +30,7 @@ export interface ExportContext {
   travel: Pick<Travel, "id" | "title" | "startDate" | "endDate" | "journalMarkdown">;
   users: User[];
   photos: ExportPhoto[];
+  places?: ExportPlace[];
   template: ExportTemplateId;
 }
 
@@ -56,6 +58,46 @@ export function buildMapPoints(photos: ExportPhoto[]): MapPoint[] {
       photoPath: p.localPath,
       date: (p.exifDateTime ?? new Date()).toISOString(),
     }));
+}
+
+export interface ExportPlace {
+  name: string;
+  type: string;
+  latitude: number;
+  longitude: number;
+  comment: string | null;
+  alias: string;
+}
+
+export function buildPlaceMapPoints(places: ExportPlace[]): MapPoint[] {
+  return places.map((p) => ({
+    lat: p.latitude,
+    lng: p.longitude,
+    label: `${p.name}${p.comment ? ` — ${p.comment}` : ""} (${p.alias})`,
+    photoPath: null,
+    date: new Date().toISOString(),
+    emoji: placeEmojiFromType(p.type),
+  }));
+}
+
+function placeEmojiFromType(type: string): string {
+  const map: Record<string, string> = {
+    HOTEL: "🏨",
+    RESTAURANT: "🍽️",
+    CAFE: "☕",
+    MUSEUM: "🏛️",
+    PARK: "🌳",
+    BEACH: "🏖️",
+    VIEWPOINT: "🏔️",
+    TRANSPORT: "✈️",
+    SHOP: "🛍️",
+    OTHER: "📍",
+  };
+  return map[type] ?? "📍";
+}
+
+export function mergeMapPoints(photos: ExportPhoto[], places: ExportPlace[]): MapPoint[] {
+  return [...buildMapPoints(photos), ...buildPlaceMapPoints(places)];
 }
 
 function rewriteMarkdownImagePaths(markdown: string, urlToLocal: Map<string, string>): string {
@@ -162,14 +204,27 @@ function buildMapScript(points: MapPoint[], assetPrefix = "assets/images"): stri
   });
 
   var map = L.map("map", { scrollWheelZoom: true, zoomControl: true });
-  var latLngs = points.map(function (p) { return [p.lat, p.lng]; });
-  var bounds = L.latLngBounds(latLngs);
+  var latLngs = points.filter(function (p) { return !p.emoji; }).map(function (p) { return [p.lat, p.lng]; });
+  var bounds = L.latLngBounds(points.map(function (p) { return [p.lat, p.lng]; }));
   map.fitBounds(bounds.pad(0.15));
 
-  L.polyline(latLngs, { color: "#0d9488", weight: 3, opacity: 0.85 }).addTo(map);
+  if (latLngs.length > 1) {
+    L.polyline(latLngs, { color: "#0d9488", weight: 3, opacity: 0.85 }).addTo(map);
+  }
 
   points.forEach(function (p, i) {
-    var marker = L.marker([p.lat, p.lng]).addTo(map);
+    var marker;
+    if (p.emoji) {
+      var icon = L.divIcon({
+        html: '<div style="font-size:22px;line-height:1">' + p.emoji + '</div>',
+        className: "",
+        iconSize: [0, 0],
+        iconAnchor: [12, 12]
+      });
+      marker = L.marker([p.lat, p.lng], { icon: icon }).addTo(map);
+    } else {
+      marker = L.marker([p.lat, p.lng]).addTo(map);
+    }
     var popup = "<strong>" + escapeHtml(p.label) + "</strong>";
     if (p.photoPath) {
       popup += '<br><img src="' + escapeHtml(p.photoPath) + '" alt="" style="max-width:180px;margin-top:8px;border-radius:6px">';
@@ -186,8 +241,8 @@ function buildMapScript(points: MapPoint[], assetPrefix = "assets/images"): stri
 }
 
 export function buildExportHtml(ctx: ExportContext): string {
-  const { travel, users, photos, template } = ctx;
-  const mapPoints = buildMapPoints(photos);
+  const { travel, users, photos, places = [], template } = ctx;
+  const mapPoints = mergeMapPoints(photos, places);
   const markdown = travel.journalMarkdown ?? buildFallbackMarkdown(travel, users, photos);
   const urlToLocal = new Map(photos.map((p) => [p.url, p.localPath]));
   const contentHtml = markdownToHtml(rewriteMarkdownImagePaths(markdown, urlToLocal));
