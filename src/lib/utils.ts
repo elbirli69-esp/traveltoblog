@@ -20,8 +20,10 @@ export function createLocalId(): string {
   return localIdAlphabet();
 }
 
+import { resolvePublicOrigin } from "@/lib/app-url";
+
 export function getJoinUrl(shareCode: string): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const base = resolvePublicOrigin();
   return `${base}/join/${shareCode}`;
 }
 
