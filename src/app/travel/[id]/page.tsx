@@ -183,11 +183,8 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
 
   const handleIncomingFilesHandled = useCallback(() => {
     setIncomingFiles(undefined);
-    if (activeShareId) {
-      void discardSharedBundle(activeShareId);
-      setActiveShareId(null);
-    }
-  }, [activeShareId]);
+    // Keep share bundle until photos are confirmed/uploaded (discard after confirm in upload flow)
+  }, []);
 
   const applyAddMemory = useCallback((kind: AddMemoryKind, dateParam?: string | null) => {
     setActiveTab(tabForKind(kind));
@@ -338,7 +335,13 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 dateRange={dateRange}
                 incomingFiles={incomingFiles}
                 onIncomingFilesHandled={handleIncomingFilesHandled}
-                onSyncComplete={() => setRefreshKey((k) => k + 1)}
+                onSyncComplete={() => {
+                  if (activeShareId) {
+                    void discardSharedBundle(activeShareId);
+                    setActiveShareId(null);
+                  }
+                  setRefreshKey((k) => k + 1);
+                }}
                 openPickerSignal={photoPickerSignal}
                 highlight={highlightUpload}
               />

@@ -146,7 +146,9 @@ export default function PhotoUploadGrid({
   useEffect(() => {
     if (!incomingFiles?.length) return;
     void processFiles(incomingFiles).then(() => onIncomingFilesHandled?.());
-  }, [incomingFiles, onIncomingFilesHandled, processFiles]);
+    // Only re-run when a new batch arrives (by length + first file identity)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomingFiles?.length, incomingFiles?.[0]?.name, incomingFiles?.[0]?.size]);
 
   const toggleSelect = useCallback((id: string) => {
     setPhotos((prev) =>
