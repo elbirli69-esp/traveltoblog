@@ -192,6 +192,22 @@ if [ -f prisma/data/travel.db ]; then
   fi
 fi
 
+# Aplicar cambios de schema Prisma en el volumen SQLite existente
+VOLUME_NAME=\$(docker volume ls -q | grep traveltoblog-data | head -1)
+if [ -n "\$VOLUME_NAME" ] && [ -d node_modules/prisma ]; then
+  echo "→ Aplicando schema Prisma (db push)…"
+  docker run --rm \
+    -v "\$VOLUME_NAME:/app/data" \
+    -v "\$(pwd)/prisma:/app/prisma:ro" \
+    -v "\$(pwd)/node_modules/.prisma:/app/node_modules/.prisma:ro" \
+    -v "\$(pwd)/node_modules/@prisma:/app/node_modules/@prisma:ro" \
+    -v "\$(pwd)/node_modules/prisma:/app/node_modules/prisma:ro" \
+    -e DATABASE_URL=file:/app/data/travel.db \
+    node:22-alpine \
+    npx prisma db push --accept-data-loss --skip-generate 2>/dev/null || echo "⚠️  db push omitido (revisar logs)"
+  \$COMPOSE restart traveltoblog 2>/dev/null || true
+fi
+
 echo ""
 echo "✅ TravelToBlog desplegado"
 echo "   URL LAN: ${APP_URL}"
