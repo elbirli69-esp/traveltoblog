@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import PhotoUploadSection from "@/components/PhotoUploadSection";
 import PhotoGallery from "@/components/PhotoGallery";
 import SharePanel from "@/components/SharePanel";
+import EditableNote from "@/components/EditableNote";
 import NoteForm from "@/components/NoteForm";
 import OfflineSyncBanner from "@/components/OfflineSyncBanner";
 import GenerateJournalButton from "@/components/GenerateJournalButton";
@@ -270,10 +271,11 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
           <h2 className="mb-4 text-lg font-semibold">Notas del trayecto</h2>
           <ul className="space-y-3">
             {tripNotes.map((note) => (
-              <li key={note.id} className="rounded-xl bg-slate-50 px-4 py-3 text-sm">
-                <span className="font-medium text-teal-700">{note.user.alias}</span>
-                <p className="mt-1 text-slate-700">{note.text}</p>
-              </li>
+              <EditableNote
+                key={note.id}
+                note={note}
+                onChanged={() => setRefreshKey((k) => k + 1)}
+              />
             ))}
           </ul>
           <div className="mt-4 border-t border-slate-100 pt-4">
@@ -310,10 +312,13 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
             href={`/travel/${travelId}/journal`}
             className="mb-4 inline-block text-sm font-medium text-indigo-600 hover:underline"
           >
-            Ver crónica generada →
+            Ver y editar crónica →
           </Link>
         ) : null}
-        <GenerateJournalButton travelId={travelId} />
+        <GenerateJournalButton
+          travelId={travelId}
+          hasExistingJournal={Boolean(travel.journalMarkdown)}
+        />
       </section>
 
       <section className="rounded-2xl border border-teal-100 bg-teal-50/40 p-6">

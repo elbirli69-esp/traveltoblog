@@ -38,6 +38,11 @@ export async function PATCH(
       include: { user: true },
     });
 
+    await prisma.travel.update({
+      where: { id: place.travelId },
+      data: { updatedAt: new Date() },
+    });
+
     return NextResponse.json({ place });
   } catch (error) {
     console.error("PATCH /api/places/[id]", error);

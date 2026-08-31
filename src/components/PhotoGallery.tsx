@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import EditableNote from "@/components/EditableNote";
 import NoteForm from "@/components/NoteForm";
 
 export interface GalleryPhoto {
@@ -133,15 +134,11 @@ export default function PhotoGallery({
                   {photoNotes.length > 0 && (
                     <ul className="space-y-2">
                       {photoNotes.map((note) => (
-                        <li
+                        <EditableNote
                           key={note.id}
-                          className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700"
-                        >
-                          <span className="font-medium text-teal-700">
-                            {note.user.alias}
-                          </span>
-                          <p className="mt-0.5">{note.text}</p>
-                        </li>
+                          note={note}
+                          onChanged={onNoteCreated}
+                        />
                       ))}
                     </ul>
                   )}
