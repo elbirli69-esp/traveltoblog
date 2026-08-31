@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { extractExifFromBuffer, mergeExifMetadata } from "@/lib/exif";
+import { normalizeImageForStorage } from "@/lib/photo-storage";
 import { prisma } from "@/lib/prisma";
 
 interface PhotoMeta {
@@ -20,27 +21,33 @@ export async function POST(request: NextRequest) {
     const travelId = formData.get("travelId") as string;
     const userId = formData.get("userId") as string;
     const metadataRaw = formData.get("metadata") as string;
-    const files = formData.getAll("photos") as File[];
 
-    if (!travelId || !userId || !metadataRaw || !files.length) {
+    if (!travelId || !userId || !metadataRaw) {
       return NextResponse.json({ error: "Datos incompletos" }, { status: 400 });
     }
 
     const metadata: PhotoMeta[] = JSON.parse(metadataRaw);
+    if (!metadata.length) {
+      return NextResponse.json({ error: "No hay fotos para subir" }, { status: 400 });
+    }
+
     const uploadDir = path.join(process.cwd(), "public", "uploads", travelId);
     await mkdir(uploadDir, { recursive: true });
 
     const created = [];
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const meta = metadata[i];
-      if (!file || !meta) continue;
+    for (const meta of metadata) {
+      const file = formData.get(`file_${meta.localId}`) as File | null;
+      if (!file) continue;
 
-      const ext = path.extname(file.name) || ".jpg";
+      let ext = path.extname(file.name) || ".jpg";
+      let buffer: Buffer = Buffer.from(await file.arrayBuffer());
+      const normalized = await normalizeImageForStorage(buffer, ext);
+      buffer = Buffer.from(normalized.buffer);
+      ext = normalized.ext;
+
       const filename = `${meta.localId}${ext}`;
       const filepath = path.join(uploadDir, filename);
-      const buffer = Buffer.from(await file.arrayBuffer());
       await writeFile(filepath, buffer);
 
       const fileExif = await extractExifFromBuffer(buffer);
@@ -90,6 +97,10 @@ export async function POST(request: NextRequest) {
       }
 
       created.push(photo);
+    }
+
+    if (!created.length) {
+      return NextResponse.json({ error: "No se recibieron archivos de imagen" }, { status: 400 });
     }
 
     await prisma.travel.update({

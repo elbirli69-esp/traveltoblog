@@ -7,6 +7,7 @@ import {
   isImageFile,
   isPhotoInTravelRange,
 } from "@/lib/exif";
+import { createPhotoPreviewUrl } from "@/lib/photo-preview";
 import { createLocalId } from "@/lib/utils";
 import type { ParsedPhoto, TravelDateRange } from "@/types";
 
@@ -90,29 +91,35 @@ export default function PhotoUploadGrid({
         const newPhotos: ParsedPhoto[] = [];
         let skipped = 0;
 
-        for (const file of files) {
-          if (!isImageFile(file)) {
-            skipped += 1;
-            continue;
-          }
+        const imageFiles = files.filter((file) => isImageFile(file));
+        skipped += files.length - imageFiles.length;
 
-          try {
-            const exif = await extractExifFromFile(file);
-            const outOfRange = !isPhotoInTravelRange(exif.dateTime, dateRange);
+        const parsed = await Promise.all(
+          imageFiles.map(async (file) => {
+            const previewUrl = await createPhotoPreviewUrl(file);
+            try {
+              const exif = await extractExifFromFile(file);
+              const outOfRange = !isPhotoInTravelRange(exif.dateTime, dateRange);
+              return {
+                id: createLocalId(),
+                file,
+                previewUrl,
+                exif,
+                selected: !outOfRange,
+                outOfRange,
+                isTransportStart: false,
+                isTransportEnd: false,
+              } satisfies ParsedPhoto;
+            } catch {
+              URL.revokeObjectURL(previewUrl);
+              return null;
+            }
+          })
+        );
 
-            newPhotos.push({
-              id: createLocalId(),
-              file,
-              previewUrl: URL.createObjectURL(file),
-              exif,
-              selected: !outOfRange,
-              outOfRange,
-              isTransportStart: false,
-              isTransportEnd: false,
-            });
-          } catch {
-            skipped += 1;
-          }
+        for (const photo of parsed) {
+          if (photo) newPhotos.push(photo);
+          else skipped += 1;
         }
 
         if (newPhotos.length === 0) {
@@ -398,7 +405,7 @@ export default function PhotoUploadGrid({
                 <button
                   type="button"
                   onClick={() => removePhoto(photo.id)}
-                  className="absolute right-2 top-2 rounded-full bg-black/50 p-1 text-white opacity-0 transition group-hover:opacity-100"
+                  className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white shadow-sm"
                   aria-label="Eliminar"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

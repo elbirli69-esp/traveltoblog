@@ -70,7 +70,7 @@ export default function PhotoUploadSection({
       formData.append("metadata", JSON.stringify(metadata));
 
       photos.forEach((p) => {
-        formData.append("photos", p.file, p.file.name);
+        formData.append(`file_${p.id}`, p.file, p.file.name);
       });
 
       const res = await fetch("/api/photos", {
