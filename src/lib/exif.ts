@@ -89,12 +89,21 @@ async function readGps(source: ExifSource): Promise<{ latitude: number; longitud
         gps: true,
         xmp: true,
         exif: true,
+        tiff: true,
         reviveValues: true,
       }),
     () =>
       exifr.parse(input, {
-        pick: ["latitude", "longitude", "GPSLatitude", "GPSLongitude"],
+        pick: [
+          "latitude",
+          "longitude",
+          "GPSLatitude",
+          "GPSLongitude",
+          "GPSLatitudeRef",
+          "GPSLongitudeRef",
+        ],
         gps: true,
+        tiff: true,
         reviveValues: true,
       }),
   ];
@@ -108,18 +117,37 @@ async function readGps(source: ExifSource): Promise<{ latitude: number; longitud
   return null;
 }
 
+function parseDmsCoord(parts: unknown, ref: unknown): number | null {
+  if (!Array.isArray(parts) || parts.length < 3) return null;
+  const nums = parts.map((v) => (typeof v === "number" ? v : Number(v)));
+  if (!nums.every((n) => Number.isFinite(n))) return null;
+  const [deg, min, sec] = nums;
+  if (deg === 0 && min === 0 && sec === 0) return null;
+  let decimal = deg + min / 60 + sec / 3600;
+  const hemisphere = String(ref ?? "").toUpperCase();
+  if (hemisphere === "S" || hemisphere === "W") decimal *= -1;
+  return decimal;
+}
+
 function normalizeGpsResult(
   result: unknown
 ): { latitude: number; longitude: number } | null {
   if (!result || typeof result !== "object") return null;
 
   const data = result as Record<string, unknown>;
-  const pair = sanitizeGpsPair(
+  const direct = sanitizeGpsPair(
     data.latitude ?? data.GPSLatitude,
     data.longitude ?? data.GPSLongitude
   );
-  if (pair.latitude === null || pair.longitude === null) return null;
-  return { latitude: pair.latitude, longitude: pair.longitude };
+  if (direct.latitude !== null && direct.longitude !== null) {
+    return { latitude: direct.latitude, longitude: direct.longitude };
+  }
+
+  const lat = parseDmsCoord(data.GPSLatitude, data.GPSLatitudeRef);
+  const lng = parseDmsCoord(data.GPSLongitude, data.GPSLongitudeRef);
+  const dms = sanitizeGpsPair(lat, lng);
+  if (dms.latitude === null || dms.longitude === null) return null;
+  return { latitude: dms.latitude, longitude: dms.longitude };
 }
 
 async function readDateTime(source: ExifSource): Promise<Date | null> {
@@ -163,7 +191,7 @@ export async function extractExifFromBuffer(buffer: Buffer): Promise<ExifMetadat
   return extractExifFromSource(buffer);
 }
 
-/** Prefer client metadata but fill missing GPS/date from file bytes. */
+/** Prefer EXIF embedded in file bytes over client-side reads (Android often strips GPS in the browser). */
 export function mergeExifMetadata(
   client: Partial<ExifMetadata>,
   fromFile: ExifMetadata
@@ -171,9 +199,9 @@ export function mergeExifMetadata(
   const clientGps = sanitizeGpsPair(client.latitude, client.longitude);
   const fileGps = sanitizeGpsPair(fromFile.latitude, fromFile.longitude);
   return sanitizeExifMetadata({
-    dateTime: client.dateTime ?? fromFile.dateTime,
-    latitude: clientGps.latitude ?? fileGps.latitude,
-    longitude: clientGps.longitude ?? fileGps.longitude,
+    dateTime: fromFile.dateTime ?? client.dateTime ?? null,
+    latitude: fileGps.latitude ?? clientGps.latitude,
+    longitude: fileGps.longitude ?? clientGps.longitude,
   });
 }
 

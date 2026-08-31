@@ -110,9 +110,7 @@ export default function PhotoUploadGrid({
             try {
               const clientExif = await extractExifFromFile(file);
               const hint = serverExif[file.name];
-              const exif = hint
-                ? mergeExifMetadata(clientExif, hint)
-                : clientExif;
+              const exif = hint ? mergeExifMetadata(clientExif, hint) : clientExif;
               const outOfRange = !isPhotoInTravelRange(exif.dateTime, dateRange);
               return {
                 id: createLocalId(),
