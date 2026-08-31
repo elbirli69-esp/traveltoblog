@@ -2,9 +2,25 @@ import { marked } from "marked";
 import JSZip from "jszip";
 import path from "path";
 import { readFile } from "fs/promises";
-import type { Photo, Travel, User } from "@prisma/client";
+import type { Photo, Travel, TravelType, User } from "@prisma/client";
 import { formatDateKey, isoToDateKey } from "@/lib/travel-dates";
+import { buildTimeline, type TimelineEvent } from "@/lib/timeline";
+import { resolveTravelType } from "@/lib/export/detect-travel-type";
+import { getTypologyProfile } from "@/lib/export/typologies/registry";
+import { simplifyIfNeeded } from "@/lib/export/polyline";
+import { distanceMeters } from "@/lib/geo";
+import {
+  buildFlightsSectionHtml,
+  buildPlayModeScript,
+  buildPlayModeSectionHtml,
+  buildStatsSectionHtml,
+  buildTimelineSectionHtml,
+  buildTimelineSyncScript,
+  playModeStyles,
+  timelineExportStyles,
+} from "@/lib/export/timeline-html";
 
+export type ExportTypologyId = TravelType | "auto";
 export type ExportTemplateId = "visual-journey" | "editorial-clean" | "dark-photo-journey";
 export type ExportFormat = "html" | "zip";
 
@@ -40,11 +56,18 @@ export interface ExportPhoto {
 }
 
 export interface ExportContext {
-  travel: Pick<Travel, "id" | "title" | "startDate" | "endDate" | "journalMarkdown">;
+  travel: Pick<
+    Travel,
+    "id" | "title" | "startDate" | "endDate" | "journalMarkdown" | "travelType"
+  >;
   users: User[];
   photos: ExportPhoto[];
   places?: ExportPlace[];
+  notes?: ExportNote[];
+  gpsTracks?: ExportGpsTrack[];
   template: ExportTemplateId;
+  typology?: ExportTypologyId;
+  includeGpsTrail?: boolean;
 }
 
 const TEMPLATE_LABELS: Record<ExportTemplateId, string> = {
@@ -94,7 +117,7 @@ export function buildFlightMapPoints(photos: ExportPhoto[]): MapPoint[] {
 }
 
 export function buildPhotoRoutePoints(photos: ExportPhoto[]): MapPoint[] {
-  return photos
+  const raw = photos
     .filter(
       (p) =>
         !p.isTransportStart &&
@@ -106,20 +129,34 @@ export function buildPhotoRoutePoints(photos: ExportPhoto[]): MapPoint[] {
       (a, b) =>
         new Date(a.exifDateTime ?? 0).getTime() -
         new Date(b.exifDateTime ?? 0).getTime()
-    )
-    .map((p, i) => {
-      const dayKey = p.exifDateTime ? isoToDateKey(p.exifDateTime.toISOString()) : undefined;
-      return {
-        lat: p.latitude!,
-        lng: p.longitude!,
-        label: `Foto ${i + 1} — ${p.alias}`,
-        photoPath: p.localPath,
-        date: (p.exifDateTime ?? new Date()).toISOString(),
-        kind: "photo" as const,
-        dayKey,
-        dayLabel: dayKey ? formatDateKey(dayKey) : undefined,
-      };
-    });
+    );
+
+  const coords = simplifyIfNeeded(
+    raw.map((p) => ({ lat: p.latitude!, lng: p.longitude! }))
+  );
+  const simplified =
+    coords.length < raw.length
+      ? raw.filter((p) =>
+          coords.some(
+            (c) =>
+              Math.abs(c.lat - p.latitude!) < 1e-6 && Math.abs(c.lng - p.longitude!) < 1e-6
+          )
+        )
+      : raw;
+
+  return simplified.map((p, i) => {
+    const dayKey = p.exifDateTime ? isoToDateKey(p.exifDateTime.toISOString()) : undefined;
+    return {
+      lat: p.latitude!,
+      lng: p.longitude!,
+      label: `Foto ${i + 1} — ${p.alias}`,
+      photoPath: p.localPath,
+      date: (p.exifDateTime ?? new Date()).toISOString(),
+      kind: "photo" as const,
+      dayKey,
+      dayLabel: dayKey ? formatDateKey(dayKey) : undefined,
+    };
+  });
 }
 
 /** @deprecated Use buildPhotoRoutePoints — kept for tests/compatibility */
@@ -128,12 +165,33 @@ export function buildMapPoints(photos: ExportPhoto[]): MapPoint[] {
 }
 
 export interface ExportPlace {
+  id?: string;
   name: string;
   type: string;
   latitude: number;
   longitude: number;
   comment: string | null;
   alias: string;
+  visitedAt?: Date | string | null;
+}
+
+export interface ExportNote {
+  id: string;
+  type: string;
+  text: string;
+  dayDate: Date | null;
+  photoId: string | null;
+  placeId: string | null;
+  createdAt: Date;
+  alias: string;
+}
+
+export interface ExportGpsTrack {
+  id: string;
+  points: { lat: number; lng: number; at: string }[];
+  includeInExport: boolean;
+  alias: string;
+  startedAt: Date;
 }
 
 export function buildPlaceMapPoints(places: ExportPlace[]): MapPoint[] {
@@ -142,7 +200,7 @@ export function buildPlaceMapPoints(places: ExportPlace[]): MapPoint[] {
     lng: p.longitude,
     label: `${p.name}${p.comment ? ` — ${p.comment}` : ""} (${p.alias})`,
     photoPath: null,
-    date: new Date().toISOString(),
+    date: (p.visitedAt ? new Date(p.visitedAt) : new Date()).toISOString(),
     emoji: placeEmojiFromType(p.type),
     kind: "place" as const,
   }));
@@ -951,6 +1009,7 @@ function buildMapScript(
   });
 
   var map = L.map("map", { scrollWheelZoom: true, zoomControl: true });
+  window.__travelMap = map;
   L.tileLayer("${tileUrl}", {
     attribution: "${tileAttr}",
     subdomains: "abcd",
@@ -1052,8 +1111,122 @@ function buildMapScript(
 `;
 }
 
+function buildExportTimelineEvents(ctx: ExportContext): TimelineEvent[] {
+  const urlToLocal = new Map(ctx.photos.map((p) => [p.url, p.localPath]));
+  const timelineInput = {
+    photos: ctx.photos.map((p) => ({
+      id: p.id,
+      url: p.url,
+      exifDateTime: p.exifDateTime,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      isTransportStart: p.isTransportStart,
+      isTransportEnd: p.isTransportEnd,
+      selected: true,
+      alias: p.alias,
+    })),
+    places: (ctx.places ?? []).map((p) => ({
+      id: p.id ?? p.name,
+      name: p.name,
+      type: p.type,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      visitedAt: p.visitedAt ?? null,
+      createdAt: p.visitedAt ?? new Date(),
+      alias: p.alias,
+      comment: p.comment,
+    })),
+    notes: (ctx.notes ?? []).map((n) => ({
+      id: n.id,
+      type: n.type as "PHOTO" | "DAY" | "TRIP" | "PLACE",
+      text: n.text,
+      dayDate: n.dayDate,
+      photoId: n.photoId,
+      placeId: n.placeId,
+      createdAt: n.createdAt,
+      alias: n.alias,
+    })),
+    journalMarkdown: ctx.travel.journalMarkdown,
+    startDate: ctx.travel.startDate,
+    endDate: ctx.travel.endDate,
+    gpsTracks: (ctx.gpsTracks ?? [])
+      .filter((t) => ctx.includeGpsTrail || t.includeInExport)
+      .map((t) => ({
+        id: t.id,
+        startedAt: t.startedAt,
+        endedAt: null,
+        points: t.points,
+        includeInExport: true,
+        alias: t.alias,
+      })),
+    selectedPhotosOnly: true,
+  };
+
+  const { events } = buildTimeline(timelineInput);
+  return events.map((ev) => ({
+    ...ev,
+    mediaUrl: ev.mediaUrl ? urlToLocal.get(ev.mediaUrl) ?? ev.mediaUrl : undefined,
+  }));
+}
+
+function estimateRouteKm(photos: ExportPhoto[]): number | undefined {
+  const gps = photos
+    .filter(
+      (p) =>
+        !p.isTransportStart &&
+        !p.isTransportEnd &&
+        p.latitude != null &&
+        p.longitude != null
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.exifDateTime ?? 0).getTime() - new Date(b.exifDateTime ?? 0).getTime()
+    );
+  if (gps.length < 2) return undefined;
+  let total = 0;
+  for (let i = 1; i < gps.length; i++) {
+    total += distanceMeters(
+      gps[i - 1].latitude!,
+      gps[i - 1].longitude!,
+      gps[i].latitude!,
+      gps[i].longitude!
+    );
+  }
+  return total / 1000;
+}
+
 export function buildExportHtml(ctx: ExportContext): string {
   const { travel, users, photos, places = [], template } = ctx;
+  const explicitType =
+    ctx.typology && ctx.typology !== "auto" ? ctx.typology : travel.travelType ?? null;
+  const resolvedType = resolveTravelType(
+    explicitType,
+    {
+      photos: photos.map((p) => ({
+        id: p.id,
+        url: p.url,
+        exifDateTime: p.exifDateTime,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        isTransportStart: p.isTransportStart,
+        isTransportEnd: p.isTransportEnd,
+        alias: p.alias,
+      })),
+      places: places.map((p) => ({
+        id: p.id ?? p.name,
+        name: p.name,
+        type: p.type,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        visitedAt: p.visitedAt ?? null,
+        createdAt: p.visitedAt ?? new Date(),
+        alias: p.alias,
+      })),
+      notes: [],
+    }
+  );
+  const profile = getTypologyProfile(resolvedType);
+  const timelineEvents = buildExportTimelineEvents(ctx);
   const markdown = travel.journalMarkdown ?? buildFallbackMarkdown(travel, users, photos);
   const mapPoints = mergeMapPoints(photos, places);
   const urlToLocal = new Map(photos.map((p) => [p.url, p.localPath]));
@@ -1062,11 +1235,8 @@ export function buildExportHtml(ctx: ExportContext): string {
     template === "editorial-clean" ? rawHtml : enhanceArticleHtml(rawHtml);
   const dateRange = formatDateRange(travel.startDate, travel.endDate);
   const hasMap = mapPoints.length > 0;
-  const isVisual = template === "visual-journey";
+  const isVisual = template === "visual-journey" || template === "dark-photo-journey";
   const isInteractive = template !== "editorial-clean";
-  const timelineBlock =
-    isVisual && !hasMap ? buildDayTimelineSection(markdown, photos) : "";
-  const showTimelineNav = timelineBlock.length > 0;
   const coverPhoto = pickCoverPhoto(photos);
 
   const heroStyle = coverPhoto
@@ -1076,7 +1246,7 @@ export function buildExportHtml(ctx: ExportContext): string {
   const headerBlock = isVisual
     ? `<header class="hero" style="${heroStyle}">
       <div class="hero-content reveal">
-        <span class="hero-badge">Diario de viaje</span>
+        <span class="hero-badge">${escapeHtml(profile.label)} · ${escapeHtml(getTemplateLabel(template))}</span>
         <h1>${escapeHtml(travel.title)}</h1>
         <p class="hero-meta">${escapeHtml(dateRange)} · ${users.map((u) => escapeHtml(u.alias)).join(", ")}</p>
         <div class="hero-stats">
@@ -1087,13 +1257,15 @@ export function buildExportHtml(ctx: ExportContext): string {
       </div>
     </header>
     <nav class="section-nav">
-      ${hasMap ? '<a href="#mapa">Mapa</a>' : showTimelineNav ? '<a href="#cronologia">Cronología</a>' : ""}
+      ${hasMap ? '<a href="#mapa">Mapa</a>' : ""}
+      <a href="#cronologia">Cronología</a>
       <a href="#historia">Historia</a>
       <a href="#galeria">Galería</a>
+      ${profile.playProfile.showScrubber ? '<a href="#reproducir">Reproducir</a>' : ""}
     </nav>`
     : `<header>
       <h1>${escapeHtml(travel.title)}</h1>
-      <p class="meta">${escapeHtml(dateRange)} · ${users.map((u) => escapeHtml(u.alias)).join(", ")}</p>
+      <p class="meta">${escapeHtml(dateRange)} · ${users.map((u) => escapeHtml(u.alias)).join(", ")} · ${escapeHtml(profile.label)}</p>
     </header>`;
 
   const mapDayGroups = hasMap ? buildMapDayGroups(mapPoints) : [];
@@ -1101,16 +1273,53 @@ export function buildExportHtml(ctx: ExportContext): string {
     ? isVisual
       ? buildFullscreenMapSection(mapDayGroups)
       : buildCompactMapSection()
-    : timelineBlock;
+    : "";
 
   const galleryBlock = isVisual ? buildGallerySection(photos) : "";
   const storyAnchor = isVisual ? ' id="historia"' : "";
+  const timelineBlock = buildTimelineSectionHtml(timelineEvents);
+  const flightsBlock = buildFlightsSectionHtml(timelineEvents);
+  const statsBlock = buildStatsSectionHtml({
+    photoCount: photos.length,
+    placeCount: places.length,
+    dayCount: timelineEvents.filter((e) => e.kind === "day-boundary").length,
+    distanceKm: estimateRouteKm(photos),
+    profile,
+  });
+  const playBlock = profile.playProfile.showScrubber ? buildPlayModeSectionHtml() : "";
+
+  const sectionBlocks: Record<string, string> = {
+    hero: "",
+    stats: statsBlock,
+    flights: flightsBlock,
+    map: mapBlock,
+    timeline: timelineBlock,
+    gallery: galleryBlock,
+    journal: `<article${storyAnchor}>${contentHtml}</article>`,
+    play: playBlock,
+  };
+
+  const orderedMiddle = profile.sectionOrder
+    .filter((id) => id !== "hero" && sectionBlocks[id])
+    .filter((id) => !(isVisual && hasMap && id === "map"))
+    .map((id) => sectionBlocks[id])
+    .join("\n");
 
   const lightboxBlock = isInteractive
     ? `<div id="lightbox" role="dialog" aria-label="Visor de fotos"><img src="" alt=""><p class="lightbox-caption"></p></div>`
     : "";
 
+  const timelineJson = JSON.stringify(timelineEvents).replace(/</g, "\\u003c");
+  const extraStyles = timelineExportStyles() + playModeStyles();
   const interactiveScript = isInteractive ? `<script>${buildInteractiveScripts(template)}</script>` : "";
+  const timelineScript = `<script>window.__TRAVEL_TIMELINE__=${timelineJson};</script><script>${buildTimelineSyncScript()}</script>`;
+  const playScript =
+    profile.playProfile.showScrubber && isInteractive
+      ? `<script>${buildPlayModeScript(timelineEvents, profile)}</script>`
+      : "";
+
+  const mapOuter = isVisual && hasMap ? mapBlock : "";
+  const mapInner = !isVisual || !hasMap ? mapBlock : "";
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -1119,19 +1328,20 @@ export function buildExportHtml(ctx: ExportContext): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(travel.title)} — TravelToBlog</title>
   ${hasMap ? '<link rel="stylesheet" href="assets/leaflet.css">' : ""}
-  <style>${templateStyles(template)}</style>
+  <style>${templateStyles(template)}${extraStyles}</style>
 </head>
 <body>
   ${headerBlock}
-  ${isVisual && hasMap ? mapBlock : ""}
+  ${mapOuter}
   <div class="wrap">
-    ${!(isVisual && hasMap) ? mapBlock : ""}
-    <article${storyAnchor}>${contentHtml}</article>
-    ${galleryBlock}
-    <footer>Exportado con TravelToBlog · ${escapeHtml(getTemplateLabel(template))}</footer>
+    ${mapInner}
+    ${orderedMiddle}
+    <footer>Exportado con TravelToBlog · ${escapeHtml(profile.label)} · ${escapeHtml(getTemplateLabel(template))}</footer>
   </div>
   ${lightboxBlock}
+  ${timelineScript}
   ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, "assets/images")}</script>` : ""}
+  ${playScript}
   ${interactiveScript}
 </body>
 </html>`;
@@ -1251,6 +1461,16 @@ export async function buildExportZip(ctx: ExportContext): Promise<Buffer> {
   const zip = new JSZip();
   const html = buildExportHtml(ctx);
   zip.file("index.html", html);
+
+  const explicitType =
+    ctx.typology && ctx.typology !== "auto" ? ctx.typology : ctx.travel.travelType ?? "GENERIC";
+  zip.file(
+    "README.txt",
+    `TravelToBlog export\nTipología: ${explicitType}\nPlantilla: ${ctx.template}\nGenerado: ${new Date().toISOString()}\n`
+  );
+
+  const timelineEvents = buildExportTimelineEvents(ctx);
+  zip.file("assets/timeline.json", JSON.stringify(timelineEvents, null, 2));
 
   if (exportHasMap(ctx)) {
     const leaflet = await getLeafletAssets();

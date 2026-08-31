@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 
-export type TravelTab = "photos" | "places" | "days" | "trip";
+export type TravelTab = "photos" | "places" | "days" | "timeline" | "trip";
 
 export interface TravelTabCounts {
   photos?: number;
   places?: number;
   days?: number;
+  timeline?: number;
   trip?: number;
 }
 
@@ -15,6 +16,7 @@ interface TravelWorkspaceTabsProps {
   photosContent: React.ReactNode;
   placesContent: React.ReactNode;
   daysContent: React.ReactNode;
+  timelineContent: React.ReactNode;
   tripContent: React.ReactNode;
   /** Uncontrolled initial tab when `activeTab` is omitted. */
   initialTab?: TravelTab;
@@ -29,6 +31,7 @@ const TAB_BASE: { id: TravelTab; label: string }[] = [
   { id: "photos", label: "Fotos" },
   { id: "places", label: "Lugares" },
   { id: "days", label: "Días" },
+  { id: "timeline", label: "Cronología" },
   { id: "trip", label: "Viaje" },
 ];
 
@@ -41,6 +44,7 @@ export default function TravelWorkspaceTabs({
   photosContent,
   placesContent,
   daysContent,
+  timelineContent,
   tripContent,
   initialTab = "photos",
   activeTab: controlledTab,
@@ -63,7 +67,9 @@ export default function TravelWorkspaceTabs({
         ? placesContent
         : activeTab === "days"
           ? daysContent
-          : tripContent;
+          : activeTab === "timeline"
+            ? timelineContent
+            : tripContent;
 
   return (
     <div className="space-y-6">

@@ -7,7 +7,9 @@ import {
   loadPhotoFiles,
   type ExportFormat,
   type ExportTemplateId,
+  type ExportTypologyId,
 } from "@/lib/export-html";
+import { TYPOLOGY_LIST } from "@/lib/export/typologies/registry";
 
 const TEMPLATES: ExportTemplateId[] = ["visual-journey", "editorial-clean", "dark-photo-journey"];
 
@@ -17,11 +19,15 @@ export async function POST(request: NextRequest) {
     const {
       travelId,
       template = "visual-journey",
+      typology = "auto",
       format = "zip",
+      includeGpsTrail = false,
     } = body as {
       travelId?: string;
       template?: ExportTemplateId;
+      typology?: ExportTypologyId;
       format?: ExportFormat;
+      includeGpsTrail?: boolean;
     };
 
     if (!travelId) {
@@ -44,13 +50,17 @@ export async function POST(request: NextRequest) {
         places: {
           include: {
             user: true,
-            notes: {
-              where: { type: "PLACE" },
-              include: { user: true },
-              orderBy: { createdAt: "asc" },
-            },
+            notes: { where: { type: "PLACE" }, orderBy: { createdAt: "asc" } },
           },
+          orderBy: { visitedAt: "asc" },
+        },
+        notes: {
+          include: { user: true },
           orderBy: { createdAt: "asc" },
+        },
+        gpsTracks: {
+          include: { user: true },
+          orderBy: { startedAt: "asc" },
         },
       },
     });
@@ -60,20 +70,34 @@ export async function POST(request: NextRequest) {
     }
 
     const photos = await loadPhotoFiles(travel.photos);
-    const places = travel.places.map((p) => {
-      const fromNotes = p.notes.map((n) => n.text).filter(Boolean);
-      return {
-        name: p.name,
-        type: p.type,
-        latitude: p.latitude,
-        longitude: p.longitude,
-        comment:
-          fromNotes.length > 0
-            ? fromNotes.join(" · ")
-            : p.comment?.trim() || null,
-        alias: p.user.alias,
-      };
-    });
+    const places = travel.places.map((p) => ({
+      id: p.id,
+      name: p.name,
+      type: p.type,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      comment: p.notes[0]?.text ?? p.comment,
+      alias: p.user.alias,
+      visitedAt: p.visitedAt,
+    }));
+    const notes = travel.notes.map((n) => ({
+      id: n.id,
+      type: n.type,
+      text: n.text,
+      dayDate: n.dayDate,
+      photoId: n.photoId,
+      placeId: n.placeId,
+      createdAt: n.createdAt,
+      alias: n.user.alias,
+    }));
+    const gpsTracks = travel.gpsTracks.map((t) => ({
+      id: t.id,
+      points: JSON.parse(t.points || "[]") as { lat: number; lng: number; at: string }[],
+      includeInExport: t.includeInExport,
+      alias: t.user.alias,
+      startedAt: t.startedAt,
+    }));
+
     const ctx = {
       travel: {
         id: travel.id,
@@ -81,11 +105,16 @@ export async function POST(request: NextRequest) {
         startDate: travel.startDate,
         endDate: travel.endDate,
         journalMarkdown: travel.journalMarkdown,
+        travelType: travel.travelType,
       },
       users: travel.users,
       photos,
       places,
+      notes,
+      gpsTracks,
       template,
+      typology,
+      includeGpsTrail,
     };
 
     const slug = travel.title
@@ -114,11 +143,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Preview JSON for debugging — default deliver zip
     const html = buildExportHtml(ctx);
     return NextResponse.json({
       title: travel.title,
       template,
+      typology,
       photoCount: photos.length,
       gpsCount: photos.filter((p) => p.latitude != null).length,
       htmlLength: html.length,
@@ -144,6 +173,11 @@ export async function GET() {
         description: "Tema oscuro centrado en fotografía",
       },
     ],
+    typologies: TYPOLOGY_LIST.map((t) => ({
+      id: t.id,
+      label: t.label,
+      description: t.description,
+    })),
     formats: ["zip", "html"],
   });
 }
