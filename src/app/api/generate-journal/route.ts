@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getAiConfig } from "@/lib/ai";
 import {
   buildEnhancedJournalContext,
+  buildLocalJournalMarkdown,
+  isAiUnreachableError,
   runJournalPipeline,
   type JournalPipelineEvent,
 } from "@/lib/journal-pipeline";
@@ -72,11 +74,35 @@ export async function POST(request: NextRequest) {
             });
           } catch (error) {
             console.error("Journal pipeline stream", error);
-            send({
-              step: "error",
-              status: "error",
-              message: "Error al generar el diario",
-            });
+            if (isAiUnreachableError(error)) {
+              try {
+                const markdown = buildLocalJournalMarkdown(ctx);
+                await prisma.travel.update({
+                  where: { id: travelId },
+                  data: { journalMarkdown: markdown, journalGeneratedAt: new Date() },
+                });
+                send({
+                  step: "complete",
+                  status: "done",
+                  markdown,
+                  message: "Crónica local (sin IA — sin conexión a DeepSeek)",
+                });
+              } catch (fallbackError) {
+                console.error("Journal fallback failed", fallbackError);
+                send({
+                  step: "error",
+                  status: "error",
+                  message:
+                    "Sin conexión a la IA (api.deepseek.com). Revisa DNS del contenedor Docker en el NAS.",
+                });
+              }
+            } else {
+              send({
+                step: "error",
+                status: "error",
+                message: "Error al generar el diario",
+              });
+            }
           } finally {
             controller.close();
           }
