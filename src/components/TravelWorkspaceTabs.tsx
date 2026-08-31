@@ -2,26 +2,53 @@
 
 import { useState } from "react";
 
-export type TravelTab = "photos" | "places" | "days";
+export type TravelTab = "photos" | "places" | "days" | "trip";
 
 interface TravelWorkspaceTabsProps {
   photosContent: React.ReactNode;
-  placesContent?: React.ReactNode;
-  daysContent?: React.ReactNode;
+  placesContent: React.ReactNode;
+  daysContent: React.ReactNode;
+  tripContent: React.ReactNode;
+  /** Uncontrolled initial tab when `activeTab` is omitted. */
+  initialTab?: TravelTab;
+  /** Controlled tab (deep-links / Añadir recuerdo). */
+  activeTab?: TravelTab;
+  onTabChange?: (tab: TravelTab) => void;
 }
 
 const TABS: { id: TravelTab; label: string }[] = [
   { id: "photos", label: "Fotos" },
   { id: "places", label: "Lugares" },
   { id: "days", label: "Días" },
+  { id: "trip", label: "Viaje" },
 ];
 
 export default function TravelWorkspaceTabs({
   photosContent,
   placesContent,
   daysContent,
+  tripContent,
+  initialTab = "photos",
+  activeTab: controlledTab,
+  onTabChange,
 }: TravelWorkspaceTabsProps) {
-  const [activeTab, setActiveTab] = useState<TravelTab>("photos");
+  const isControlled = controlledTab != null;
+  const [uncontrolledTab, setUncontrolledTab] = useState<TravelTab>(initialTab);
+  const activeTab = isControlled ? controlledTab : uncontrolledTab;
+
+  const setTab = (tab: TravelTab) => {
+    if (!isControlled) setUncontrolledTab(tab);
+    onTabChange?.(tab);
+  };
+
+  const panel =
+    activeTab === "photos"
+      ? photosContent
+      : activeTab === "places"
+        ? placesContent
+        : activeTab === "days"
+          ? daysContent
+          : tripContent;
 
   return (
     <div className="space-y-6">
@@ -36,8 +63,8 @@ export default function TravelWorkspaceTabs({
             type="button"
             role="tab"
             aria-selected={activeTab === tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${
+            onClick={() => setTab(tab.id)}
+            className={`flex-1 rounded-lg px-2 py-2.5 text-sm font-semibold transition-colors sm:px-4 ${
               activeTab === tab.id
                 ? "bg-white text-teal-800 shadow-sm"
                 : "text-slate-600 hover:text-slate-900"
@@ -48,41 +75,7 @@ export default function TravelWorkspaceTabs({
         ))}
       </div>
 
-      <div role="tabpanel">
-        {activeTab === "photos" && photosContent}
-        {activeTab === "places" &&
-          (placesContent ?? (
-            <PlaceholderPanel
-              title="Lugares del viaje"
-              description="Marca sitios en el mapa — hoteles, restaurantes, miradores… Inspirado en DogTrainer."
-            />
-          ))}
-        {activeTab === "days" &&
-          (daysContent ?? (
-            <PlaceholderPanel
-              title="Calendario del viaje"
-              description="Navega día a día y añade comentarios por fecha — inspirado en Nutriplaner."
-            />
-          ))}
-      </div>
-    </div>
-  );
-}
-
-function PlaceholderPanel({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-6 py-12 text-center">
-      <p className="text-lg font-semibold text-slate-700">{title}</p>
-      <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">{description}</p>
-      <p className="mt-4 text-xs font-medium uppercase tracking-wide text-teal-600">
-        Próximamente
-      </p>
+      <div role="tabpanel">{panel}</div>
     </div>
   );
 }

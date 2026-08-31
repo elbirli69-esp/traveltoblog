@@ -3,13 +3,28 @@
 import { useState } from "react";
 import { createLocalId } from "@/lib/utils";
 
+const DEFAULT_LABELS = {
+  PHOTO: "Nota para esta foto",
+  DAY: "Nota del día",
+  TRIP: "Nota del viaje",
+} as const;
+
 interface NoteFormProps {
-  travelId: string;
-  userId: string;
+  travelId?: string;
+  userId?: string;
   photoId?: string | null;
-  type: "PHOTO" | "DAY" | "TRIP";
+  type?: "PHOTO" | "DAY" | "TRIP";
   dayDate?: string;
   onCreated?: () => void;
+  /** Overrides the default label for `type`, or required when using `onPersist`. */
+  label?: string;
+  placeholder?: string;
+  submitLabel?: string;
+  rows?: number;
+  /**
+   * Custom persistence (e.g. Place.comment). When set, skips POST /api/notes.
+   */
+  onPersist?: (text: string) => Promise<void>;
 }
 
 export default function NoteForm({
@@ -19,74 +34,96 @@ export default function NoteForm({
   type,
   dayDate,
   onCreated,
+  label,
+  placeholder = "Escribe tu anécdota, impresión o detalle…",
+  submitLabel = "Añadir nota",
+  rows = 3,
+  onPersist,
 }: NoteFormProps) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const labels = {
-    PHOTO: "Nota para esta foto",
-    DAY: "Nota del día",
-    TRIP: "Nota del trayecto",
-  };
+  const resolvedLabel =
+    label ?? (type ? DEFAULT_LABELS[type] : "Nota");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim()) return;
 
     setLoading(true);
+    setError(null);
 
-    if (!navigator.onLine) {
-      const { savePendingNote } = await import("@/lib/offline-db");
-      await savePendingNote({
-        localId: createLocalId(),
-        travelId,
-        userId,
-        photoLocalId: photoId ?? null,
-        type,
-        dayDate: dayDate ?? null,
-        text: text.trim(),
-        createdAt: new Date().toISOString(),
+    try {
+      if (onPersist) {
+        await onPersist(text.trim());
+        setText("");
+        onCreated?.();
+        return;
+      }
+
+      if (!travelId || !userId || !type) {
+        setError("Faltan datos para guardar la nota");
+        return;
+      }
+
+      if (!navigator.onLine) {
+        const { savePendingNote } = await import("@/lib/offline-db");
+        await savePendingNote({
+          localId: createLocalId(),
+          travelId,
+          userId,
+          photoLocalId: photoId ?? null,
+          type,
+          dayDate: dayDate ?? null,
+          text: text.trim(),
+          createdAt: new Date().toISOString(),
+        });
+        setText("");
+        onCreated?.();
+        return;
+      }
+
+      const res = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          travelId,
+          userId,
+          photoId,
+          type,
+          dayDate,
+          text: text.trim(),
+        }),
       });
+      if (!res.ok) throw new Error("No se pudo guardar");
+
       setText("");
-      setLoading(false);
       onCreated?.();
-      return;
+    } catch {
+      setError("Error al guardar la nota");
+    } finally {
+      setLoading(false);
     }
-
-    await fetch("/api/notes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        travelId,
-        userId,
-        photoId,
-        type,
-        dayDate,
-        text,
-      }),
-    });
-
-    setText("");
-    setLoading(false);
-    onCreated?.();
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2">
-      <label className="text-sm font-medium text-slate-700">{labels[type]}</label>
+      <label className="text-sm font-medium text-slate-700">{resolvedLabel}</label>
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        rows={3}
-        placeholder="Escribe tu anécdota, impresión o detalle…"
+        rows={rows}
+        placeholder={placeholder}
         className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
       />
+      {error && <p className="text-xs text-red-600">{error}</p>}
       <button
         type="submit"
         disabled={loading || !text.trim()}
         className="rounded-lg bg-slate-800 px-4 py-1.5 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
       >
-        {loading ? "Guardando…" : "Añadir nota"}
+        {loading ? "Guardando…" : submitLabel}
       </button>
     </form>
   );

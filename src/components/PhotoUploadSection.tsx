@@ -16,6 +16,8 @@ interface PhotoUploadSectionProps {
   incomingFiles?: File[];
   onIncomingFilesHandled?: () => void;
   onSyncComplete?: () => void;
+  openPickerSignal?: number;
+  highlight?: boolean;
 }
 
 export default function PhotoUploadSection({
@@ -26,6 +28,8 @@ export default function PhotoUploadSection({
   incomingFiles,
   onIncomingFilesHandled,
   onSyncComplete,
+  openPickerSignal,
+  highlight,
 }: PhotoUploadSectionProps) {
   const handlePhotosConfirmed = useCallback(
     async (photos: ParsedPhoto[]) => {
@@ -110,6 +114,8 @@ export default function PhotoUploadSection({
       onIncomingFilesHandled={onIncomingFilesHandled}
       onPhotosConfirmed={handlePhotosConfirmed}
       onTransportPhotoMarked={handleTransportMarked}
+      openPickerSignal={openPickerSignal}
+      highlight={highlight}
     />
   );
 }

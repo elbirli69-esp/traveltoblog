@@ -84,7 +84,7 @@ function getJournalPromptConfig(style: JournalStyle): JournalPromptConfig {
       intro: {
         system: `Eres un editor de diarios de viaje. Escribe SOLO la introducción (1-3 párrafos en Markdown).
 REGLAS ESTRICTAS:
-- Usa ÚNICAMENTE la información explícita en notas_trayecto, participantes, fechas y vuelos.
+- Usa ÚNICAMENTE la información explícita en notas_viaje, participantes, fechas y vuelos.
 - Puedes mejorar redacción, orden y claridad, pero NO inventes lugares, anécdotas, emociones ni detalles no mencionados.
 - Si hay poca información, escribe una intro breve y sobria.
 - No uses encabezados (#).`,
@@ -302,7 +302,7 @@ export async function generateIntroduction(
       participantes: ctx.participants,
       fechas: ctx.dateRange,
       vuelos: ctx.flights,
-      notas_trayecto: ctx.tripNotes,
+      notas_viaje: ctx.tripNotes,
       num_lugares: ctx.places.length,
     },
     null,
@@ -479,7 +479,7 @@ export function assembleJournalMarkdown(
   }
 
   if (ctx.tripNotes.length > 0) {
-    lines.push("## Notas del trayecto", "");
+    lines.push("## Notas del viaje", "");
     for (const note of ctx.tripNotes) {
       lines.push(`> **${note.author}:** ${note.text}`, "");
     }
