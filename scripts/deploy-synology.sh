@@ -143,7 +143,21 @@ tar \
   | "${SSH_CMD[@]}" "$SSH_TARGET" "tar xzf - -C ${REMOTE_DIR}"
 
 echo "→ Detectando IP Tailscale del NAS…"
-TAILSCALE_BIND_IP="$("${SSH_CMD[@]}" "$SSH_TARGET" "tailscale ip -4 2>/dev/null | head -1" || true)"
+TAILSCALE_BIND_IP="$("${SSH_CMD[@]}" "$SSH_TARGET" bash -s <<'TSIP'
+set -euo pipefail
+export PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH"
+for bin in /var/packages/Tailscale/target/bin/tailscale /usr/local/bin/tailscale tailscale; do
+  if [[ -x "$bin" ]] || command -v "$bin" >/dev/null 2>&1; then
+    ip="$("$bin" ip -4 2>/dev/null | head -1 || true)"
+    if [[ -n "$ip" ]]; then
+      echo "$ip"
+      exit 0
+    fi
+  fi
+done
+exit 1
+TSIP
+)" || true
 TAILSCALE_BIND_IP="${TAILSCALE_BIND_IP//$'\r'/}"
 if [[ -z "$TAILSCALE_BIND_IP" ]]; then
   echo "❌ No se pudo obtener la IP Tailscale del NAS. Activa Tailscale en el Synology."
