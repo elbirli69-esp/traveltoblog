@@ -58,6 +58,12 @@ export default function TravelPlacesPanel({
   const [addMode, setAddMode] = useState(false);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftPlace | null>(null);
+  const [editForm, setEditForm] = useState<{
+    id: string;
+    name: string;
+    type: PlaceType;
+    comment: string;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +79,48 @@ export default function TravelPlacesPanel({
       comment: "",
     });
     setSelectedPlaceId(null);
+    setEditForm(null);
   }, []);
+
+  const startEditPlace = (place: TravelPlace) => {
+    setAddMode(false);
+    setDraft(null);
+    setSelectedPlaceId(place.id);
+    setEditForm({
+      id: place.id,
+      name: place.name,
+      type: place.type,
+      comment: place.comment ?? "",
+    });
+    setError(null);
+  };
+
+  const saveEditedPlace = async () => {
+    if (!editForm?.name.trim()) {
+      setError("Escribe un nombre para el lugar");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/places/${editForm.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editForm.name.trim(),
+          type: editForm.type,
+          comment: editForm.comment.trim() || null,
+        }),
+      });
+      if (!res.ok) throw new Error("No se pudo guardar");
+      setEditForm(null);
+      onChanged?.();
+    } catch {
+      setError("Error al actualizar el lugar");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const savePlace = async () => {
     if (!draft?.name.trim()) {
@@ -136,6 +183,7 @@ export default function TravelPlacesPanel({
     const res = await fetch(`/api/places/${id}`, { method: "DELETE" });
     if (res.ok) {
       if (selectedPlaceId === id) setSelectedPlaceId(null);
+      if (editForm?.id === id) setEditForm(null);
       onChanged?.();
     }
   };
@@ -154,6 +202,7 @@ export default function TravelPlacesPanel({
           onClick={() => {
             setAddMode((v) => !v);
             setDraft(null);
+            setEditForm(null);
             setError(null);
           }}
           className={`rounded-xl px-4 py-2 text-sm font-semibold ${
@@ -242,6 +291,70 @@ export default function TravelPlacesPanel({
         </div>
       )}
 
+      {editForm && !draft && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+          <p className="text-sm font-medium text-amber-900">Editar lugar</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-700">Nombre</span>
+              <input
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-700">Tipo</span>
+              <select
+                value={editForm.type}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, type: e.target.value as PlaceType })
+                }
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"
+              >
+                {PLACE_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {placeEmoji(t)} {PLACE_TYPE_LABELS[t]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-700">Comentario / nota</span>
+            <textarea
+              value={editForm.comment}
+              onChange={(e) => setEditForm({ ...editForm, comment: e.target.value })}
+              rows={3}
+              placeholder="Añade o corrige la nota de este lugar…"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+            />
+          </label>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={saveEditedPlace}
+              disabled={saving}
+              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+            >
+              {saving ? "Guardando…" : "Guardar cambios"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditForm(null);
+                setError(null);
+              }}
+              disabled={saving}
+              className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       {places.length > 0 && (
         <ul className="space-y-2">
           {places.map((place) => (
@@ -266,13 +379,22 @@ export default function TravelPlacesPanel({
                   {place.comment ? ` · ${place.comment}` : ""}
                 </p>
               </button>
-              <button
-                type="button"
-                onClick={() => deletePlace(place.id)}
-                className="shrink-0 text-xs font-medium text-red-600 hover:text-red-800"
-              >
-                Eliminar
-              </button>
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                <button
+                  type="button"
+                  onClick={() => startEditPlace(place)}
+                  className="text-xs font-medium text-slate-500 hover:text-teal-700"
+                >
+                  Editar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deletePlace(place.id)}
+                  className="text-xs font-medium text-red-600 hover:text-red-800"
+                >
+                  Eliminar
+                </button>
+              </div>
             </li>
           ))}
         </ul>
@@ -284,7 +406,7 @@ export default function TravelPlacesPanel({
         </p>
       )}
 
-      {selectedPlace && !draft && (
+      {selectedPlace && !draft && !editForm && (
         <p className="text-center text-xs text-slate-400">
           Seleccionado: {placeEmoji(selectedPlace.type)} {selectedPlace.name}
         </p>

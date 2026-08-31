@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import ExportHtmlPanel from "@/components/ExportHtmlPanel";
 import ExportPdfPanel from "@/components/ExportPdfPanel";
-import JournalMarkdown from "@/components/JournalMarkdown";
+import JournalEditor from "@/components/JournalEditor";
 
 export default async function JournalPage({
   params,
@@ -44,19 +44,17 @@ export default async function JournalPage({
 
       <header className="my-6 border-b border-slate-200 pb-6">
         <h1 className="text-3xl font-bold text-slate-900">{travel.title}</h1>
-        {travel.journalGeneratedAt && (
-          <p className="mt-1 text-sm text-slate-400">
-            Generado el{" "}
-            {new Intl.DateTimeFormat("es-ES", {
-              dateStyle: "long",
-              timeStyle: "short",
-            }).format(travel.journalGeneratedAt)}
-          </p>
-        )}
+        <p className="mt-2 text-sm text-slate-500">
+          Edita la crónica antes de exportar a HTML o PDF.
+        </p>
       </header>
 
       {travel.journalMarkdown ? (
-        <JournalMarkdown markdown={travel.journalMarkdown} />
+        <JournalEditor
+          travelId={travel.id}
+          initialMarkdown={travel.journalMarkdown}
+          generatedAt={travel.journalGeneratedAt?.toISOString() ?? null}
+        />
       ) : (
         <p className="mb-10 text-slate-500">
           Aún no se ha generado la crónica. Vuelve al viaje y pulsa &ldquo;Generar diario con IA&rdquo;.
@@ -68,8 +66,8 @@ export default async function JournalPage({
           Exportar viaje
         </h2>
         <p className="mb-5 text-sm text-teal-800/80">
-          Genera un paquete HTML estático con tu crónica, fotos y mapa interactivo
-          del recorrido. Listo para publicar o archivar sin depender de la PWA.
+          Genera un paquete HTML estático con tu crónica (tal como la hayas editado), fotos y mapa
+          interactivo del recorrido.
         </p>
         <ExportHtmlPanel
           travelId={travel.id}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import EditableNote from "@/components/EditableNote";
 import NoteForm from "@/components/NoteForm";
 import {
   addDaysToKey,
@@ -201,13 +202,11 @@ export default function TravelDayCalendar({
         {notesForDay.length > 0 ? (
           <ul className="mb-5 space-y-2">
             {notesForDay.map((note) => (
-              <li
+              <EditableNote
                 key={note.id}
-                className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700"
-              >
-                <span className="font-medium text-teal-700">{note.user.alias}</span>
-                <p className="mt-1">{note.text}</p>
-              </li>
+                note={note}
+                onChanged={onNoteCreated}
+              />
             ))}
           </ul>
         ) : (

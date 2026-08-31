@@ -18,7 +18,13 @@ const STEP_LABELS: Record<string, string> = {
   complete: "Listo",
 };
 
-export default function GenerateJournalButton({ travelId }: { travelId: string }) {
+export default function GenerateJournalButton({
+  travelId,
+  hasExistingJournal = false,
+}: {
+  travelId: string;
+  hasExistingJournal?: boolean;
+}) {
   const router = useRouter();
   const [style, setStyle] = useState<JournalStyle>("factual");
   const [loading, setLoading] = useState(false);
@@ -29,6 +35,13 @@ export default function GenerateJournalButton({ travelId }: { travelId: string }
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
 
   const handleGenerate = async () => {
+    if (hasExistingJournal) {
+      const ok = confirm(
+        "Ya hay una crónica guardada (puede incluir ediciones manuales). Regenerar la sobrescribirá. ¿Continuar?"
+      );
+      if (!ok) return;
+    }
+
     setLoading(true);
     setError(null);
     setWarning(null);
@@ -137,7 +150,7 @@ export default function GenerateJournalButton({ travelId }: { travelId: string }
         disabled={loading}
         className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
       >
-        {loading ? "Generando crónica…" : "✨ Generar diario con IA"}
+        {loading ? "Generando crónica…" : hasExistingJournal ? "✨ Regenerar diario con IA" : "✨ Generar diario con IA"}
       </button>
 
       {loading && (
