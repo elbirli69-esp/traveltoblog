@@ -1,0 +1,119 @@
+// Prisma schema for TravelToBlog — collaborative travel journal PWA
+// SQLite for lightweight Docker deployment on Synology NAS
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// A shared travel room. Participants join via shareCode / QR URL.
+model Travel {
+  id           String   @id @default(cuid())
+  title        String
+  /// Short code for joining (e.g. "abc123")
+  shareCode    String   @unique
+  /// Trip start boundary — set when transport-out photo is marked
+  startDate    DateTime?
+  /// Trip end boundary — set when transport-return photo is marked
+  endDate      DateTime?
+  /// Generated blog article in Markdown
+  journalMarkdown String?
+  journalGeneratedAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  users        User[]
+  photos       Photo[]
+  notes        Note[]
+
+  /// Transport photo that opens the trip
+  startPhoto   Photo?   @relation("TravelStartPhoto", fields: [startPhotoId], references: [id], onDelete: SetNull)
+  startPhotoId String?  @unique
+
+  /// Transport photo that closes the trip
+  endPhoto     Photo?   @relation("TravelEndPhoto", fields: [endPhotoId], references: [id], onDelete: SetNull)
+  endPhotoId   String?  @unique
+}
+
+/// Lightweight participant — alias only, no full auth flow
+model User {
+  id        String   @id @default(cuid())
+  alias     String
+  travelId  String
+  createdAt DateTime @default(now())
+
+  travel    Travel   @relation(fields: [travelId], references: [id], onDelete: Cascade)
+  photos    Photo[]
+  notes     Note[]
+
+  @@unique([travelId, alias])
+  @@index([travelId])
+}
+
+model Photo {
+  id              String    @id @default(cuid())
+  travelId        String
+  userId          String
+  /// Stored filename on server (under /public/uploads)
+  filename        String
+  /// Public URL path
+  url             String
+  /// EXIF DateTimeOriginal parsed on client
+  exifDateTime    DateTime?
+  latitude        Float?
+  longitude       Float?
+  /// User selected this photo for the journal
+  selected        Boolean   @default(true)
+  /// Marks outbound transport photo (trip start)
+  isTransportStart Boolean  @default(false)
+  /// Marks return transport photo (trip end)
+  isTransportEnd   Boolean  @default(false)
+  /// Client-side UUID for offline sync deduplication
+  localId         String?   @unique
+  syncedAt        DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+
+  travel          Travel    @relation(fields: [travelId], references: [id], onDelete: Cascade)
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes           Note[]
+
+  travelAsStart   Travel?   @relation("TravelStartPhoto")
+  travelAsEnd     Travel?   @relation("TravelEndPhoto")
+
+  @@index([travelId, exifDateTime])
+  @@index([userId])
+}
+
+enum NoteType {
+  PHOTO
+  DAY
+  TRIP
+}
+
+model Note {
+  id        String    @id @default(cuid())
+  travelId  String
+  userId    String
+  /// Required when type = PHOTO
+  photoId   String?
+  type      NoteType
+  /// Calendar date for DAY notes (YYYY-MM-DD stored as midnight UTC)
+  dayDate   DateTime?
+  text      String
+  /// Client-side UUID for offline sync
+  localId   String?   @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  travel    Travel    @relation(fields: [travelId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  photo     Photo?    @relation(fields: [photoId], references: [id], onDelete: SetNull)
+
+  @@index([travelId, type])
+  @@index([userId])
+}

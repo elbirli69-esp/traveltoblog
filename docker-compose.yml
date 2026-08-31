@@ -1,0 +1,20 @@
+services:
+  traveltoblog:
+    build: .
+    container_name: traveltoblog
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=file:/app/data/travel.db
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.deepseek.com/v1}
+      - OPENAI_MODEL=${OPENAI_MODEL:-deepseek-chat}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    volumes:
+      - traveltoblog-data:/app/data
+      - traveltoblog-uploads:/app/public/uploads
+
+volumes:
+  traveltoblog-data:
+  traveltoblog-uploads:

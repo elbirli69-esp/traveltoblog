@@ -1,0 +1,5 @@
+{
+  "name": "TravelToBlog",
+  "install": "npm ci && npx prisma generate",
+  "start": "bash scripts/cloud-agent-start.sh"
+}
