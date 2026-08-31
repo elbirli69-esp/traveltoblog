@@ -20,7 +20,7 @@ export async function getCurrentPosition(): Promise<GeolocationPosition> {
   });
 }
 
-/** Tag photos missing GPS with the device location (common workaround on Android). */
+/** Tag selected photos missing GPS with the device location. */
 export async function applyCurrentLocationToPhotos<T extends { exif: ExifMetadata }>(
   photos: T[]
 ): Promise<T[]> {

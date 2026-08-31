@@ -9,6 +9,8 @@ export interface ParsedPhoto {
   file: File;
   previewUrl: string;
   exif: ExifMetadata;
+  /** Android photo picker redacts GPS tags to empty/NaN while gallery still shows location. */
+  gpsStripped?: boolean;
   selected: boolean;
   outOfRange: boolean;
   isTransportStart: boolean;
