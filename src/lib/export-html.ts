@@ -384,7 +384,10 @@ body {
 .section-nav a:hover { color: var(--text); background: rgba(255,255,255,.06); }
 .wrap { max-width: 920px; margin: 0 auto; padding: 0 1.25rem 4rem; }
 .map-section {
-  margin: 2.5rem 0;
+  margin: 2.5rem -1.25rem;
+  padding: 0 1.25rem 1.5rem;
+}
+.map-section-inner {
   padding: 1.5rem;
   border-radius: 20px;
   background: var(--surface);
@@ -392,18 +395,62 @@ body {
   box-shadow: 0 25px 50px rgba(0,0,0,.25);
 }
 .map-section h2 {
-  margin: 0 0 1rem;
+  margin: 0 0 .35rem;
   font-size: .8rem;
   text-transform: uppercase;
   letter-spacing: .14em;
   color: var(--accent);
 }
+.map-lead { margin: 0 0 1rem; color: var(--muted); font-size: .9rem; }
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem 1.25rem;
+  margin-bottom: 1rem;
+  font-size: .8rem;
+  color: var(--muted);
+}
+.map-legend span { display: inline-flex; align-items: center; gap: .35rem; }
+.legend-line { display: inline-block; width: 22px; height: 3px; border-radius: 2px; background: #2dd4bf; }
+.legend-dash { display: inline-block; width: 22px; height: 0; border-top: 3px dashed #818cf8; }
 #map {
-  height: 420px;
+  height: min(62vh, 520px);
   border-radius: 14px;
   overflow: hidden;
   background: #292524;
 }
+.route-pin-wrap { background: none; border: none; }
+.route-pin {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2dd4bf, #0d9488);
+  color: #042f2e;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(45,212,191,.45);
+  border: 2px solid rgba(255,255,255,.85);
+}
+.timeline-section { margin: 2rem 0 2.5rem; }
+.timeline-lead { color: var(--muted); margin: -.25rem 0 1.25rem; font-size: .9rem; }
+.timeline-track {
+  display: flex;
+  gap: .75rem;
+  overflow-x: auto;
+  padding-bottom: .5rem;
+  scroll-snap-type: x mandatory;
+}
+.timeline-chip {
+  flex: 0 0 auto;
+  min-width: 180px;
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  scroll-snap-align: start;
+}
+.timeline-day { display: block; font-weight: 700; color: #fde68a; font-size: .95rem; }
+.timeline-meta { display: block; margin-top: .35rem; font-size: .8rem; color: var(--muted); }
 article { font-size: 1.08rem; padding-top: 1rem; }
 article .section-title {
   font-size: 1.6rem;
@@ -618,8 +665,53 @@ footer { margin-top: 3rem; text-align: center; color: var(--muted); font-size: 0
 `;
 }
 
+function extractDayLabelsFromMarkdown(markdown: string): string[] {
+  return [...markdown.matchAll(/^### (.+)$/gm)].map((m) => m[1].trim()).filter(Boolean);
+}
+
+function buildDayTimelineSection(markdown: string, photos: ExportPhoto[]): string {
+  const days = extractDayLabelsFromMarkdown(markdown);
+  const photoDays = new Map<string, number>();
+
+  for (const photo of photos) {
+    if (!photo.exifDateTime) continue;
+    const key = new Intl.DateTimeFormat("es-ES", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(photo.exifDateTime);
+    photoDays.set(key, (photoDays.get(key) ?? 0) + 1);
+  }
+
+  const items =
+    days.length > 0
+      ? days.map((day) => ({ label: day, photos: photoDays.get(day) ?? 0 }))
+      : [...photoDays.entries()].map(([label, count]) => ({ label, photos: count }));
+
+  if (items.length === 0) return "";
+
+  const chips = items
+    .map(
+      (item, i) =>
+        `<div class="timeline-chip reveal" style="animation-delay:${i * 60}ms"><span class="timeline-day">${escapeHtml(item.label)}</span>${item.photos > 0 ? `<span class="timeline-meta">${item.photos} foto${item.photos === 1 ? "" : "s"}</span>` : ""}</div>`
+    )
+    .join("");
+
+  return `
+<section id="cronologia" class="timeline-section reveal">
+  <h2 class="section-title">Cronología del viaje</h2>
+  <p class="timeline-lead">Recorrido día a día (sin coordenadas GPS en las fotos)</p>
+  <div class="timeline-track">${chips}</div>
+</section>`;
+}
+
 function buildMapScript(points: MapPoint[], assetPrefix = "assets/images"): string {
   const data = JSON.stringify(points);
+  const tileUrl = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+  const tileAttr =
+    "&copy; OpenStreetMap &copy; CARTO";
+
   return `
 (function () {
   var points = ${data};
@@ -633,43 +725,60 @@ function buildMapScript(points: MapPoint[], assetPrefix = "assets/images"): stri
   });
 
   var map = L.map("map", { scrollWheelZoom: true, zoomControl: true });
+  L.tileLayer("${tileUrl}", {
+    attribution: "${tileAttr}",
+    subdomains: "abcd",
+    maxZoom: 20
+  }).addTo(map);
+
   var flightOut = points.find(function (p) { return p.kind === "flight-out"; });
   var flightIn = points.find(function (p) { return p.kind === "flight-in"; });
-  var latLngs = points.filter(function (p) { return p.kind === "photo"; }).map(function (p) { return [p.lat, p.lng]; });
+  var photoPoints = points.filter(function (p) { return p.kind === "photo"; });
+  var latLngs = photoPoints.map(function (p) { return [p.lat, p.lng]; });
   var bounds = L.latLngBounds(points.map(function (p) { return [p.lat, p.lng]; }));
-  map.fitBounds(bounds.pad(0.15));
+  map.fitBounds(bounds.pad(0.18));
 
   if (latLngs.length > 1) {
-    L.polyline(latLngs, { color: "#0d9488", weight: 3, opacity: 0.85 }).addTo(map);
+    L.polyline(latLngs, { color: "#2dd4bf", weight: 4, opacity: 0.9, lineJoin: "round" }).addTo(map);
   }
 
   if (flightOut && flightIn) {
     L.polyline(
       [[flightOut.lat, flightOut.lng], [flightIn.lat, flightIn.lng]],
-      { color: "#6366f1", weight: 3, opacity: 0.85, dashArray: "10 8" }
+      { color: "#818cf8", weight: 3, opacity: 0.85, dashArray: "10 8" }
     ).addTo(map);
   }
 
-  points.forEach(function (p, i) {
+  var photoIndex = 0;
+  points.forEach(function (p) {
     var marker;
-    if (p.emoji) {
-      var size = (p.kind === "flight-out" || p.kind === "flight-in") ? "28" : "22";
+    if (p.kind === "photo") {
+      photoIndex += 1;
       var icon = L.divIcon({
-        html: '<div style="font-size:' + size + 'px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))">' + p.emoji + '</div>',
+        html: '<div class="route-pin">' + photoIndex + '</div>',
+        className: "route-pin-wrap",
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+      marker = L.marker([p.lat, p.lng], { icon: icon }).addTo(map);
+    } else if (p.emoji) {
+      var size = (p.kind === "flight-out" || p.kind === "flight-in") ? "28" : "24";
+      var emojiIcon = L.divIcon({
+        html: '<div style="font-size:' + size + 'px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">' + p.emoji + '</div>',
         className: "",
         iconSize: [0, 0],
         iconAnchor: [14, 14]
       });
-      marker = L.marker([p.lat, p.lng], { icon: icon }).addTo(map);
+      marker = L.marker([p.lat, p.lng], { icon: emojiIcon }).addTo(map);
     } else {
       marker = L.marker([p.lat, p.lng]).addTo(map);
     }
     var popup = "<strong>" + escapeHtml(p.label) + "</strong>";
     if (p.photoPath) {
-      popup += '<br><img src="' + escapeHtml(p.photoPath) + '" alt="" style="max-width:180px;margin-top:8px;border-radius:6px">';
+      popup += '<br><img src="' + escapeHtml(p.photoPath) + '" alt="" style="max-width:220px;margin-top:8px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.3)">';
     }
-    popup += '<br><small>' + new Date(p.date).toLocaleString("es-ES") + "</small>";
-    marker.bindPopup(popup);
+    popup += '<br><small style="color:#78716c">' + new Date(p.date).toLocaleString("es-ES") + "</small>";
+    marker.bindPopup(popup, { maxWidth: 260 });
   });
 
   function escapeHtml(s) {
@@ -681,17 +790,20 @@ function buildMapScript(points: MapPoint[], assetPrefix = "assets/images"): stri
 
 export function buildExportHtml(ctx: ExportContext): string {
   const { travel, users, photos, places = [], template } = ctx;
-  const mapPoints = mergeMapPoints(photos, places);
   const markdown = travel.journalMarkdown ?? buildFallbackMarkdown(travel, users, photos);
+  const mapPoints = mergeMapPoints(photos, places);
   const urlToLocal = new Map(photos.map((p) => [p.url, p.localPath]));
   const rawHtml = markdownToHtml(rewriteMarkdownImagePaths(markdown, urlToLocal));
   const contentHtml =
     template === "editorial-clean" ? rawHtml : enhanceArticleHtml(rawHtml);
   const dateRange = formatDateRange(travel.startDate, travel.endDate);
   const hasMap = mapPoints.length > 0;
-  const coverPhoto = pickCoverPhoto(photos);
   const isVisual = template === "visual-journey";
   const isInteractive = template !== "editorial-clean";
+  const timelineBlock =
+    isVisual && !hasMap ? buildDayTimelineSection(markdown, photos) : "";
+  const showTimelineNav = timelineBlock.length > 0;
+  const coverPhoto = pickCoverPhoto(photos);
 
   const heroStyle = coverPhoto
     ? `background-image: linear-gradient(to top, rgba(12,10,9,.88), rgba(12,10,9,.25)), url('${coverPhoto.localPath}');`
@@ -711,7 +823,7 @@ export function buildExportHtml(ctx: ExportContext): string {
       </div>
     </header>
     <nav class="section-nav">
-      ${hasMap ? '<a href="#mapa">Mapa</a>' : ""}
+      ${hasMap ? '<a href="#mapa">Mapa</a>' : showTimelineNav ? '<a href="#cronologia">Cronología</a>' : ""}
       <a href="#historia">Historia</a>
       <a href="#galeria">Galería</a>
     </nav>`
@@ -722,10 +834,18 @@ export function buildExportHtml(ctx: ExportContext): string {
 
   const mapBlock = hasMap
     ? `<section class="map-section reveal" id="mapa">
-      <h2>Recorrido</h2>
-      <div id="map"></div>
+      <div class="map-section-inner">
+        <h2>Mapa del viaje</h2>
+        <p class="map-lead">Ruta cronológica, lugares marcados y vuelos</p>
+        <div class="map-legend">
+          <span><i class="legend-line"></i> Ruta fotos</span>
+          <span><i class="legend-dash"></i> Vuelo ida/vuelta</span>
+          <span>📍 Lugares</span>
+        </div>
+        <div id="map"></div>
+      </div>
     </section>`
-    : "";
+    : timelineBlock;
 
   const galleryBlock = isVisual ? buildGallerySection(photos) : "";
   const storyAnchor = isVisual ? ' id="historia"' : "";
@@ -742,7 +862,7 @@ export function buildExportHtml(ctx: ExportContext): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(travel.title)} — TravelToBlog</title>
-  <link rel="stylesheet" href="assets/leaflet.css">
+  ${hasMap ? '<link rel="stylesheet" href="assets/leaflet.css">' : ""}
   <style>${templateStyles(template)}</style>
 </head>
 <body>
