@@ -13,6 +13,7 @@ import type { FlightLegPhoto } from "@/lib/flights";
 import { formatFlightDate, resolveFlightLegs } from "@/lib/flights";
 import { createLocalId } from "@/lib/utils";
 import SecureLocationHint from "@/components/SecureLocationHint";
+import EmptyMemoryState from "@/components/EmptyMemoryState";
 import NoteForm from "@/components/NoteForm";
 import EditableNote from "@/components/EditableNote";
 import { findNearby, formatDistanceM, NEARBY_THRESHOLD_M } from "@/lib/geo";
@@ -54,6 +55,7 @@ interface TravelPlacesPanelProps {
   focusPlaceId?: string | null;
   onOpenPhoto?: (photoId: string) => void;
   onOpenFotosTab?: () => void;
+  onAddPlace?: () => void;
 }
 
 interface DraftPlace {
@@ -74,6 +76,7 @@ export default function TravelPlacesPanel({
   focusPlaceId = null,
   onOpenPhoto,
   onOpenFotosTab,
+  onAddPlace,
 }: TravelPlacesPanelProps) {
   const [addMode, setAddMode] = useState(false);
   const [pickOnMap, setPickOnMap] = useState(true);
@@ -636,9 +639,12 @@ export default function TravelPlacesPanel({
       )}
 
       {places.length === 0 && !draft && (
-        <p className="text-center text-sm text-slate-500">
-          Aún no hay lugares marcados. Pulsa «Marcar lugar» y usa «Mi ubicación» o toca el mapa.
-        </p>
+        <EmptyMemoryState
+          title="Aún no hay lugares"
+          description="Marca hoteles, restaurantes o miradores en el mapa para enriquecer la crónica."
+          actionLabel="Marcar lugar"
+          onAction={onAddPlace}
+        />
       )}
     </div>
   );

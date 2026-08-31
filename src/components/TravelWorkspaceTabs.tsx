@@ -4,6 +4,13 @@ import { useState } from "react";
 
 export type TravelTab = "photos" | "places" | "days" | "trip";
 
+export interface TravelTabCounts {
+  photos?: number;
+  places?: number;
+  days?: number;
+  trip?: number;
+}
+
 interface TravelWorkspaceTabsProps {
   photosContent: React.ReactNode;
   placesContent: React.ReactNode;
@@ -14,14 +21,21 @@ interface TravelWorkspaceTabsProps {
   /** Controlled tab (deep-links / Añadir recuerdo). */
   activeTab?: TravelTab;
   onTabChange?: (tab: TravelTab) => void;
+  /** Optional counts shown as «Fotos (12)». */
+  tabCounts?: TravelTabCounts;
 }
 
-const TABS: { id: TravelTab; label: string }[] = [
+const TAB_BASE: { id: TravelTab; label: string }[] = [
   { id: "photos", label: "Fotos" },
   { id: "places", label: "Lugares" },
   { id: "days", label: "Días" },
   { id: "trip", label: "Viaje" },
 ];
+
+function tabLabel(base: string, count?: number): string {
+  if (count == null) return base;
+  return `${base} (${count})`;
+}
 
 export default function TravelWorkspaceTabs({
   photosContent,
@@ -31,6 +45,7 @@ export default function TravelWorkspaceTabs({
   initialTab = "photos",
   activeTab: controlledTab,
   onTabChange,
+  tabCounts,
 }: TravelWorkspaceTabsProps) {
   const isControlled = controlledTab != null;
   const [uncontrolledTab, setUncontrolledTab] = useState<TravelTab>(initialTab);
@@ -57,7 +72,7 @@ export default function TravelWorkspaceTabs({
         aria-label="Secciones del viaje"
         className="flex gap-1 rounded-xl bg-slate-100 p-1"
       >
-        {TABS.map((tab) => (
+        {TAB_BASE.map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -70,7 +85,7 @@ export default function TravelWorkspaceTabs({
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            {tab.label}
+            {tabLabel(tab.label, tabCounts?.[tab.id])}
           </button>
         ))}
       </div>

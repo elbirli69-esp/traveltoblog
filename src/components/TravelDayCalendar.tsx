@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import EditableNote from "@/components/EditableNote";
+import EmptyMemoryState from "@/components/EmptyMemoryState";
 import NoteForm from "@/components/NoteForm";
 import {
   addDaysToKey,
@@ -44,6 +45,7 @@ interface TravelDayCalendarProps {
   focusDate?: string | null;
   /** Increment to scroll/focus the day note form */
   focusNoteSignal?: number;
+  onAddDayNote?: (dateKey: string) => void;
 }
 
 export default function TravelDayCalendar({
@@ -56,6 +58,7 @@ export default function TravelDayCalendar({
   onNoteCreated,
   focusDate = null,
   focusNoteSignal = 0,
+  onAddDayNote,
 }: TravelDayCalendarProps) {
   const range = useMemo(
     () =>
@@ -302,9 +305,16 @@ export default function TravelDayCalendar({
             ))}
           </ul>
         ) : (
-          <p className="mb-5 text-sm text-slate-500">
-            Aún no hay comentarios para este día.
-          </p>
+          <div className="mb-5">
+            <EmptyMemoryState
+              title="Sin nota para este día"
+              description="Resume cómo fue el día; la crónica lo usará en el capítulo correspondiente."
+              actionLabel="Escribir nota del día"
+              onAction={
+                onAddDayNote ? () => onAddDayNote(activeDate) : undefined
+              }
+            />
+          </div>
         )}
 
         <div
