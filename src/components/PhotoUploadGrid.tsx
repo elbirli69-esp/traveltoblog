@@ -11,6 +11,10 @@ import { createPhotoPreviewUrl } from "@/lib/photo-preview";
 import { createLocalId } from "@/lib/utils";
 import type { ParsedPhoto, TravelDateRange } from "@/types";
 
+/** Android photo picker strips GPS when accept="image/*". Use explicit types instead. */
+const PHOTO_INPUT_ACCEPT =
+  ".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif";
+
 interface PhotoUploadGridProps {
   travelId: string;
   userId: string;
@@ -265,7 +269,7 @@ export default function PhotoUploadGrid({
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          accept={PHOTO_INPUT_ACCEPT}
           multiple
           className="hidden"
           onChange={handleFileSelect}
@@ -289,6 +293,10 @@ export default function PhotoUploadGrid({
         </span>
         <span className="mt-1 text-xs text-teal-600">
           También puedes compartir desde la galería del móvil a TravelToBlog
+        </span>
+        <span className="mt-2 max-w-sm text-center text-[11px] text-slate-500">
+          Si no aparece la ubicación GPS, en Android prueba compartir la foto a la app o elegir
+          archivos con el explorador (no el selector rápido de fotos).
         </span>
       </label>
 
@@ -365,6 +373,9 @@ export default function PhotoUploadGrid({
                       {photo.exif.latitude.toFixed(4)},{" "}
                       {photo.exif.longitude?.toFixed(4)}
                     </p>
+                  )}
+                  {photo.exif.latitude == null && (
+                    <p className="text-[10px] font-medium text-amber-200">Sin GPS en archivo</p>
                   )}
                   {photo.outOfRange && (
                     <p className="text-[10px] font-medium text-amber-300">

@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
 import path from "path";
-import { extractExifFromBuffer, mergeExifMetadata } from "@/lib/exif";
-import { normalizeImageForStorage } from "@/lib/photo-storage";
+import { preparePhotoForStorage } from "@/lib/photo-upload";
 import { prisma } from "@/lib/prisma";
 
 interface PhotoMeta {
@@ -31,44 +29,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No hay fotos para subir" }, { status: 400 });
     }
 
-    const uploadDir = path.join(process.cwd(), "public", "uploads", travelId);
-    await mkdir(uploadDir, { recursive: true });
-
     const created = [];
 
     for (const meta of metadata) {
       const file = formData.get(`file_${meta.localId}`) as File | null;
       if (!file) continue;
 
-      let ext = path.extname(file.name) || ".jpg";
-      let buffer: Buffer = Buffer.from(await file.arrayBuffer());
-      const normalized = await normalizeImageForStorage(buffer, ext);
-      buffer = Buffer.from(normalized.buffer);
-      ext = normalized.ext;
-
-      const filename = `${meta.localId}${ext}`;
-      const filepath = path.join(uploadDir, filename);
-      await writeFile(filepath, buffer);
-
-      const fileExif = await extractExifFromBuffer(buffer);
-      const exif = mergeExifMetadata(
+      const ext = path.extname(file.name) || ".jpg";
+      const originalBuffer = Buffer.from(await file.arrayBuffer());
+      const prepared = await preparePhotoForStorage(
+        travelId,
+        meta.localId,
+        originalBuffer,
+        ext,
         {
           dateTime: meta.exifDateTime ? new Date(meta.exifDateTime) : null,
           latitude: meta.latitude,
           longitude: meta.longitude,
-        },
-        fileExif
+        }
       );
 
       const photo = await prisma.photo.create({
         data: {
           travelId,
           userId,
-          filename,
-          url: `/uploads/${travelId}/${filename}`,
-          exifDateTime: exif.dateTime,
-          latitude: exif.latitude,
-          longitude: exif.longitude,
+          filename: prepared.filename,
+          url: `/uploads/${travelId}/${prepared.filename}`,
+          exifDateTime: prepared.exif.dateTime,
+          latitude: prepared.exif.latitude,
+          longitude: prepared.exif.longitude,
           selected: meta.selected,
           isTransportStart: meta.isTransportStart,
           isTransportEnd: meta.isTransportEnd,
@@ -81,7 +70,7 @@ export async function POST(request: NextRequest) {
           where: { id: travelId },
           data: {
             startPhotoId: photo.id,
-            startDate: exif.dateTime ?? undefined,
+            startDate: prepared.exif.dateTime ?? undefined,
           },
         });
       }
@@ -91,7 +80,7 @@ export async function POST(request: NextRequest) {
           where: { id: travelId },
           data: {
             endPhotoId: photo.id,
-            endDate: exif.dateTime ?? undefined,
+            endDate: prepared.exif.dateTime ?? undefined,
           },
         });
       }

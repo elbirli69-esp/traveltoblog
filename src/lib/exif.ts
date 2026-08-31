@@ -34,25 +34,44 @@ function parseExifDate(rawDate: unknown): Date | null {
 
 async function readGps(source: ExifSource): Promise<{ latitude: number; longitude: number } | null> {
   const input = await toArrayBuffer(source);
-  const direct = await exifr.gps(input).catch(() => null);
-  if (direct && typeof direct.latitude === "number" && typeof direct.longitude === "number") {
-    return { latitude: direct.latitude, longitude: direct.longitude };
+
+  const strategies = [
+    () => exifr.gps(input),
+    () =>
+      exifr.parse(input, {
+        gps: true,
+        xmp: true,
+        exif: true,
+        reviveValues: true,
+      }),
+    () =>
+      exifr.parse(input, {
+        pick: ["latitude", "longitude", "GPSLatitude", "GPSLongitude"],
+        gps: true,
+        reviveValues: true,
+      }),
+  ];
+
+  for (const strategy of strategies) {
+    const result = await strategy().catch(() => null);
+    const coords = normalizeGpsResult(result);
+    if (coords) return coords;
   }
 
-  const parsed = await exifr
-    .parse(input, {
-      gps: true,
-      pick: ["latitude", "longitude", "GPSLatitude", "GPSLongitude"],
-      reviveValues: true,
-    })
-    .catch(() => null);
+  return null;
+}
 
-  if (
-    parsed &&
-    typeof parsed.latitude === "number" &&
-    typeof parsed.longitude === "number"
-  ) {
-    return { latitude: parsed.latitude, longitude: parsed.longitude };
+function normalizeGpsResult(
+  result: unknown
+): { latitude: number; longitude: number } | null {
+  if (!result || typeof result !== "object") return null;
+
+  const data = result as Record<string, unknown>;
+  const lat = data.latitude ?? data.GPSLatitude;
+  const lng = data.longitude ?? data.GPSLongitude;
+
+  if (typeof lat === "number" && typeof lng === "number" && (lat !== 0 || lng !== 0)) {
+    return { latitude: lat, longitude: lng };
   }
 
   return null;
