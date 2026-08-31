@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PlaceType } from "@prisma/client";
 import {
   PLACE_TYPE_LABELS,
@@ -15,6 +15,7 @@ import { createLocalId } from "@/lib/utils";
 import SecureLocationHint from "@/components/SecureLocationHint";
 import NoteForm from "@/components/NoteForm";
 import EditableNote from "@/components/EditableNote";
+import { findNearby, formatDistanceM, NEARBY_THRESHOLD_M } from "@/lib/geo";
 
 const TravelPlacesMap = dynamic(() => import("@/components/TravelPlacesMap"), {
   ssr: false,
@@ -49,6 +50,10 @@ interface TravelPlacesPanelProps {
   onChanged?: () => void;
   /** Increment to enter “Marcar lugar” from Añadir recuerdo / ?add=place */
   startAddSignal?: number;
+  /** Select this place (mapa / sinergias desde fotos). */
+  focusPlaceId?: string | null;
+  onOpenPhoto?: (photoId: string) => void;
+  onOpenFotosTab?: () => void;
 }
 
 interface DraftPlace {
@@ -66,11 +71,15 @@ export default function TravelPlacesPanel({
   photos,
   onChanged,
   startAddSignal = 0,
+  focusPlaceId = null,
+  onOpenPhoto,
+  onOpenFotosTab,
 }: TravelPlacesPanelProps) {
   const [addMode, setAddMode] = useState(false);
   const [pickOnMap, setPickOnMap] = useState(true);
   const [locateSignal, setLocateSignal] = useState(0);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+  const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftPlace | null>(null);
   const [editForm, setEditForm] = useState<{
     id: string;
@@ -90,8 +99,35 @@ export default function TravelPlacesPanel({
     setSelectedPlaceId(null);
   }, [startAddSignal]);
 
+  useEffect(() => {
+    if (!focusPlaceId) return;
+    setAddMode(false);
+    setDraft(null);
+    setEditForm(null);
+    setSelectedPlaceId(focusPlaceId);
+  }, [focusPlaceId]);
+
   const selectedPlace = places.find((p) => p.id === selectedPlaceId) ?? null;
   const { outbound, inbound } = resolveFlightLegs(photos);
+
+  const nearbyPhotosForSelected = useMemo(() => {
+    if (!selectedPlace) return [];
+    const withGps = photos.filter(
+      (p) =>
+        p.latitude != null &&
+        p.longitude != null &&
+        !p.isTransportStart &&
+        !p.isTransportEnd
+    ) as Array<FlightLegPhoto & { latitude: number; longitude: number }>;
+    return findNearby(
+      {
+        latitude: selectedPlace.latitude,
+        longitude: selectedPlace.longitude,
+      },
+      withGps,
+      NEARBY_THRESHOLD_M
+    );
+  }, [selectedPlace, photos]);
 
   const placeNotes = (place: TravelPlace) => {
     if (place.notes && place.notes.length > 0) return place.notes;
@@ -323,9 +359,18 @@ export default function TravelPlacesPanel({
       <section className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
         <h3 className="text-sm font-semibold text-indigo-900">Vuelos ida / vuelta</h3>
         <p className="mt-1 text-xs text-indigo-700/80">
-          Marca fotos como Ida o Vuelta en la pestaña Fotos. Si tienen GPS de aeropuerto, aparecen
-          en el mapa con línea discontinua entre ambos.
+          Derivado de fotos marcadas como Ida o Vuelta en la pestaña Fotos (no se crean aquí).
+          Si tienen GPS de aeropuerto, aparecen en el mapa con línea discontinua.
         </p>
+        {onOpenFotosTab && (
+          <button
+            type="button"
+            onClick={onOpenFotosTab}
+            className="mt-2 text-xs font-semibold text-indigo-700 underline-offset-2 hover:underline"
+          >
+            Ir a Fotos para marcar Ida/Vuelta →
+          </button>
+        )}
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <FlightLegCard leg={outbound} emptyLabel="Sin foto de ida marcada" />
           <FlightLegCard leg={inbound} emptyLabel="Sin foto de vuelta marcada" />
@@ -336,12 +381,21 @@ export default function TravelPlacesPanel({
         places={places}
         photos={photos}
         selectedPlaceId={selectedPlaceId}
+        selectedPhotoId={selectedPhotoId}
         addMode={addMode}
         clickToPlace={addMode && pickOnMap}
         locateSignal={locateSignal}
         draftPin={draft ? { lat: draft.lat, lng: draft.lng } : null}
         onMapClick={handleMapClick}
-        onPlaceClick={setSelectedPlaceId}
+        onPlaceClick={(id) => {
+          setSelectedPlaceId(id);
+          setSelectedPhotoId(null);
+          setEditForm(null);
+        }}
+        onPhotoClick={(id) => {
+          setSelectedPhotoId(id);
+          onOpenPhoto?.(id);
+        }}
       />
 
       {draft && (
@@ -550,6 +604,34 @@ export default function TravelPlacesPanel({
             placeId={selectedPlace.id}
             onCreated={onChanged}
           />
+          {nearbyPhotosForSelected.length > 0 && (
+            <div className="border-t border-slate-100 pt-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Fotos cerca ({NEARBY_THRESHOLD_M} m)
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {nearbyPhotosForSelected.slice(0, 6).map((photo) => (
+                  <button
+                    key={photo.id}
+                    type="button"
+                    onClick={() => onOpenPhoto?.(photo.id)}
+                    className="group relative overflow-hidden rounded-lg ring-1 ring-slate-200"
+                    title={`${formatDistanceM(photo.distanceM)}`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photo.url}
+                      alt=""
+                      className="h-14 w-14 object-cover transition group-hover:opacity-90"
+                    />
+                    <span className="absolute bottom-0 inset-x-0 bg-black/50 px-0.5 text-center text-[9px] text-white">
+                      {formatDistanceM(photo.distanceM)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

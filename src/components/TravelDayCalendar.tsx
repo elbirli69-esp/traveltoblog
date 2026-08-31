@@ -24,6 +24,12 @@ interface DayPhoto {
   url: string;
   exifDateTime: string | null;
   user: { alias: string };
+  notes?: {
+    id: string;
+    text: string;
+    type: string;
+    user: { alias: string };
+  }[];
 }
 
 interface TravelDayCalendarProps {
@@ -63,6 +69,7 @@ export default function TravelDayCalendar({
 
   const initialDate = clampDateKey(todayKey(), range.startKey, range.endKey);
   const [selectedDate, setSelectedDate] = useState(initialDate);
+  const [photoNoteId, setPhotoNoteId] = useState<string | null>(null);
   const noteFormRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -201,20 +208,78 @@ export default function TravelDayCalendar({
               Fotos del día
             </p>
             <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-              {photosForDay.map((photo) => (
-                <div key={photo.id} className="overflow-hidden rounded-lg">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photo.url}
-                    alt=""
-                    className="aspect-square w-full object-cover"
-                  />
-                  <p className="truncate px-0.5 text-[9px] text-slate-500">
-                    {photo.user.alias}
-                  </p>
-                </div>
-              ))}
+              {photosForDay.map((photo) => {
+                const isOpen = photoNoteId === photo.id;
+                const photoNotes =
+                  photo.notes?.filter((n) => n.type === "PHOTO") ?? [];
+                return (
+                  <div key={photo.id} className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPhotoNoteId(isOpen ? null : photo.id)
+                      }
+                      className={`overflow-hidden rounded-lg ring-offset-1 ${
+                        isOpen ? "ring-2 ring-teal-500" : "hover:opacity-90"
+                      }`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photo.url}
+                        alt=""
+                        className="aspect-square w-full object-cover"
+                      />
+                    </button>
+                    <p className="truncate px-0.5 text-[9px] text-slate-500">
+                      {photo.user.alias}
+                      {photoNotes.length > 0 ? ` · ${photoNotes.length}` : ""}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
+
+            {photoNoteId &&
+              (() => {
+                const photo = photosForDay.find((p) => p.id === photoNoteId);
+                if (!photo) return null;
+                const photoNotes =
+                  photo.notes?.filter((n) => n.type === "PHOTO") ?? [];
+                return (
+                  <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50/40 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-semibold text-teal-900">
+                        Nota para esta foto
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setPhotoNoteId(null)}
+                        className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                    {photoNotes.length > 0 && (
+                      <ul className="space-y-2">
+                        {photoNotes.map((note) => (
+                          <EditableNote
+                            key={note.id}
+                            note={note}
+                            onChanged={onNoteCreated}
+                          />
+                        ))}
+                      </ul>
+                    )}
+                    <NoteForm
+                      travelId={travelId}
+                      userId={userId}
+                      photoId={photo.id}
+                      type="PHOTO"
+                      onCreated={() => onNoteCreated?.()}
+                    />
+                  </div>
+                );
+              })()}
           </div>
         )}
 

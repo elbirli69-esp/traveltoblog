@@ -33,6 +33,7 @@ interface TravelPlacesMapProps {
   places: MapPlace[];
   photos: FlightLegPhoto[];
   selectedPlaceId: string | null;
+  selectedPhotoId?: string | null;
   addMode: boolean;
   /** When true, map clicks place the draft pin (DogTrainer "Elegir en mapa"). */
   clickToPlace?: boolean;
@@ -41,24 +42,33 @@ interface TravelPlacesMapProps {
   draftPin: { lat: number; lng: number } | null;
   onMapClick: (lat: number, lng: number) => void;
   onPlaceClick: (id: string) => void;
+  onPhotoClick?: (id: string) => void;
 }
 
 export default function TravelPlacesMap({
   places,
   photos,
   selectedPlaceId,
+  selectedPhotoId = null,
   addMode,
   clickToPlace = false,
   locateSignal = 0,
   draftPin,
   onMapClick,
   onPlaceClick,
+  onPhotoClick,
 }: TravelPlacesMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
   const markersRef = useRef<Marker[]>([]);
   const geolocateRef = useRef<GeolocateControl | null>(null);
-  const handlersRef = useRef({ onMapClick, onPlaceClick, addMode, clickToPlace });
+  const handlersRef = useRef({
+    onMapClick,
+    onPlaceClick,
+    onPhotoClick,
+    addMode,
+    clickToPlace,
+  });
   const skipAutoFitRef = useRef(false);
   const placesCountRef = useRef(places.length);
   const [mapReady, setMapReady] = useState(false);
@@ -66,7 +76,13 @@ export default function TravelPlacesMap({
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
 
-  handlersRef.current = { onMapClick, onPlaceClick, addMode, clickToPlace };
+  handlersRef.current = {
+    onMapClick,
+    onPlaceClick,
+    onPhotoClick,
+    addMode,
+    clickToPlace,
+  };
 
   const { outbound, inbound } = resolveFlightLegs(photos);
   const routePhotos = photoGpsPoints(photos);
@@ -274,15 +290,26 @@ export default function TravelPlacesMap({
 
       for (const photo of routePhotos) {
         bounds.push([photo.longitude!, photo.latitude!]);
+        const isSelected = photo.id === selectedPhotoId;
         const el = document.createElement("div");
-        el.style.width = "8px";
-        el.style.height = "8px";
+        el.style.width = isSelected ? "14px" : "10px";
+        el.style.height = isSelected ? "14px" : "10px";
         el.style.borderRadius = "50%";
-        el.style.background = "#cbd5e1";
-        el.style.border = "1px solid #94a3b8";
+        el.style.background = isSelected ? "#0d9488" : "#94a3b8";
+        el.style.border = isSelected ? "2px solid #99f6e4" : "1px solid #64748b";
+        el.style.cursor = "pointer";
+        el.title = "Ver foto";
+        el.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          handlersRef.current.onPhotoClick?.(photo.id);
+        });
+        const popup = new mapboxgl.Popup({ offset: 12, closeButton: false }).setHTML(
+          `<div style="max-width:140px"><img src="${escapeHtml(photo.url)}" alt="" style="width:100%;border-radius:6px;display:block"/><small>${escapeHtml(photo.user.alias)}</small></div>`
+        );
         markersRef.current.push(
           new mapboxgl.Marker({ element: el })
             .setLngLat([photo.longitude!, photo.latitude!])
+            .setPopup(popup)
             .addTo(map)
         );
       }
@@ -357,6 +384,7 @@ export default function TravelPlacesMap({
     places,
     photos,
     selectedPlaceId,
+    selectedPhotoId,
     draftPin,
     addMode,
     outbound,
@@ -432,6 +460,12 @@ export default function TravelPlacesMap({
           <span className="flex items-center gap-1 text-indigo-600">
             <span className="inline-block h-0.5 w-4 border-t-2 border-dashed border-indigo-500" />
             Trayecto aéreo
+          </span>
+        )}
+        {routePhotos.length > 0 && (
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2 w-2 rounded-full bg-slate-400" />
+            Fotos GPS (toca)
           </span>
         )}
       </div>

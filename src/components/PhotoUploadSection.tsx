@@ -88,20 +88,11 @@ export default function PhotoUploadSection({
   );
 
   const handleTransportMarked = useCallback(
-    async (photoId: string, type: "start" | "end", exifDate: Date | null) => {
-      if (!navigator.onLine) return;
-
-      await fetch(`/api/travels/${travelId}/boundaries`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          photoLocalId: photoId,
-          type,
-          exifDateTime: exifDate?.toISOString() ?? null,
-        }),
-      });
+    async (_photoId: string, _type: "start" | "end", _exifDate: Date | null) => {
+      // Ida/Vuelta en la cola de subida solo se guarda localmente hasta Confirmar;
+      // POST /api/photos aplica las flags. Tras subir, edítalas en la galería.
     },
-    [travelId]
+    []
   );
 
   return (
