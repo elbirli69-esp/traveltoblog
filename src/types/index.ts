@@ -46,6 +46,18 @@ export interface PendingNote {
   createdAt: string;
 }
 
+export interface PendingPlace {
+  localId: string;
+  travelId: string;
+  userId: string;
+  name: string;
+  type: string;
+  latitude: number;
+  longitude: number;
+  comment: string | null;
+  createdAt: string;
+}
+
 export interface JournalChronologyEntry {
   fecha_hora: string;
   autor: string;

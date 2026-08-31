@@ -13,6 +13,7 @@ import ExportPdfPanel from "@/components/ExportPdfPanel";
 import TravelWorkspaceTabs from "@/components/TravelWorkspaceTabs";
 import TravelDayCalendar from "@/components/TravelDayCalendar";
 import TravelPlacesPanel from "@/components/TravelPlacesPanel";
+import TravelCollaborationBar from "@/components/TravelCollaborationBar";
 import type { PlaceType } from "@prisma/client";
 import { getSessionFromStorage } from "@/lib/utils";
 import type { TravelDateRange } from "@/types";
@@ -50,6 +51,7 @@ interface TravelData {
     user: { alias: string };
   }[];
   journalMarkdown: string | null;
+  updatedAt: string;
   places: {
     id: string;
     name: string;
@@ -134,6 +136,13 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
         travelId={travelId}
         userId={session.userId}
         onSynced={() => setRefreshKey((k) => k + 1)}
+      />
+
+      <TravelCollaborationBar
+        travelId={travelId}
+        participantCount={travel.users.length}
+        lastUpdated={travel.updatedAt}
+        onRefresh={() => setRefreshKey((k) => k + 1)}
       />
 
       <SharePanel shareCode={travel.shareCode} title={travel.title} />
