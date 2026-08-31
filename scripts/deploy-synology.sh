@@ -184,6 +184,9 @@ tar \
   node_modules/prisma \
   | "${SSH_CMD[@]}" "$SSH_TARGET" "tar xzf - -C ${REMOTE_DIR}"
 
+# Manifest ahora es dinámico (src/app/manifest.ts); borrar estático obsoleto en el NAS
+"${SSH_CMD[@]}" "$SSH_TARGET" "rm -f ${REMOTE_DIR}/public/manifest.webmanifest"
+
 echo "→ Detectando IP Tailscale del NAS (URL pública)…"
 TAILSCALE_IP="$("${SSH_CMD[@]}" "$SSH_TARGET" bash -s <<'TSIP'
 set -euo pipefail
