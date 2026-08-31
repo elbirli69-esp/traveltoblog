@@ -61,11 +61,14 @@ export function formatFlightDate(iso: string | null): string {
 }
 
 /** GPS reference points excluding transport legs (shown separately). */
-export function photoGpsPoints(
-  photos: { latitude: number | null; longitude: number | null; isTransportStart?: boolean; isTransportEnd?: boolean }[]
-) {
+export function photoGpsPoints<T extends {
+  latitude: number | null;
+  longitude: number | null;
+  isTransportStart?: boolean;
+  isTransportEnd?: boolean;
+}>(photos: T[]): Array<T & { latitude: number; longitude: number }> {
   return photos.filter(
-    (p) =>
+    (p): p is T & { latitude: number; longitude: number } =>
       p.latitude != null &&
       p.longitude != null &&
       !p.isTransportStart &&

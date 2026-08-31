@@ -24,6 +24,12 @@ interface DayPhoto {
   url: string;
   exifDateTime: string | null;
   user: { alias: string };
+  notes?: {
+    id: string;
+    text: string;
+    type: string;
+    user: { alias: string };
+  }[];
 }
 
 interface TravelDayCalendarProps {
@@ -63,6 +69,7 @@ export default function TravelDayCalendar({
 
   const initialDate = clampDateKey(todayKey(), range.startKey, range.endKey);
   const [selectedDate, setSelectedDate] = useState(initialDate);
+  const [photoNoteId, setPhotoNoteId] = useState<string | null>(null);
   const noteFormRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -200,21 +207,87 @@ export default function TravelDayCalendar({
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
               Fotos del día
             </p>
-            <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-              {photosForDay.map((photo) => (
-                <div key={photo.id} className="overflow-hidden rounded-lg">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photo.url}
-                    alt=""
-                    className="aspect-square w-full object-cover"
-                  />
-                  <p className="truncate px-0.5 text-[9px] text-slate-500">
-                    {photo.user.alias}
-                  </p>
-                </div>
-              ))}
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {photosForDay.map((photo) => {
+                const isOpen = photoNoteId === photo.id;
+                const photoNotes =
+                  photo.notes?.filter((n) => n.type === "PHOTO") ?? [];
+                return (
+                  <button
+                    key={photo.id}
+                    type="button"
+                    onClick={() =>
+                      setPhotoNoteId(isOpen ? null : photo.id)
+                    }
+                    className={`overflow-hidden rounded-xl border bg-white text-left transition ${
+                      isOpen
+                        ? "border-teal-400 ring-2 ring-teal-500/30"
+                        : "border-slate-200 hover:border-teal-300"
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photo.url}
+                      alt=""
+                      className="aspect-square w-full bg-slate-100 object-cover"
+                    />
+                    <div className="space-y-0.5 px-1.5 py-1.5">
+                      <p className="truncate text-[10px] font-medium text-slate-600">
+                        {photo.user.alias}
+                        {photoNotes.length > 0
+                          ? ` · ${photoNotes.length} nota${photoNotes.length !== 1 ? "s" : ""}`
+                          : ""}
+                      </p>
+                      <p className="text-[10px] font-semibold text-teal-700">
+                        {isOpen ? "Cerrar nota" : "Añadir nota"}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
+
+            {photoNoteId &&
+              (() => {
+                const photo = photosForDay.find((p) => p.id === photoNoteId);
+                if (!photo) return null;
+                const photoNotes =
+                  photo.notes?.filter((n) => n.type === "PHOTO") ?? [];
+                return (
+                  <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50/40 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-semibold text-teal-900">
+                        Nota para esta foto
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setPhotoNoteId(null)}
+                        className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                    {photoNotes.length > 0 && (
+                      <ul className="space-y-2">
+                        {photoNotes.map((note) => (
+                          <EditableNote
+                            key={note.id}
+                            note={note}
+                            onChanged={onNoteCreated}
+                          />
+                        ))}
+                      </ul>
+                    )}
+                    <NoteForm
+                      travelId={travelId}
+                      userId={userId}
+                      photoId={photo.id}
+                      type="PHOTO"
+                      onCreated={() => onNoteCreated?.()}
+                    />
+                  </div>
+                );
+              })()}
           </div>
         )}
 

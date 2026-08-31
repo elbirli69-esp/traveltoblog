@@ -108,6 +108,8 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   const [focusDayDate, setFocusDayDate] = useState<string | null>(null);
   const [dayNoteSignal, setDayNoteSignal] = useState(0);
   const [tripNoteSignal, setTripNoteSignal] = useState(0);
+  const [focusPhotoId, setFocusPhotoId] = useState<string | null>(null);
+  const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
   const deepLinkHandled = useRef<string | null>(null);
   const tripNoteRef = useRef<HTMLDivElement>(null);
 
@@ -312,6 +314,12 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 photos={travel.photos}
                 travelId={travelId}
                 userId={session.userId}
+                places={travel.places}
+                focusPhotoId={focusPhotoId}
+                onOpenPlace={(placeId) => {
+                  setFocusPlaceId(placeId);
+                  setActiveTab("places");
+                }}
                 onNoteCreated={() => setRefreshKey((k) => k + 1)}
               />
             </section>
@@ -341,6 +349,12 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
               photos={travel.photos}
               onChanged={() => setRefreshKey((k) => k + 1)}
               startAddSignal={placeAddSignal}
+              focusPlaceId={focusPlaceId}
+              onOpenFotosTab={() => setActiveTab("photos")}
+              onOpenPhoto={(photoId) => {
+                setFocusPhotoId(photoId);
+                setActiveTab("photos");
+              }}
             />
           </section>
         }
