@@ -3,6 +3,7 @@ import JSZip from "jszip";
 import path from "path";
 import { readFile } from "fs/promises";
 import type { Photo, Travel, User } from "@prisma/client";
+import { formatDateKey, isoToDateKey } from "@/lib/travel-dates";
 
 export type ExportTemplateId = "visual-journey" | "editorial-clean" | "dark-photo-journey";
 export type ExportFormat = "html" | "zip";
@@ -15,6 +16,15 @@ export interface MapPoint {
   date: string;
   emoji?: string;
   kind?: "photo" | "place" | "flight-out" | "flight-in";
+  dayKey?: string;
+  dayLabel?: string;
+}
+
+export interface ExportMapDayGroup {
+  id: string;
+  label: string;
+  bounds: [[number, number], [number, number]] | null;
+  photoCount: number;
 }
 
 export interface ExportPhoto {
@@ -97,14 +107,19 @@ export function buildPhotoRoutePoints(photos: ExportPhoto[]): MapPoint[] {
         new Date(a.exifDateTime ?? 0).getTime() -
         new Date(b.exifDateTime ?? 0).getTime()
     )
-    .map((p, i) => ({
-      lat: p.latitude!,
-      lng: p.longitude!,
-      label: `Foto ${i + 1} — ${p.alias}`,
-      photoPath: p.localPath,
-      date: (p.exifDateTime ?? new Date()).toISOString(),
-      kind: "photo" as const,
-    }));
+    .map((p, i) => {
+      const dayKey = p.exifDateTime ? isoToDateKey(p.exifDateTime.toISOString()) : undefined;
+      return {
+        lat: p.latitude!,
+        lng: p.longitude!,
+        label: `Foto ${i + 1} — ${p.alias}`,
+        photoPath: p.localPath,
+        date: (p.exifDateTime ?? new Date()).toISOString(),
+        kind: "photo" as const,
+        dayKey,
+        dayLabel: dayKey ? formatDateKey(dayKey) : undefined,
+      };
+    });
 }
 
 /** @deprecated Use buildPhotoRoutePoints — kept for tests/compatibility */
@@ -383,6 +398,79 @@ body {
 }
 .section-nav a:hover { color: var(--text); background: rgba(255,255,255,.06); }
 .wrap { max-width: 920px; margin: 0 auto; padding: 0 1.25rem 4rem; }
+.map-explorer {
+  margin: 0 calc(50% - 50vw);
+  width: 100vw;
+  max-width: 100vw;
+  padding: 2.5rem 1.25rem 1.5rem;
+  background: linear-gradient(180deg, rgba(28,25,23,.55) 0%, transparent 100%);
+}
+.map-explorer-header {
+  max-width: 1400px;
+  margin: 0 auto 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+}
+.map-explorer-header h2 {
+  margin: 0 0 .35rem;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.map-explorer-body {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) 1fr;
+  gap: 1rem;
+  min-height: min(78vh, 720px);
+}
+.map-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  max-height: min(78vh, 720px);
+  overflow-y: auto;
+  padding: .75rem;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.map-day-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .2rem;
+  width: 100%;
+  padding: .85rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: rgba(255,255,255,.03);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: background .2s, border-color .2s;
+}
+.map-day-item:hover { background: rgba(255,255,255,.06); }
+.map-day-item.active {
+  background: rgba(45,212,191,.12);
+  border-color: rgba(45,212,191,.35);
+}
+.map-day-label { font-weight: 600; font-size: .92rem; }
+.map-day-meta { font-size: .75rem; color: var(--muted); }
+.map-canvas {
+  height: min(78vh, 720px);
+  min-height: 400px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #292524;
+  border: 1px solid var(--border);
+  box-shadow: 0 25px 50px rgba(0,0,0,.3);
+}
 .map-section {
   margin: 2.5rem -1.25rem;
   padding: 0 1.25rem 1.5rem;
@@ -567,6 +655,23 @@ footer {
   border-top: 1px solid var(--border);
 }
 .leaflet-container { background: #292524 !important; font-family: inherit; }
+@media (max-width: 768px) {
+  .map-explorer-body {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+  .map-sidebar {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    max-height: none;
+  }
+  .map-day-item {
+    flex: 0 0 auto;
+    min-width: 140px;
+  }
+  .map-canvas { height: min(55vh, 480px); min-height: 320px; }
+}
 @media (max-width: 640px) {
   .hero { min-height: 60vh; }
   .gallery-grid { grid-template-columns: repeat(2, 1fr); }
@@ -706,15 +811,136 @@ function buildDayTimelineSection(markdown: string, photos: ExportPhoto[]): strin
 </section>`;
 }
 
-function buildMapScript(points: MapPoint[], assetPrefix = "assets/images"): string {
+function boundsFromPoints(pts: MapPoint[]): [[number, number], [number, number]] | null {
+  if (!pts.length) return null;
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let minLng = Infinity;
+  let maxLng = -Infinity;
+  for (const p of pts) {
+    minLat = Math.min(minLat, p.lat);
+    maxLat = Math.max(maxLat, p.lat);
+    minLng = Math.min(minLng, p.lng);
+    maxLng = Math.max(maxLng, p.lng);
+  }
+  return [
+    [minLat, minLng],
+    [maxLat, maxLng],
+  ];
+}
+
+export function buildMapDayGroups(points: MapPoint[]): ExportMapDayGroup[] {
+  const groups: ExportMapDayGroup[] = [];
+  const allBounds = boundsFromPoints(points);
+
+  groups.push({
+    id: "all",
+    label: "Todo el viaje",
+    bounds: allBounds,
+    photoCount: points.filter((p) => p.kind === "photo").length,
+  });
+
+  const dayKeys = [
+    ...new Set(points.filter((p) => p.dayKey).map((p) => p.dayKey as string)),
+  ].sort();
+
+  for (const dayKey of dayKeys) {
+    const dayPoints = points.filter((p) => p.dayKey === dayKey);
+    const label = dayPoints.find((p) => p.dayLabel)?.dayLabel ?? formatDateKey(dayKey);
+    groups.push({
+      id: dayKey,
+      label,
+      bounds: boundsFromPoints(dayPoints),
+      photoCount: dayPoints.filter((p) => p.kind === "photo").length,
+    });
+  }
+
+  const placePoints = points.filter((p) => p.kind === "place");
+  if (placePoints.length) {
+    groups.push({
+      id: "places",
+      label: "Lugares",
+      bounds: boundsFromPoints(placePoints),
+      photoCount: placePoints.length,
+    });
+  }
+
+  const flightPoints = points.filter((p) => p.kind === "flight-out" || p.kind === "flight-in");
+  if (flightPoints.length) {
+    groups.push({
+      id: "flights",
+      label: "Vuelos",
+      bounds: boundsFromPoints(flightPoints),
+      photoCount: flightPoints.length,
+    });
+  }
+
+  return groups;
+}
+
+function buildMapSidebarHtml(dayGroups: ExportMapDayGroup[]): string {
+  const items = dayGroups
+    .map(
+      (group, i) =>
+        `<button type="button" class="map-day-item${i === 0 ? " active" : ""}" data-day="${escapeHtml(group.id)}"><span class="map-day-label">${escapeHtml(group.label)}</span><span class="map-day-meta">${group.photoCount} punto${group.photoCount === 1 ? "" : "s"}</span></button>`
+    )
+    .join("");
+
+  return `<aside class="map-sidebar" aria-label="Días del viaje">${items}</aside>`;
+}
+
+function buildFullscreenMapSection(dayGroups: ExportMapDayGroup[]): string {
+  return `
+<section class="map-explorer reveal" id="mapa">
+  <div class="map-explorer-header">
+    <div>
+      <h2>Mapa del viaje</h2>
+      <p class="map-lead">Pulsa un día para hacer zoom en ese tramo del recorrido</p>
+    </div>
+    <div class="map-legend">
+      <span><i class="legend-line"></i> Ruta</span>
+      <span><i class="legend-dash"></i> Vuelos</span>
+      <span>📍 Lugares</span>
+    </div>
+  </div>
+  <div class="map-explorer-body">
+    ${buildMapSidebarHtml(dayGroups)}
+    <div id="map" class="map-canvas"></div>
+  </div>
+</section>`;
+}
+
+function buildCompactMapSection(): string {
+  return `
+<section class="map-section reveal" id="mapa">
+  <div class="map-section-inner">
+    <h2>Mapa del viaje</h2>
+    <p class="map-lead">Ruta cronológica, lugares marcados y vuelos</p>
+    <div class="map-legend">
+      <span><i class="legend-line"></i> Ruta fotos</span>
+      <span><i class="legend-dash"></i> Vuelo ida/vuelta</span>
+      <span>📍 Lugares</span>
+    </div>
+    <div id="map"></div>
+  </div>
+</section>`;
+}
+
+function buildMapScript(
+  points: MapPoint[],
+  dayGroups: ExportMapDayGroup[],
+  assetPrefix = "assets/images"
+): string {
   const data = JSON.stringify(points);
+  const groupsData = JSON.stringify(dayGroups);
   const tileUrl = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
-  const tileAttr =
-    "&copy; OpenStreetMap &copy; CARTO";
+  const tileAttr = "&copy; OpenStreetMap &copy; CARTO";
+  const dayColors = ["#2dd4bf", "#f59e0b", "#818cf8", "#f472b6", "#34d399", "#fb7185"];
 
   return `
 (function () {
   var points = ${data};
+  var dayGroups = ${groupsData};
   if (!points.length || typeof L === "undefined") return;
 
   delete L.Icon.Default.prototype._getIconUrl;
@@ -734,12 +960,27 @@ function buildMapScript(points: MapPoint[], assetPrefix = "assets/images"): stri
   var flightOut = points.find(function (p) { return p.kind === "flight-out"; });
   var flightIn = points.find(function (p) { return p.kind === "flight-in"; });
   var photoPoints = points.filter(function (p) { return p.kind === "photo"; });
-  var latLngs = photoPoints.map(function (p) { return [p.lat, p.lng]; });
   var bounds = L.latLngBounds(points.map(function (p) { return [p.lat, p.lng]; }));
   map.fitBounds(bounds.pad(0.18));
 
-  if (latLngs.length > 1) {
-    L.polyline(latLngs, { color: "#2dd4bf", weight: 4, opacity: 0.9, lineJoin: "round" }).addTo(map);
+  var dayColorIndex = {};
+  var colorIdx = 0;
+  photoPoints.forEach(function (p) {
+    if (p.dayKey && dayColorIndex[p.dayKey] === undefined) {
+      dayColorIndex[p.dayKey] = dayColors[colorIdx % dayColors.length];
+      colorIdx += 1;
+    }
+  });
+
+  Object.keys(dayColorIndex).forEach(function (dayKey) {
+    var seg = photoPoints.filter(function (p) { return p.dayKey === dayKey; }).map(function (p) { return [p.lat, p.lng]; });
+    if (seg.length > 1) {
+      L.polyline(seg, { color: dayColorIndex[dayKey], weight: 4, opacity: 0.92, lineJoin: "round" }).addTo(map);
+    }
+  });
+
+  if (photoPoints.length > 1 && Object.keys(dayColorIndex).length === 0) {
+    L.polyline(photoPoints.map(function (p) { return [p.lat, p.lng]; }), { color: "#2dd4bf", weight: 4, opacity: 0.9, lineJoin: "round" }).addTo(map);
   }
 
   if (flightOut && flightIn) {
@@ -750,17 +991,24 @@ function buildMapScript(points: MapPoint[], assetPrefix = "assets/images"): stri
   }
 
   var photoIndex = 0;
+  var markersByDay = {};
+
   points.forEach(function (p) {
     var marker;
     if (p.kind === "photo") {
       photoIndex += 1;
+      var pinColor = p.dayKey && dayColorIndex[p.dayKey] ? dayColorIndex[p.dayKey] : "#2dd4bf";
       var icon = L.divIcon({
-        html: '<div class="route-pin">' + photoIndex + '</div>',
+        html: '<div class="route-pin" style="background:linear-gradient(135deg,' + pinColor + ',#0d9488)">' + photoIndex + '</div>',
         className: "route-pin-wrap",
         iconSize: [28, 28],
         iconAnchor: [14, 14]
       });
       marker = L.marker([p.lat, p.lng], { icon: icon }).addTo(map);
+      if (p.dayKey) {
+        if (!markersByDay[p.dayKey]) markersByDay[p.dayKey] = [];
+        markersByDay[p.dayKey].push(marker);
+      }
     } else if (p.emoji) {
       var size = (p.kind === "flight-out" || p.kind === "flight-in") ? "28" : "24";
       var emojiIcon = L.divIcon({
@@ -779,6 +1027,22 @@ function buildMapScript(points: MapPoint[], assetPrefix = "assets/images"): stri
     }
     popup += '<br><small style="color:#78716c">' + new Date(p.date).toLocaleString("es-ES") + "</small>";
     marker.bindPopup(popup, { maxWidth: 260 });
+  });
+
+  function flyToGroup(group) {
+    if (!group || !group.bounds) return;
+    var b = L.latLngBounds(group.bounds);
+    map.flyToBounds(b, { padding: [52, 52], duration: 1.15, maxZoom: group.id === "all" ? 12 : 15 });
+  }
+
+  document.querySelectorAll(".map-day-item").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var dayId = btn.getAttribute("data-day");
+      document.querySelectorAll(".map-day-item").forEach(function (el) { el.classList.remove("active"); });
+      btn.classList.add("active");
+      var group = dayGroups.find(function (g) { return g.id === dayId; });
+      flyToGroup(group);
+    });
   });
 
   function escapeHtml(s) {
@@ -832,19 +1096,11 @@ export function buildExportHtml(ctx: ExportContext): string {
       <p class="meta">${escapeHtml(dateRange)} · ${users.map((u) => escapeHtml(u.alias)).join(", ")}</p>
     </header>`;
 
+  const mapDayGroups = hasMap ? buildMapDayGroups(mapPoints) : [];
   const mapBlock = hasMap
-    ? `<section class="map-section reveal" id="mapa">
-      <div class="map-section-inner">
-        <h2>Mapa del viaje</h2>
-        <p class="map-lead">Ruta cronológica, lugares marcados y vuelos</p>
-        <div class="map-legend">
-          <span><i class="legend-line"></i> Ruta fotos</span>
-          <span><i class="legend-dash"></i> Vuelo ida/vuelta</span>
-          <span>📍 Lugares</span>
-        </div>
-        <div id="map"></div>
-      </div>
-    </section>`
+    ? isVisual
+      ? buildFullscreenMapSection(mapDayGroups)
+      : buildCompactMapSection()
     : timelineBlock;
 
   const galleryBlock = isVisual ? buildGallerySection(photos) : "";
@@ -867,14 +1123,15 @@ export function buildExportHtml(ctx: ExportContext): string {
 </head>
 <body>
   ${headerBlock}
+  ${isVisual && hasMap ? mapBlock : ""}
   <div class="wrap">
-    ${mapBlock}
+    ${!(isVisual && hasMap) ? mapBlock : ""}
     <article${storyAnchor}>${contentHtml}</article>
     ${galleryBlock}
     <footer>Exportado con TravelToBlog · ${escapeHtml(getTemplateLabel(template))}</footer>
   </div>
   ${lightboxBlock}
-  ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, "assets/images")}</script>` : ""}
+  ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, "assets/images")}</script>` : ""}
   ${interactiveScript}
 </body>
 </html>`;
@@ -1060,7 +1317,8 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "data:image/png;base64,${markerShadow}"
 });`;
 
-    const mapScriptBody = buildMapScript(mapPoints, "assets/images").replace(
+    const mapDayGroups = buildMapDayGroups(mapPoints);
+    const mapScriptBody = buildMapScript(mapPoints, mapDayGroups, "assets/images").replace(
       /delete L\.Icon\.Default\.prototype\._getIconUrl;[\s\S]*?}\);/,
       iconScript
     );
