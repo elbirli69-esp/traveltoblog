@@ -207,34 +207,42 @@ export default function TravelDayCalendar({
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
               Fotos del día
             </p>
-            <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
               {photosForDay.map((photo) => {
                 const isOpen = photoNoteId === photo.id;
                 const photoNotes =
                   photo.notes?.filter((n) => n.type === "PHOTO") ?? [];
                 return (
-                  <div key={photo.id} className="space-y-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPhotoNoteId(isOpen ? null : photo.id)
-                      }
-                      className={`overflow-hidden rounded-lg ring-offset-1 ${
-                        isOpen ? "ring-2 ring-teal-500" : "hover:opacity-90"
-                      }`}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={photo.url}
-                        alt=""
-                        className="aspect-square w-full object-cover"
-                      />
-                    </button>
-                    <p className="truncate px-0.5 text-[9px] text-slate-500">
-                      {photo.user.alias}
-                      {photoNotes.length > 0 ? ` · ${photoNotes.length}` : ""}
-                    </p>
-                  </div>
+                  <button
+                    key={photo.id}
+                    type="button"
+                    onClick={() =>
+                      setPhotoNoteId(isOpen ? null : photo.id)
+                    }
+                    className={`overflow-hidden rounded-xl border bg-white text-left transition ${
+                      isOpen
+                        ? "border-teal-400 ring-2 ring-teal-500/30"
+                        : "border-slate-200 hover:border-teal-300"
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photo.url}
+                      alt=""
+                      className="aspect-square w-full bg-slate-100 object-cover"
+                    />
+                    <div className="space-y-0.5 px-1.5 py-1.5">
+                      <p className="truncate text-[10px] font-medium text-slate-600">
+                        {photo.user.alias}
+                        {photoNotes.length > 0
+                          ? ` · ${photoNotes.length} nota${photoNotes.length !== 1 ? "s" : ""}`
+                          : ""}
+                      </p>
+                      <p className="text-[10px] font-semibold text-teal-700">
+                        {isOpen ? "Cerrar nota" : "Añadir nota"}
+                      </p>
+                    </div>
+                  </button>
                 );
               })}
             </div>
