@@ -10,6 +10,7 @@
     "lint": "next lint",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
+    "db:migrate-place-notes": "prisma db push && npx --yes tsx scripts/migrate-place-comments.ts",
     "db:studio": "prisma studio",
     "deploy:synology": "bash scripts/deploy-synology.sh"
   },

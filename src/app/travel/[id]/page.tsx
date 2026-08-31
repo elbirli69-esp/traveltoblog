@@ -73,6 +73,11 @@ interface TravelData {
     longitude: number;
     comment: string | null;
     user: { alias: string };
+    notes?: {
+      id: string;
+      text: string;
+      user: { alias: string };
+    }[];
   }[];
 }
 

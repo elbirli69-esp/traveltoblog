@@ -103,31 +103,8 @@ export default function OfflineSyncBanner({
         }
       }
 
-      const pendingNotes = await getPendingNotes(travelId);
-      for (const note of pendingNotes) {
-        const resolvedPhotoId =
-          note.photoLocalId != null
-            ? (photoIdByLocalId.get(note.photoLocalId) ?? null)
-            : null;
-
-        const res = await fetch("/api/notes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            travelId: note.travelId,
-            userId: note.userId,
-            photoId: resolvedPhotoId,
-            photoLocalId: note.photoLocalId,
-            type: note.type,
-            dayDate: note.dayDate,
-            text: note.text,
-            localId: note.localId,
-          }),
-        });
-        if (res.ok) await removePendingNote(note.localId);
-      }
-
       const pendingPlaces = await getPendingPlaces(travelId);
+      const placeIdByLocalId = new Map<string, string>();
       for (const place of pendingPlaces) {
         const res = await fetch("/api/places", {
           method: "POST",
@@ -143,7 +120,46 @@ export default function OfflineSyncBanner({
             localId: place.localId,
           }),
         });
-        if (res.ok) await removePendingPlace(place.localId);
+        if (res.ok) {
+          const data = (await res.json()) as {
+            place?: { id: string; localId?: string | null };
+          };
+          if (data.place?.id) {
+            placeIdByLocalId.set(place.localId, data.place.id);
+          }
+          await removePendingPlace(place.localId);
+        }
+      }
+
+      const pendingNotes = await getPendingNotes(travelId);
+      for (const note of pendingNotes) {
+        const resolvedPhotoId =
+          note.photoLocalId != null
+            ? (photoIdByLocalId.get(note.photoLocalId) ?? null)
+            : null;
+        const resolvedPlaceId =
+          note.placeId ??
+          (note.placeLocalId != null
+            ? (placeIdByLocalId.get(note.placeLocalId) ?? null)
+            : null);
+
+        const res = await fetch("/api/notes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            travelId: note.travelId,
+            userId: note.userId,
+            photoId: resolvedPhotoId,
+            photoLocalId: note.photoLocalId ?? null,
+            placeId: resolvedPlaceId,
+            placeLocalId: note.placeLocalId ?? null,
+            type: note.type,
+            dayDate: note.dayDate,
+            text: note.text,
+            localId: note.localId,
+          }),
+        });
+        if (res.ok) await removePendingNote(note.localId);
       }
 
       await refreshCount();

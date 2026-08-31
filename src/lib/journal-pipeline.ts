@@ -7,7 +7,10 @@ import { formatDateKey, isoToDateKey, resolveTravelDayRange } from "@/lib/travel
 
 type PhotoWithUser = Photo & { user: User };
 type NoteWithUser = Note & { user: User; photo: Photo | null };
-type PlaceWithUser = Place & { user: User };
+type PlaceWithUser = Place & {
+  user: User;
+  notes?: (Note & { user: User })[];
+};
 
 export type JournalPipelineStep =
   | "context"
@@ -246,12 +249,23 @@ export function buildEnhancedJournalContext(
           }
         : null,
     },
-    places: places.map((p) => ({
-      name: p.name,
-      type: p.type,
-      comment: p.comment,
-      alias: p.user.alias,
-    })),
+    places: places.map((p) => {
+      const fromNotes =
+        p.notes
+          ?.filter((n) => n.type === "PLACE")
+          .map((n) => n.text)
+          .filter(Boolean) ?? [];
+      const comment =
+        fromNotes.length > 0
+          ? fromNotes.join(" · ")
+          : p.comment?.trim() || null;
+      return {
+        name: p.name,
+        type: p.type,
+        comment,
+        alias: p.user.alias,
+      };
+    }),
     days: [...daysMap.values()]
       .filter((d) => d.dayNotes.length > 0 || d.photos.length > 0)
       .sort((a, b) => a.date.localeCompare(b.date)),

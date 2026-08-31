@@ -42,7 +42,14 @@ export async function POST(request: NextRequest) {
           orderBy: { exifDateTime: "asc" },
         },
         places: {
-          include: { user: true },
+          include: {
+            user: true,
+            notes: {
+              where: { type: "PLACE" },
+              include: { user: true },
+              orderBy: { createdAt: "asc" },
+            },
+          },
           orderBy: { createdAt: "asc" },
         },
       },
@@ -53,14 +60,20 @@ export async function POST(request: NextRequest) {
     }
 
     const photos = await loadPhotoFiles(travel.photos);
-    const places = travel.places.map((p) => ({
-      name: p.name,
-      type: p.type,
-      latitude: p.latitude,
-      longitude: p.longitude,
-      comment: p.comment,
-      alias: p.user.alias,
-    }));
+    const places = travel.places.map((p) => {
+      const fromNotes = p.notes.map((n) => n.text).filter(Boolean);
+      return {
+        name: p.name,
+        type: p.type,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        comment:
+          fromNotes.length > 0
+            ? fromNotes.join(" · ")
+            : p.comment?.trim() || null,
+        alias: p.user.alias,
+      };
+    });
     const ctx = {
       travel: {
         id: travel.id,

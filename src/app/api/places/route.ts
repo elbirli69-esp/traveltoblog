@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
       type?: PlaceType;
       latitude?: number;
       longitude?: number;
+      /** Legacy: converted to Note(type=PLACE), not stored on Place.comment */
       comment?: string | null;
       localId?: string;
     };
@@ -30,7 +31,10 @@ export async function POST(request: NextRequest) {
     if (localId) {
       const existing = await prisma.place.findUnique({
         where: { localId },
-        include: { user: true },
+        include: {
+          user: true,
+          notes: { include: { user: true }, orderBy: { createdAt: "asc" } },
+        },
       });
       if (existing) {
         return NextResponse.json({ place: existing });
@@ -39,6 +43,7 @@ export async function POST(request: NextRequest) {
 
     const placeType =
       type && PLACE_TYPES.includes(type) ? type : PlaceType.OTHER;
+    const noteText = comment?.trim() || null;
 
     const place = await prisma.place.create({
       data: {
@@ -48,10 +53,25 @@ export async function POST(request: NextRequest) {
         type: placeType,
         latitude,
         longitude,
-        comment: comment?.trim() || null,
+        comment: null,
         localId: localId ?? null,
+        ...(noteText
+          ? {
+              notes: {
+                create: {
+                  travelId,
+                  userId,
+                  type: "PLACE",
+                  text: noteText,
+                },
+              },
+            }
+          : {}),
       },
-      include: { user: true },
+      include: {
+        user: true,
+        notes: { include: { user: true }, orderBy: { createdAt: "asc" } },
+      },
     });
 
     await prisma.travel.update({
