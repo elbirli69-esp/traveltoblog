@@ -9,8 +9,11 @@ interface TravelWorkspaceTabsProps {
   placesContent: React.ReactNode;
   daysContent: React.ReactNode;
   tripContent: React.ReactNode;
-  /** Optional controlled tab (e.g. deep-links in later phases). */
+  /** Uncontrolled initial tab when `activeTab` is omitted. */
   initialTab?: TravelTab;
+  /** Controlled tab (deep-links / Añadir recuerdo). */
+  activeTab?: TravelTab;
+  onTabChange?: (tab: TravelTab) => void;
 }
 
 const TABS: { id: TravelTab; label: string }[] = [
@@ -26,8 +29,17 @@ export default function TravelWorkspaceTabs({
   daysContent,
   tripContent,
   initialTab = "photos",
+  activeTab: controlledTab,
+  onTabChange,
 }: TravelWorkspaceTabsProps) {
-  const [activeTab, setActiveTab] = useState<TravelTab>(initialTab);
+  const isControlled = controlledTab != null;
+  const [uncontrolledTab, setUncontrolledTab] = useState<TravelTab>(initialTab);
+  const activeTab = isControlled ? controlledTab : uncontrolledTab;
+
+  const setTab = (tab: TravelTab) => {
+    if (!isControlled) setUncontrolledTab(tab);
+    onTabChange?.(tab);
+  };
 
   const panel =
     activeTab === "photos"
@@ -51,7 +63,7 @@ export default function TravelWorkspaceTabs({
             type="button"
             role="tab"
             aria-selected={activeTab === tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => setTab(tab.id)}
             className={`flex-1 rounded-lg px-2 py-2.5 text-sm font-semibold transition-colors sm:px-4 ${
               activeTab === tab.id
                 ? "bg-white text-teal-800 shadow-sm"

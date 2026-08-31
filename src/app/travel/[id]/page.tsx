@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import PhotoUploadSection from "@/components/PhotoUploadSection";
@@ -12,10 +12,15 @@ import OfflineSyncBanner from "@/components/OfflineSyncBanner";
 import GenerateJournalButton from "@/components/GenerateJournalButton";
 import ExportHtmlPanel from "@/components/ExportHtmlPanel";
 import ExportPdfPanel from "@/components/ExportPdfPanel";
-import TravelWorkspaceTabs from "@/components/TravelWorkspaceTabs";
+import TravelWorkspaceTabs, {
+  type TravelTab,
+} from "@/components/TravelWorkspaceTabs";
 import TravelDayCalendar from "@/components/TravelDayCalendar";
 import TravelPlacesPanel from "@/components/TravelPlacesPanel";
 import TravelCollaborationBar from "@/components/TravelCollaborationBar";
+import AddMemorySheet, {
+  type AddMemoryKind,
+} from "@/components/AddMemorySheet";
 import type { PlaceType } from "@prisma/client";
 import { getSessionFromStorage, rememberTravel, touchTravelHistory } from "@/lib/utils";
 import {
@@ -23,6 +28,7 @@ import {
   discardSharedBundle,
   fetchSharedFiles,
 } from "@/lib/share-client";
+import { todayKey } from "@/lib/travel-dates";
 import type { TravelDateRange } from "@/types";
 
 interface TravelData {
@@ -70,6 +76,15 @@ interface TravelData {
   }[];
 }
 
+const ADD_KINDS = new Set<AddMemoryKind>(["photo", "place", "day", "trip"]);
+
+function tabForKind(kind: AddMemoryKind): TravelTab {
+  if (kind === "photo") return "photos";
+  if (kind === "place") return "places";
+  if (kind === "day") return "days";
+  return "trip";
+}
+
 export default function TravelPage({ params }: { params: Promise<{ id: string }> }) {
   const searchParams = useSearchParams();
   const [travelId, setTravelId] = useState<string | null>(null);
@@ -79,6 +94,17 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   const [incomingFiles, setIncomingFiles] = useState<File[] | undefined>(undefined);
   const [sharedNotice, setSharedNotice] = useState<string | null>(null);
   const [activeShareId, setActiveShareId] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState<TravelTab>("photos");
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [placeAddSignal, setPlaceAddSignal] = useState(0);
+  const [photoPickerSignal, setPhotoPickerSignal] = useState(0);
+  const [highlightUpload, setHighlightUpload] = useState(false);
+  const [focusDayDate, setFocusDayDate] = useState<string | null>(null);
+  const [dayNoteSignal, setDayNoteSignal] = useState(0);
+  const [tripNoteSignal, setTripNoteSignal] = useState(0);
+  const deepLinkHandled = useRef<string | null>(null);
+  const tripNoteRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     params.then((p) => setTravelId(p.id));
@@ -149,6 +175,48 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
     }
   }, [activeShareId]);
 
+  const applyAddMemory = useCallback((kind: AddMemoryKind, dateParam?: string | null) => {
+    setActiveTab(tabForKind(kind));
+    setHighlightUpload(false);
+
+    if (kind === "photo") {
+      setHighlightUpload(true);
+      setPhotoPickerSignal((n) => n + 1);
+      window.setTimeout(() => setHighlightUpload(false), 4000);
+    } else if (kind === "place") {
+      setPlaceAddSignal((n) => n + 1);
+    } else if (kind === "day") {
+      setFocusDayDate(dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : todayKey());
+      setDayNoteSignal((n) => n + 1);
+    } else {
+      setTripNoteSignal((n) => n + 1);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!tripNoteSignal) return;
+    const t = window.setTimeout(() => {
+      tripNoteRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      const textarea = tripNoteRef.current?.querySelector("textarea");
+      textarea?.focus();
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [tripNoteSignal]);
+
+  useEffect(() => {
+    if (!travelId || !session || session.travelId !== travelId) return;
+    const add = searchParams.get("add");
+    if (!add || !ADD_KINDS.has(add as AddMemoryKind)) return;
+
+    const date = searchParams.get("date");
+    const token = `${add}:${date ?? ""}`;
+    if (deepLinkHandled.current === token) return;
+    deepLinkHandled.current = token;
+
+    applyAddMemory(add as AddMemoryKind, date);
+    window.history.replaceState({}, "", `/travel/${travelId}`);
+  }, [travelId, session, searchParams, applyAddMemory]);
+
   if (!travelId || !travel) {
     return (
       <main className="mx-auto max-w-3xl px-4 py-10">
@@ -182,7 +250,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   const dayNotes = travel.notes.filter((n) => n.type === "DAY");
 
   return (
-    <main className="mx-auto max-w-3xl space-y-8 px-4 py-8">
+    <main className="relative mx-auto max-w-3xl space-y-8 px-4 py-8 pb-28">
       <header>
         <Link href="/" className="text-sm text-teal-600 hover:underline">
           ← Inicio
@@ -216,6 +284,8 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
       <SharePanel shareCode={travel.shareCode} title={travel.title} />
 
       <TravelWorkspaceTabs
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
         photosContent={
           <div className="space-y-8">
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -227,6 +297,8 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 incomingFiles={incomingFiles}
                 onIncomingFilesHandled={handleIncomingFilesHandled}
                 onSyncComplete={() => setRefreshKey((k) => k + 1)}
+                openPickerSignal={photoPickerSignal}
+                highlight={highlightUpload}
               />
             </section>
 
@@ -250,6 +322,8 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
               photos={travel.photos}
               dayNotes={dayNotes}
               onNoteCreated={() => setRefreshKey((k) => k + 1)}
+              focusDate={focusDayDate}
+              focusNoteSignal={dayNoteSignal}
             />
           </section>
         }
@@ -261,6 +335,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
               places={travel.places}
               photos={travel.photos}
               onChanged={() => setRefreshKey((k) => k + 1)}
+              startAddSignal={placeAddSignal}
             />
           </section>
         }
@@ -284,7 +359,11 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 ))}
               </ul>
             )}
-            <div className={tripNotes.length > 0 ? "border-t border-slate-100 pt-4" : undefined}>
+            <div
+              ref={tripNoteRef}
+              id="trip-note-form"
+              className={tripNotes.length > 0 ? "border-t border-slate-100 pt-4" : undefined}
+            >
               <NoteForm
                 travelId={travelId}
                 userId={session.userId}
@@ -342,6 +421,26 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
           photoCount={travel.photos.filter((p) => p.selected).length}
         />
       </section>
+
+      <button
+        type="button"
+        onClick={() => setAddSheetOpen(true)}
+        className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-teal-600 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-teal-600/30 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 sm:bottom-8 sm:right-8"
+      >
+        <span className="text-lg leading-none" aria-hidden>
+          +
+        </span>
+        Añadir recuerdo
+      </button>
+
+      <AddMemorySheet
+        open={addSheetOpen}
+        onClose={() => setAddSheetOpen(false)}
+        onSelect={(kind) => {
+          setAddSheetOpen(false);
+          applyAddMemory(kind);
+        }}
+      />
     </main>
   );
 }

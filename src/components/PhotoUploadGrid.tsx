@@ -23,6 +23,9 @@ interface PhotoUploadGridProps {
     type: "start" | "end",
     exifDate: Date | null
   ) => void;
+  /** Increment to open the file picker (best-effort after tab switch). */
+  openPickerSignal?: number;
+  highlight?: boolean;
 }
 
 export default function PhotoUploadGrid({
@@ -34,6 +37,8 @@ export default function PhotoUploadGrid({
   onIncomingFilesHandled,
   onPhotosConfirmed,
   onTransportPhotoMarked,
+  openPickerSignal = 0,
+  highlight = false,
 }: PhotoUploadGridProps) {
   const [photos, setPhotos] = useState<ParsedPhoto[]>([]);
   const [processing, setProcessing] = useState(false);
@@ -41,6 +46,16 @@ export default function PhotoUploadGrid({
   const [error, setError] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
+  const sectionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!openPickerSignal) return;
+    sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const t = window.setTimeout(() => {
+      inputRef.current?.click();
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [openPickerSignal]);
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
@@ -203,7 +218,13 @@ export default function PhotoUploadGrid({
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div
+      ref={sectionRef}
+      id="photo-upload-section"
+      className={`space-y-6 rounded-2xl transition ring-offset-2 ${
+        highlight ? "ring-2 ring-teal-400 ring-offset-4" : ""
+      }`}
+    >
       {/* Header / status bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>

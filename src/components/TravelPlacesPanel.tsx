@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { PlaceType } from "@prisma/client";
 import {
   PLACE_TYPE_LABELS,
@@ -41,6 +41,8 @@ interface TravelPlacesPanelProps {
   places: TravelPlace[];
   photos: FlightLegPhoto[];
   onChanged?: () => void;
+  /** Increment to enter “Marcar lugar” from Añadir recuerdo / ?add=place */
+  startAddSignal?: number;
 }
 
 interface DraftPlace {
@@ -57,6 +59,7 @@ export default function TravelPlacesPanel({
   places,
   photos,
   onChanged,
+  startAddSignal = 0,
 }: TravelPlacesPanelProps) {
   const [addMode, setAddMode] = useState(false);
   const [pickOnMap, setPickOnMap] = useState(true);
@@ -70,6 +73,16 @@ export default function TravelPlacesPanel({
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!startAddSignal) return;
+    setAddMode(true);
+    setDraft(null);
+    setEditForm(null);
+    setError(null);
+    setPickOnMap(true);
+    setSelectedPlaceId(null);
+  }, [startAddSignal]);
 
   const selectedPlace = places.find((p) => p.id === selectedPlaceId) ?? null;
   const { outbound, inbound } = resolveFlightLegs(photos);

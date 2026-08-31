@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import EditableNote from "@/components/EditableNote";
 import NoteForm from "@/components/NoteForm";
 import {
@@ -34,6 +34,10 @@ interface TravelDayCalendarProps {
   photos: DayPhoto[];
   dayNotes: DayNote[];
   onNoteCreated?: () => void;
+  /** YYYY-MM-DD from Añadir recuerdo / ?add=day&date= */
+  focusDate?: string | null;
+  /** Increment to scroll/focus the day note form */
+  focusNoteSignal?: number;
 }
 
 export default function TravelDayCalendar({
@@ -44,6 +48,8 @@ export default function TravelDayCalendar({
   photos,
   dayNotes,
   onNoteCreated,
+  focusDate = null,
+  focusNoteSignal = 0,
 }: TravelDayCalendarProps) {
   const range = useMemo(
     () =>
@@ -57,6 +63,19 @@ export default function TravelDayCalendar({
 
   const initialDate = clampDateKey(todayKey(), range.startKey, range.endKey);
   const [selectedDate, setSelectedDate] = useState(initialDate);
+  const noteFormRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!focusDate) return;
+    setSelectedDate(clampDateKey(focusDate, range.startKey, range.endKey));
+  }, [focusDate, range.startKey, range.endKey]);
+
+  useEffect(() => {
+    if (!focusNoteSignal) return;
+    noteFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const textarea = noteFormRef.current?.querySelector("textarea");
+    textarea?.focus();
+  }, [focusNoteSignal]);
 
   const activeDate = clampDateKey(selectedDate, range.startKey, range.endKey);
 
@@ -215,7 +234,11 @@ export default function TravelDayCalendar({
           </p>
         )}
 
-        <div className="border-t border-slate-100 pt-4">
+        <div
+          ref={noteFormRef}
+          id="day-note-form"
+          className="border-t border-slate-100 pt-4"
+        >
           <NoteForm
             travelId={travelId}
             userId={userId}
