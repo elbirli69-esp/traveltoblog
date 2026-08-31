@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { preparePhotoForStorage } from "@/lib/photo-upload";
 import { prisma } from "@/lib/prisma";
 
 interface PhotoMeta {
@@ -19,38 +19,45 @@ export async function POST(request: NextRequest) {
     const travelId = formData.get("travelId") as string;
     const userId = formData.get("userId") as string;
     const metadataRaw = formData.get("metadata") as string;
-    const files = formData.getAll("photos") as File[];
 
-    if (!travelId || !userId || !metadataRaw || !files.length) {
+    if (!travelId || !userId || !metadataRaw) {
       return NextResponse.json({ error: "Datos incompletos" }, { status: 400 });
     }
 
     const metadata: PhotoMeta[] = JSON.parse(metadataRaw);
-    const uploadDir = path.join(process.cwd(), "public", "uploads", travelId);
-    await mkdir(uploadDir, { recursive: true });
+    if (!metadata.length) {
+      return NextResponse.json({ error: "No hay fotos para subir" }, { status: 400 });
+    }
 
     const created = [];
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const meta = metadata[i];
-      if (!file || !meta) continue;
+    for (const meta of metadata) {
+      const file = formData.get(`file_${meta.localId}`) as File | null;
+      if (!file) continue;
 
       const ext = path.extname(file.name) || ".jpg";
-      const filename = `${meta.localId}${ext}`;
-      const filepath = path.join(uploadDir, filename);
-      const buffer = Buffer.from(await file.arrayBuffer());
-      await writeFile(filepath, buffer);
+      const originalBuffer = Buffer.from(await file.arrayBuffer());
+      const prepared = await preparePhotoForStorage(
+        travelId,
+        meta.localId,
+        originalBuffer,
+        ext,
+        {
+          dateTime: meta.exifDateTime ? new Date(meta.exifDateTime) : null,
+          latitude: meta.latitude,
+          longitude: meta.longitude,
+        }
+      );
 
       const photo = await prisma.photo.create({
         data: {
           travelId,
           userId,
-          filename,
-          url: `/uploads/${travelId}/${filename}`,
-          exifDateTime: meta.exifDateTime ? new Date(meta.exifDateTime) : null,
-          latitude: meta.latitude,
-          longitude: meta.longitude,
+          filename: prepared.filename,
+          url: `/uploads/${travelId}/${prepared.filename}`,
+          exifDateTime: prepared.exif.dateTime,
+          latitude: prepared.exif.latitude,
+          longitude: prepared.exif.longitude,
           selected: meta.selected,
           isTransportStart: meta.isTransportStart,
           isTransportEnd: meta.isTransportEnd,
@@ -63,7 +70,7 @@ export async function POST(request: NextRequest) {
           where: { id: travelId },
           data: {
             startPhotoId: photo.id,
-            startDate: meta.exifDateTime ? new Date(meta.exifDateTime) : undefined,
+            startDate: prepared.exif.dateTime ?? undefined,
           },
         });
       }
@@ -73,12 +80,16 @@ export async function POST(request: NextRequest) {
           where: { id: travelId },
           data: {
             endPhotoId: photo.id,
-            endDate: meta.exifDateTime ? new Date(meta.exifDateTime) : undefined,
+            endDate: prepared.exif.dateTime ?? undefined,
           },
         });
       }
 
       created.push(photo);
+    }
+
+    if (!created.length) {
+      return NextResponse.json({ error: "No se recibieron archivos de imagen" }, { status: 400 });
     }
 
     await prisma.travel.update({

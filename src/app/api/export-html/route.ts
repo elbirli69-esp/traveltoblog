@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { resolvePhotoExifFromFile } from "@/lib/photo-gps";
 import {
   buildExportHtml,
   buildExportZip,
@@ -67,6 +68,27 @@ export async function POST(request: NextRequest) {
 
     if (!travel) {
       return NextResponse.json({ error: "Viaje no encontrado" }, { status: 404 });
+    }
+
+    for (const photo of travel.photos) {
+      const resolved = await resolvePhotoExifFromFile({
+        url: photo.url,
+        exifDateTime: photo.exifDateTime,
+        latitude: photo.latitude,
+        longitude: photo.longitude,
+      });
+      if (!resolved.changed) continue;
+      await prisma.photo.update({
+        where: { id: photo.id },
+        data: {
+          latitude: resolved.latitude,
+          longitude: resolved.longitude,
+          exifDateTime: resolved.dateTime,
+        },
+      });
+      photo.latitude = resolved.latitude;
+      photo.longitude = resolved.longitude;
+      photo.exifDateTime = resolved.dateTime;
     }
 
     const photos = await loadPhotoFiles(travel.photos);

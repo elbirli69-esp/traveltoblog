@@ -360,6 +360,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 }}
                 onAddPhoto={() => applyAddMemory("photo")}
                 onNoteCreated={() => setRefreshKey((k) => k + 1)}
+                onPhotoDeleted={() => setRefreshKey((k) => k + 1)}
               />
             </section>
           </div>

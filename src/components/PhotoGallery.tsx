@@ -38,6 +38,7 @@ interface PhotoGalleryProps {
   userId: string;
   places?: GalleryPlace[];
   onNoteCreated?: () => void;
+  onPhotoDeleted?: () => void;
   /** Expand this photo when set (mapa / Días / sinergias). */
   focusPhotoId?: string | null;
   onOpenPlace?: (placeId: string) => void;
@@ -64,10 +65,13 @@ export default function PhotoGallery({
   focusPhotoId = null,
   onOpenPlace,
   onAddPhoto,
+  onPhotoDeleted,
 }: PhotoGalleryProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [transportBusy, setTransportBusy] = useState<string | null>(null);
   const [transportError, setTransportError] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!focusPhotoId) return;
@@ -113,6 +117,24 @@ export default function PhotoGallery({
     }
   };
 
+  const deletePhoto = async (photo: GalleryPhoto) => {
+    const ok = window.confirm("¿Eliminar esta foto del viaje? Esta acción no se puede deshacer.");
+    if (!ok) return;
+
+    setDeleteBusy(photo.id);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/photos/${photo.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("No se pudo eliminar");
+      if (expandedId === photo.id) setExpandedId(null);
+      onPhotoDeleted?.();
+    } catch {
+      setDeleteError("No se pudo eliminar la foto");
+    } finally {
+      setDeleteBusy(null);
+    }
+  };
+
   if (sortedPhotos.length === 0) {
     return (
       <EmptyMemoryState
@@ -135,6 +157,9 @@ export default function PhotoGallery({
 
       {transportError && (
         <p className="text-sm text-red-600">{transportError}</p>
+      )}
+      {deleteError && (
+        <p className="text-sm text-red-600">{deleteError}</p>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -224,7 +249,7 @@ export default function PhotoGallery({
                     </button>
                     <button
                       type="button"
-                      disabled={transportBusy === photo.id}
+                      disabled={transportBusy === photo.id || deleteBusy === photo.id}
                       onClick={() =>
                         setTransport(photo, "end", photo.isTransportEnd)
                       }
@@ -235,6 +260,14 @@ export default function PhotoGallery({
                       }`}
                     >
                       {photo.isTransportEnd ? "Quitar Vuelta" : "Marcar Vuelta"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deleteBusy === photo.id || transportBusy === photo.id}
+                      onClick={() => deletePhoto(photo)}
+                      className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      {deleteBusy === photo.id ? "Eliminando…" : "Eliminar foto"}
                     </button>
                   </div>
 

@@ -9,6 +9,7 @@ import { resolveTravelType } from "@/lib/export/detect-travel-type";
 import { getTypologyProfile } from "@/lib/export/typologies/registry";
 import { simplifyIfNeeded } from "@/lib/export/polyline";
 import { distanceMeters } from "@/lib/geo";
+import { resolvePhotoExifFromFile } from "@/lib/photo-gps";
 import {
   buildFlightsSectionHtml,
   buildPlayModeScript,
@@ -947,13 +948,13 @@ function buildMapSidebarHtml(dayGroups: ExportMapDayGroup[]): string {
   return `<aside class="map-sidebar" aria-label="Días del viaje">${items}</aside>`;
 }
 
-function buildFullscreenMapSection(dayGroups: ExportMapDayGroup[]): string {
+function buildFullscreenMapSection(dayGroups: ExportMapDayGroup[], mapLead: string): string {
   return `
 <section class="map-explorer reveal" id="mapa">
   <div class="map-explorer-header">
     <div>
       <h2>Mapa del viaje</h2>
-      <p class="map-lead">Pulsa un día para hacer zoom en ese tramo del recorrido</p>
+      <p class="map-lead">${escapeHtml(mapLead)}</p>
     </div>
     <div class="map-legend">
       <span><i class="legend-line"></i> Ruta</span>
@@ -968,12 +969,12 @@ function buildFullscreenMapSection(dayGroups: ExportMapDayGroup[]): string {
 </section>`;
 }
 
-function buildCompactMapSection(): string {
+function buildCompactMapSection(mapLead: string): string {
   return `
 <section class="map-section reveal" id="mapa">
   <div class="map-section-inner">
     <h2>Mapa del viaje</h2>
-    <p class="map-lead">Ruta cronológica, lugares marcados y vuelos</p>
+    <p class="map-lead">${escapeHtml(mapLead)}</p>
     <div class="map-legend">
       <span><i class="legend-line"></i> Ruta fotos</span>
       <span><i class="legend-dash"></i> Vuelo ida/vuelta</span>
@@ -1229,6 +1230,13 @@ export function buildExportHtml(ctx: ExportContext): string {
   const timelineEvents = buildExportTimelineEvents(ctx);
   const markdown = travel.journalMarkdown ?? buildFallbackMarkdown(travel, users, photos);
   const mapPoints = mergeMapPoints(photos, places);
+  const photoGpsCount = photos.filter((p) => p.latitude != null && p.longitude != null).length;
+  const mapLead =
+    photoGpsCount === 0 && photos.length > 0
+      ? "Las fotos no tienen GPS en los metadatos; se muestran lugares y vuelos marcados."
+      : photoGpsCount < photos.length
+        ? `${photoGpsCount} de ${photos.length} fotos con ubicación GPS. Pulsa un día para hacer zoom en ese tramo.`
+        : "Pulsa un día para hacer zoom en ese tramo del recorrido";
   const urlToLocal = new Map(photos.map((p) => [p.url, p.localPath]));
   const rawHtml = markdownToHtml(rewriteMarkdownImagePaths(markdown, urlToLocal));
   const contentHtml =
@@ -1271,8 +1279,8 @@ export function buildExportHtml(ctx: ExportContext): string {
   const mapDayGroups = hasMap ? buildMapDayGroups(mapPoints) : [];
   const mapBlock = hasMap
     ? isVisual
-      ? buildFullscreenMapSection(mapDayGroups)
-      : buildCompactMapSection()
+      ? buildFullscreenMapSection(mapDayGroups, mapLead)
+      : buildCompactMapSection(mapLead)
     : "";
 
   const galleryBlock = isVisual ? buildGallerySection(photos) : "";
@@ -1391,13 +1399,19 @@ export async function loadPhotoFiles(
     selected.map(async (photo, index) => {
       const ext = path.extname(photo.filename) || ".jpg";
       const localPath = `photos/${String(index + 1).padStart(3, "0")}${ext}`;
+      const resolved = await resolvePhotoExifFromFile({
+        url: photo.url,
+        exifDateTime: photo.exifDateTime,
+        latitude: photo.latitude,
+        longitude: photo.longitude,
+      });
       return {
         id: photo.id,
         url: photo.url,
         localPath,
-        latitude: photo.latitude,
-        longitude: photo.longitude,
-        exifDateTime: photo.exifDateTime,
+        latitude: resolved.latitude,
+        longitude: resolved.longitude,
+        exifDateTime: resolved.dateTime,
         alias: photo.user.alias,
         isTransportStart: photo.isTransportStart,
         isTransportEnd: photo.isTransportEnd,
@@ -1407,13 +1421,8 @@ export async function loadPhotoFiles(
 }
 
 export async function readPhotoBuffer(photoUrl: string): Promise<Buffer | null> {
-  const relative = photoUrl.startsWith("/") ? photoUrl.slice(1) : photoUrl;
-  const filepath = path.join(process.cwd(), "public", relative);
-  try {
-    return await readFile(filepath);
-  } catch {
-    return null;
-  }
+  const { readStoredPhotoBuffer } = await import("@/lib/photo-gps");
+  return readStoredPhotoBuffer(photoUrl);
 }
 
 async function getLeafletAssets(): Promise<Record<string, Buffer>> {

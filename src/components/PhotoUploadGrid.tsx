@@ -7,8 +7,13 @@ import {
   isImageFile,
   isPhotoInTravelRange,
 } from "@/lib/exif";
+import { createPhotoPreviewUrl } from "@/lib/photo-preview";
 import { createLocalId } from "@/lib/utils";
 import type { ParsedPhoto, TravelDateRange } from "@/types";
+
+/** Android photo picker strips GPS when accept="image/*". Use explicit types instead. */
+const PHOTO_INPUT_ACCEPT =
+  ".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif";
 
 interface PhotoUploadGridProps {
   travelId: string;
@@ -90,29 +95,35 @@ export default function PhotoUploadGrid({
         const newPhotos: ParsedPhoto[] = [];
         let skipped = 0;
 
-        for (const file of files) {
-          if (!isImageFile(file)) {
-            skipped += 1;
-            continue;
-          }
+        const imageFiles = files.filter((file) => isImageFile(file));
+        skipped += files.length - imageFiles.length;
 
-          try {
-            const exif = await extractExifFromFile(file);
-            const outOfRange = !isPhotoInTravelRange(exif.dateTime, dateRange);
+        const parsed = await Promise.all(
+          imageFiles.map(async (file) => {
+            const previewUrl = await createPhotoPreviewUrl(file);
+            try {
+              const exif = await extractExifFromFile(file);
+              const outOfRange = !isPhotoInTravelRange(exif.dateTime, dateRange);
+              return {
+                id: createLocalId(),
+                file,
+                previewUrl,
+                exif,
+                selected: !outOfRange,
+                outOfRange,
+                isTransportStart: false,
+                isTransportEnd: false,
+              } satisfies ParsedPhoto;
+            } catch {
+              URL.revokeObjectURL(previewUrl);
+              return null;
+            }
+          })
+        );
 
-            newPhotos.push({
-              id: createLocalId(),
-              file,
-              previewUrl: URL.createObjectURL(file),
-              exif,
-              selected: !outOfRange,
-              outOfRange,
-              isTransportStart: false,
-              isTransportEnd: false,
-            });
-          } catch {
-            skipped += 1;
-          }
+        for (const photo of parsed) {
+          if (photo) newPhotos.push(photo);
+          else skipped += 1;
         }
 
         if (newPhotos.length === 0) {
@@ -258,7 +269,7 @@ export default function PhotoUploadGrid({
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          accept={PHOTO_INPUT_ACCEPT}
           multiple
           className="hidden"
           onChange={handleFileSelect}
@@ -282,6 +293,10 @@ export default function PhotoUploadGrid({
         </span>
         <span className="mt-1 text-xs text-teal-600">
           También puedes compartir desde la galería del móvil a TravelToBlog
+        </span>
+        <span className="mt-2 max-w-sm text-center text-[11px] text-slate-500">
+          Si no aparece la ubicación GPS, en Android prueba compartir la foto a la app o elegir
+          archivos con el explorador (no el selector rápido de fotos).
         </span>
       </label>
 
@@ -359,6 +374,9 @@ export default function PhotoUploadGrid({
                       {photo.exif.longitude?.toFixed(4)}
                     </p>
                   )}
+                  {photo.exif.latitude == null && (
+                    <p className="text-[10px] font-medium text-amber-200">Sin GPS en archivo</p>
+                  )}
                   {photo.outOfRange && (
                     <p className="text-[10px] font-medium text-amber-300">
                       Fuera de rango
@@ -398,7 +416,7 @@ export default function PhotoUploadGrid({
                 <button
                   type="button"
                   onClick={() => removePhoto(photo.id)}
-                  className="absolute right-2 top-2 rounded-full bg-black/50 p-1 text-white opacity-0 transition group-hover:opacity-100"
+                  className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white shadow-sm"
                   aria-label="Eliminar"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
