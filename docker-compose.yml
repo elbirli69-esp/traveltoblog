@@ -5,10 +5,10 @@ services:
     restart: unless-stopped
     # Synology Docker bridge (172.x) often blocks outbound internet/DNS.
     # Host network uses the NAS stack directly.
-    # Bind only to Tailscale IP (TAILSCALE_BIND_IP) — not exposed on LAN.
+    # Bind localhost only — LAN cannot reach :3000; Tailscale userspace still proxies.
     network_mode: host
     environment:
-      - HOSTNAME=${TAILSCALE_BIND_IP:-127.0.0.1}
+      - HOSTNAME=127.0.0.1
       - DATABASE_URL=file:/app/data/travel.db
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.deepseek.com/v1}

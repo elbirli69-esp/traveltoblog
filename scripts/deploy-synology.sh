@@ -142,8 +142,8 @@ tar \
   node_modules/prisma \
   | "${SSH_CMD[@]}" "$SSH_TARGET" "tar xzf - -C ${REMOTE_DIR}"
 
-echo "→ Detectando IP Tailscale del NAS…"
-TAILSCALE_BIND_IP="$("${SSH_CMD[@]}" "$SSH_TARGET" bash -s <<'TSIP'
+echo "→ Detectando IP Tailscale del NAS (URL pública)…"
+TAILSCALE_IP="$("${SSH_CMD[@]}" "$SSH_TARGET" bash -s <<'TSIP'
 set -euo pipefail
 export PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH"
 for bin in /var/packages/Tailscale/target/bin/tailscale /usr/local/bin/tailscale tailscale; do
@@ -158,13 +158,13 @@ done
 exit 1
 TSIP
 )" || true
-TAILSCALE_BIND_IP="${TAILSCALE_BIND_IP//$'\r'/}"
-if [[ -z "$TAILSCALE_BIND_IP" ]]; then
+TAILSCALE_IP="${TAILSCALE_IP//$'\r'/}"
+if [[ -z "$TAILSCALE_IP" ]]; then
   echo "❌ No se pudo obtener la IP Tailscale del NAS. Activa Tailscale en el Synology."
   exit 1
 fi
-echo "   Bind: ${TAILSCALE_BIND_IP}:${APP_PORT} (solo tailnet, no LAN)"
-APP_URL="http://${TAILSCALE_BIND_IP}:${APP_PORT}"
+echo "   App en 127.0.0.1:${APP_PORT} (LAN bloqueada; acceso vía Tailscale)"
+APP_URL="http://${TAILSCALE_IP}:${APP_PORT}"
 
 echo "→ Escribiendo .env en el NAS…"
 if [[ -n "$DEEPSEEK_API_KEY" ]]; then
@@ -173,20 +173,15 @@ DATABASE_URL=file:/app/data/travel.db
 DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
 OPENAI_BASE_URL=https://api.deepseek.com/v1
 OPENAI_MODEL=deepseek-chat
-TAILSCALE_BIND_IP=${TAILSCALE_BIND_IP}
 NEXT_PUBLIC_APP_URL=${APP_URL}
 EOF
 else
-  echo "   (sin DEEPSEEK_API_KEY local — actualizando solo bind Tailscale)"
+  echo "   (sin DEEPSEEK_API_KEY local — actualizando solo NEXT_PUBLIC_APP_URL)"
   ssh "${SSH_OPTS[@]}" "$SSH_TARGET" bash -s <<ENVPATCH
 set -euo pipefail
 ENV_FILE="${REMOTE_DIR}/.env"
 touch "\$ENV_FILE"
-if grep -q '^TAILSCALE_BIND_IP=' "\$ENV_FILE" 2>/dev/null; then
-  sed -i "s|^TAILSCALE_BIND_IP=.*|TAILSCALE_BIND_IP=${TAILSCALE_BIND_IP}|" "\$ENV_FILE"
-else
-  echo "TAILSCALE_BIND_IP=${TAILSCALE_BIND_IP}" >> "\$ENV_FILE"
-fi
+sed -i '/^TAILSCALE_BIND_IP=/d' "\$ENV_FILE" 2>/dev/null || true
 if grep -q '^NEXT_PUBLIC_APP_URL=' "\$ENV_FILE" 2>/dev/null; then
   sed -i "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=${APP_URL}|" "\$ENV_FILE"
 else
@@ -234,7 +229,8 @@ fi
 
 echo ""
 echo "✅ TravelToBlog desplegado"
-echo "   URL (solo Tailscale): ${APP_URL}"
+echo "   URL (Tailscale): ${APP_URL}"
+echo "   Puerto ${APP_PORT} escucha solo en 127.0.0.1 — no accesible desde la LAN"
 \$COMPOSE ps
 REMOTE
 
