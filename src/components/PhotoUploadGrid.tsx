@@ -15,6 +15,8 @@ interface PhotoUploadGridProps {
   userId: string;
   userAlias: string;
   dateRange: TravelDateRange;
+  incomingFiles?: File[];
+  onIncomingFilesHandled?: () => void;
   onPhotosConfirmed: (photos: ParsedPhoto[]) => Promise<void>;
   onTransportPhotoMarked?: (
     photoId: string,
@@ -28,6 +30,8 @@ export default function PhotoUploadGrid({
   userId,
   userAlias,
   dateRange,
+  incomingFiles,
+  onIncomingFilesHandled,
   onPhotosConfirmed,
   onTransportPhotoMarked,
 }: PhotoUploadGridProps) {
@@ -60,10 +64,9 @@ export default function PhotoUploadGrid({
     [photos]
   );
 
-  const handleFileSelect = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const files = event.target.files;
-      if (!files?.length) return;
+  const processFiles = useCallback(
+    async (files: File[]) => {
+      if (!files.length) return;
 
       setProcessing(true);
       setError(null);
@@ -72,7 +75,7 @@ export default function PhotoUploadGrid({
         const newPhotos: ParsedPhoto[] = [];
         let skipped = 0;
 
-        for (const file of Array.from(files)) {
+        for (const file of files) {
           if (!isImageFile(file)) {
             skipped += 1;
             continue;
@@ -115,6 +118,20 @@ export default function PhotoUploadGrid({
     },
     [dateRange]
   );
+
+  const handleFileSelect = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (!files?.length) return;
+      await processFiles(Array.from(files));
+    },
+    [processFiles]
+  );
+
+  useEffect(() => {
+    if (!incomingFiles?.length) return;
+    void processFiles(incomingFiles).then(() => onIncomingFilesHandled?.());
+  }, [incomingFiles, onIncomingFilesHandled, processFiles]);
 
   const toggleSelect = useCallback((id: string) => {
     setPhotos((prev) =>
@@ -241,7 +258,7 @@ export default function PhotoUploadGrid({
           {processing ? "Leyendo EXIF…" : "Seleccionar fotos de la galería"}
         </span>
         <span className="mt-1 text-xs text-teal-600">
-          Los metadatos (fecha, hora, GPS) se extraen en tu dispositivo
+          También puedes compartir desde la galería del móvil a TravelToBlog
         </span>
       </label>
 

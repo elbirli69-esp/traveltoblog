@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveSession, rememberTravel } from "@/lib/utils";
+import { buildTravelUrlWithPendingShare } from "@/lib/share-client";
 
 export default function JoinTravelForm({ shareCode }: { shareCode: string }) {
   const router = useRouter();
@@ -38,7 +39,7 @@ export default function JoinTravelForm({ shareCode }: { shareCode: string }) {
         shareCode: data.travel.shareCode,
       });
 
-      router.push(`/travel/${data.travel.id}`);
+      router.push(buildTravelUrlWithPendingShare(data.travel.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al unirse");
     } finally {

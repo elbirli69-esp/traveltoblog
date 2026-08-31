@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import PhotoUploadSection from "@/components/PhotoUploadSection";
 import PhotoGallery from "@/components/PhotoGallery";
 import SharePanel from "@/components/SharePanel";
@@ -16,6 +17,11 @@ import TravelPlacesPanel from "@/components/TravelPlacesPanel";
 import TravelCollaborationBar from "@/components/TravelCollaborationBar";
 import type { PlaceType } from "@prisma/client";
 import { getSessionFromStorage, rememberTravel, touchTravelHistory } from "@/lib/utils";
+import {
+  consumePendingShareId,
+  discardSharedBundle,
+  fetchSharedFiles,
+} from "@/lib/share-client";
 import type { TravelDateRange } from "@/types";
 
 interface TravelData {
@@ -64,10 +70,14 @@ interface TravelData {
 }
 
 export default function TravelPage({ params }: { params: Promise<{ id: string }> }) {
+  const searchParams = useSearchParams();
   const [travelId, setTravelId] = useState<string | null>(null);
   const [travel, setTravel] = useState<TravelData | null>(null);
   const [session, setSession] = useState<ReturnType<typeof getSessionFromStorage>>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [incomingFiles, setIncomingFiles] = useState<File[] | undefined>(undefined);
+  const [sharedNotice, setSharedNotice] = useState<string | null>(null);
+  const [activeShareId, setActiveShareId] = useState<string | null>(null);
 
   useEffect(() => {
     params.then((p) => setTravelId(p.id));
@@ -97,6 +107,46 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   useEffect(() => {
     loadTravel();
   }, [loadTravel, refreshKey]);
+
+  useEffect(() => {
+    if (!travelId || !session || session.travelId !== travelId) return;
+
+    const sharedFromUrl = searchParams.get("shared");
+    const sharedFromSession = consumePendingShareId();
+    const bundleId = sharedFromUrl ?? sharedFromSession;
+    if (!bundleId) return;
+
+    let cancelled = false;
+    setSharedNotice("Importando fotos compartidas…");
+
+    void fetchSharedFiles(bundleId)
+      .then((files) => {
+        if (cancelled) return;
+        setIncomingFiles(files);
+        setActiveShareId(bundleId);
+        setSharedNotice(
+          `${files.length} foto${files.length === 1 ? "" : "s"} compartida${files.length === 1 ? "" : "s"} lista${files.length === 1 ? "" : "s"} para revisar.`
+        );
+        window.history.replaceState({}, "", `/travel/${travelId}`);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSharedNotice("No se pudieron cargar las fotos compartidas.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [travelId, session, searchParams]);
+
+  const handleIncomingFilesHandled = useCallback(() => {
+    setIncomingFiles(undefined);
+    if (activeShareId) {
+      void discardSharedBundle(activeShareId);
+      setActiveShareId(null);
+    }
+  }, [activeShareId]);
 
   if (!travelId || !travel) {
     return (
@@ -149,6 +199,12 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
         onSynced={() => setRefreshKey((k) => k + 1)}
       />
 
+      {sharedNotice && (
+        <div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900">
+          {sharedNotice}
+        </div>
+      )}
+
       <TravelCollaborationBar
         travelId={travelId}
         participantCount={travel.users.length}
@@ -167,6 +223,8 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 userId={session.userId}
                 userAlias={session.alias}
                 dateRange={dateRange}
+                incomingFiles={incomingFiles}
+                onIncomingFilesHandled={handleIncomingFilesHandled}
                 onSyncComplete={() => setRefreshKey((k) => k + 1)}
               />
             </section>

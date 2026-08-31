@@ -13,6 +13,8 @@ interface PhotoUploadSectionProps {
   userId: string;
   userAlias: string;
   dateRange: TravelDateRange;
+  incomingFiles?: File[];
+  onIncomingFilesHandled?: () => void;
   onSyncComplete?: () => void;
 }
 
@@ -21,6 +23,8 @@ export default function PhotoUploadSection({
   userId,
   userAlias,
   dateRange,
+  incomingFiles,
+  onIncomingFilesHandled,
   onSyncComplete,
 }: PhotoUploadSectionProps) {
   const handlePhotosConfirmed = useCallback(
@@ -102,6 +106,8 @@ export default function PhotoUploadSection({
       userId={userId}
       userAlias={userAlias}
       dateRange={dateRange}
+      incomingFiles={incomingFiles}
+      onIncomingFilesHandled={onIncomingFilesHandled}
       onPhotosConfirmed={handlePhotosConfirmed}
       onTransportPhotoMarked={handleTransportMarked}
     />
