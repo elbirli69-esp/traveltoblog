@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { JournalPipelineEvent } from "@/lib/journal-pipeline";
+import {
+  JOURNAL_STYLE_LABELS,
+  type JournalPipelineEvent,
+  type JournalStyle,
+} from "@/lib/journal-pipeline";
 
 const STEP_LABELS: Record<string, string> = {
   context: "Preparando datos",
@@ -16,6 +20,7 @@ const STEP_LABELS: Record<string, string> = {
 
 export default function GenerateJournalButton({ travelId }: { travelId: string }) {
   const router = useRouter();
+  const [style, setStyle] = useState<JournalStyle>("factual");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -35,7 +40,7 @@ export default function GenerateJournalButton({ travelId }: { travelId: string }
       const res = await fetch("/api/generate-journal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ travelId, stream: true }),
+        body: JSON.stringify({ travelId, stream: true, style }),
       });
 
       if (!res.ok) {
@@ -95,6 +100,37 @@ export default function GenerateJournalButton({ travelId }: { travelId: string }
 
   return (
     <div className="space-y-3">
+      <fieldset className="space-y-2" disabled={loading}>
+        <legend className="mb-2 text-sm font-medium text-indigo-900">Estilo de la crónica</legend>
+        {(Object.keys(JOURNAL_STYLE_LABELS) as JournalStyle[]).map((key) => {
+          const option = JOURNAL_STYLE_LABELS[key];
+          const selected = style === key;
+          return (
+            <label
+              key={key}
+              className={`flex cursor-pointer gap-3 rounded-xl border px-4 py-3 transition ${
+                selected
+                  ? "border-indigo-400 bg-white shadow-sm"
+                  : "border-indigo-100 bg-indigo-50/40 hover:bg-white/70"
+              }`}
+            >
+              <input
+                type="radio"
+                name="journal-style"
+                value={key}
+                checked={selected}
+                onChange={() => setStyle(key)}
+                className="mt-1"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-indigo-950">{option.title}</span>
+                <span className="block text-xs text-indigo-800/80">{option.description}</span>
+              </span>
+            </label>
+          );
+        })}
+      </fieldset>
+
       <button
         type="button"
         onClick={handleGenerate}

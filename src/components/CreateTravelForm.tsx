@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { saveSession } from "@/lib/utils";
+import { saveSession, rememberTravel } from "@/lib/utils";
 import { buildTravelUrlWithPendingShare } from "@/lib/share-client";
 
 export default function CreateTravelForm() {
@@ -31,6 +31,13 @@ export default function CreateTravelForm() {
         userId: data.user.id,
         alias: data.user.alias,
         travelId: data.travel.id,
+      });
+      rememberTravel({
+        userId: data.user.id,
+        alias: data.user.alias,
+        travelId: data.travel.id,
+        title: data.travel.title,
+        shareCode: data.travel.shareCode,
       });
 
       router.push(buildTravelUrlWithPendingShare(data.travel.id));

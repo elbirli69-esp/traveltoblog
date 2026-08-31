@@ -16,7 +16,7 @@ import TravelDayCalendar from "@/components/TravelDayCalendar";
 import TravelPlacesPanel from "@/components/TravelPlacesPanel";
 import TravelCollaborationBar from "@/components/TravelCollaborationBar";
 import type { PlaceType } from "@prisma/client";
-import { getSessionFromStorage } from "@/lib/utils";
+import { getSessionFromStorage, rememberTravel, touchTravelHistory } from "@/lib/utils";
 import {
   consumePendingShareId,
   discardSharedBundle,
@@ -90,6 +90,17 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
     if (res.ok) {
       const data = await res.json();
       setTravel(data.travel);
+      const currentSession = getSessionFromStorage();
+      if (currentSession && currentSession.travelId === travelId) {
+        rememberTravel({
+          userId: currentSession.userId,
+          alias: currentSession.alias,
+          travelId,
+          title: data.travel.title,
+          shareCode: data.travel.shareCode,
+        });
+        touchTravelHistory(travelId);
+      }
     }
   }, [travelId]);
 
@@ -291,8 +302,8 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
       <section className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-6">
         <h2 className="mb-2 text-lg font-semibold text-indigo-900">Crónica del viaje</h2>
         <p className="mb-4 text-sm text-indigo-700/80">
-          Genera un artículo en varios pasos: introducción, resumen por día, leyendas de fotos
-          mejoradas y conclusión — con lugares, vuelos y calendario integrados.
+          Elige el estilo y genera un artículo en varios pasos: introducción, resumen por día,
+          leyendas de fotos y conclusión.
         </p>
         {travel.journalMarkdown ? (
           <Link

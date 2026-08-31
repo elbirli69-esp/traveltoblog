@@ -7,12 +7,22 @@ import {
   isAiUnreachableError,
   runJournalPipeline,
   type JournalPipelineEvent,
+  type JournalStyle,
 } from "@/lib/journal-pipeline";
+
+function parseJournalStyle(value: unknown): JournalStyle {
+  return value === "factual" ? "factual" : "narrative";
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { travelId, stream } = body as { travelId?: string; stream?: boolean };
+    const { travelId, stream, style } = body as {
+      travelId?: string;
+      stream?: boolean;
+      style?: JournalStyle;
+    };
+    const journalStyle = parseJournalStyle(style);
 
     if (!travelId) {
       return NextResponse.json({ error: "travelId es obligatorio" }, { status: 400 });
@@ -64,7 +74,7 @@ export async function POST(request: NextRequest) {
           };
 
           try {
-            const markdown = await runJournalPipeline(ctx, send);
+            const markdown = await runJournalPipeline(ctx, send, journalStyle);
             await prisma.travel.update({
               where: { id: travelId },
               data: {
@@ -117,7 +127,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const markdown = await runJournalPipeline(ctx);
+    const markdown = await runJournalPipeline(ctx, undefined, journalStyle);
 
     await prisma.travel.update({
       where: { id: travelId },
