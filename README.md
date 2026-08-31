@@ -70,8 +70,9 @@ docker compose up -d --build
 4. **Lugares** — Pins en el mapa (hotel, restaurante, mirador…). El recorrido GPS y el “trayecto aéreo” del mapa son derivados, no se editan a mano.
 5. **Días** — Notas por fecha del calendario del viaje.
 6. **Viaje** — Notas globales (anécdotas del viaje completo) para intro/conclusión de la crónica.
-7. **Offline** — Sin conexión, fotos/notas/lugares van a IndexedDB y sincronizan al volver online.
-8. **Generar crónica** — La IA redacta un artículo Markdown con fotos, notas, lugares y vuelos del grupo.
+7. **+ Añadir recuerdo** — CTA flotante con atajos (foto, estoy aquí, cómo fue el día, sobre el viaje). También `?add=photo|place|day|trip`.
+8. **Offline** — Sin conexión, fotos/notas/lugares van a IndexedDB y sincronizan al volver online.
+9. **Generar crónica** — La IA redacta un artículo Markdown con fotos, notas, lugares y vuelos del grupo.
 
 ## Estructura del proyecto
 
