@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import PhotoUploadSection from "@/components/PhotoUploadSection";
+import PhotoGallery from "@/components/PhotoGallery";
 import SharePanel from "@/components/SharePanel";
 import NoteForm from "@/components/NoteForm";
 import OfflineSyncBanner from "@/components/OfflineSyncBanner";
 import GenerateJournalButton from "@/components/GenerateJournalButton";
 import ExportHtmlPanel from "@/components/ExportHtmlPanel";
 import ExportPdfPanel from "@/components/ExportPdfPanel";
+import TravelWorkspaceTabs from "@/components/TravelWorkspaceTabs";
 import { getSessionFromStorage } from "@/lib/utils";
 import type { TravelDateRange } from "@/types";
 
@@ -26,12 +28,22 @@ interface TravelData {
     latitude: number | null;
     longitude: number | null;
     selected: boolean;
+    isTransportStart: boolean;
+    isTransportEnd: boolean;
     user: { alias: string };
+    notes: {
+      id: string;
+      text: string;
+      type: string;
+      user: { alias: string };
+    }[];
   }[];
   notes: {
     id: string;
     text: string;
     type: string;
+    photoId: string | null;
+    dayDate: string | null;
     user: { alias: string };
   }[];
   journalMarkdown: string | null;
@@ -90,6 +102,9 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
     end: travel.endDate ? new Date(travel.endDate) : null,
   };
 
+  const tripNotes = travel.notes.filter((n) => n.type === "TRIP");
+  const dayNotes = travel.notes.filter((n) => n.type === "DAY");
+
   return (
     <main className="mx-auto max-w-3xl space-y-8 px-4 py-8">
       <header>
@@ -111,69 +126,85 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
 
       <SharePanel shareCode={travel.shareCode} title={travel.title} />
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <PhotoUploadSection
-          travelId={travelId}
-          userId={session.userId}
-          userAlias={session.alias}
-          dateRange={dateRange}
-          onSyncComplete={() => setRefreshKey((k) => k + 1)}
-        />
-      </section>
+      <TravelWorkspaceTabs
+        photosContent={
+          <div className="space-y-8">
+            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <PhotoUploadSection
+                travelId={travelId}
+                userId={session.userId}
+                userAlias={session.alias}
+                dateRange={dateRange}
+                onSyncComplete={() => setRefreshKey((k) => k + 1)}
+              />
+            </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-lg font-semibold">Notas</h2>
-        <div className="grid gap-6 md:grid-cols-3">
-          <NoteForm
-            travelId={travelId}
-            userId={session.userId}
-            type="PHOTO"
-            onCreated={() => setRefreshKey((k) => k + 1)}
-          />
-          <NoteForm
-            travelId={travelId}
-            userId={session.userId}
-            type="DAY"
-            dayDate={new Date().toISOString().slice(0, 10)}
-            onCreated={() => setRefreshKey((k) => k + 1)}
-          />
+            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <PhotoGallery
+                photos={travel.photos}
+                travelId={travelId}
+                userId={session.userId}
+                onNoteCreated={() => setRefreshKey((k) => k + 1)}
+              />
+            </section>
+          </div>
+        }
+      />
+
+      {tripNotes.length > 0 && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold">Notas del trayecto</h2>
+          <ul className="space-y-3">
+            {tripNotes.map((note) => (
+              <li key={note.id} className="rounded-xl bg-slate-50 px-4 py-3 text-sm">
+                <span className="font-medium text-teal-700">{note.user.alias}</span>
+                <p className="mt-1 text-slate-700">{note.text}</p>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <NoteForm
+              travelId={travelId}
+              userId={session.userId}
+              type="TRIP"
+              onCreated={() => setRefreshKey((k) => k + 1)}
+            />
+          </div>
+        </section>
+      )}
+
+      {tripNotes.length === 0 && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold">Nota del trayecto</h2>
           <NoteForm
             travelId={travelId}
             userId={session.userId}
             type="TRIP"
             onCreated={() => setRefreshKey((k) => k + 1)}
           />
-        </div>
+        </section>
+      )}
 
-        {travel.notes.length > 0 && (
-          <ul className="mt-6 space-y-3 border-t border-slate-100 pt-6">
-            {travel.notes.map((note) => (
+      {dayNotes.length > 0 && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold">Notas de días (vista previa)</h2>
+          <p className="mb-4 text-xs text-slate-500">
+            El calendario completo llegará en la pestaña Días. Aquí se muestran las notas ya
+            guardadas.
+          </p>
+          <ul className="space-y-3">
+            {dayNotes.map((note) => (
               <li key={note.id} className="rounded-xl bg-slate-50 px-4 py-3 text-sm">
                 <span className="font-medium text-teal-700">{note.user.alias}</span>
-                <span className="ml-2 text-xs uppercase text-slate-400">{note.type}</span>
+                {note.dayDate && (
+                  <span className="ml-2 text-xs text-slate-400">
+                    {new Date(note.dayDate).toLocaleDateString("es-ES")}
+                  </span>
+                )}
                 <p className="mt-1 text-slate-700">{note.text}</p>
               </li>
             ))}
           </ul>
-        )}
-      </section>
-
-      {travel.photos.length > 0 && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold">
-            Cronología ({travel.photos.length} fotos)
-          </h2>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
-            {travel.photos.map((photo) => (
-              <div key={photo.id} className="overflow-hidden rounded-lg">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={photo.url} alt="" className="aspect-square w-full object-cover" />
-                <p className="truncate px-1 text-[10px] text-slate-500">
-                  {photo.user.alias}
-                </p>
-              </div>
-            ))}
-          </div>
         </section>
       )}
 
