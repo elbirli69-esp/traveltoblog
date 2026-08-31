@@ -41,6 +41,10 @@ export async function POST(request: NextRequest) {
           include: { user: true },
           orderBy: { exifDateTime: "asc" },
         },
+        places: {
+          include: { user: true },
+          orderBy: { createdAt: "asc" },
+        },
       },
     });
 
@@ -49,6 +53,14 @@ export async function POST(request: NextRequest) {
     }
 
     const photos = await loadPhotoFiles(travel.photos);
+    const places = travel.places.map((p) => ({
+      name: p.name,
+      type: p.type,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      comment: p.comment,
+      alias: p.user.alias,
+    }));
     const ctx = {
       travel: {
         id: travel.id,
@@ -59,6 +71,7 @@ export async function POST(request: NextRequest) {
       },
       users: travel.users,
       photos,
+      places,
       template,
     };
 

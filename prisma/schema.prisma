@@ -30,6 +30,7 @@ model Travel {
   users        User[]
   photos       Photo[]
   notes        Note[]
+  places       Place[]
 
   /// Transport photo that opens the trip
   startPhoto   Photo?   @relation("TravelStartPhoto", fields: [startPhotoId], references: [id], onDelete: SetNull)
@@ -50,6 +51,7 @@ model User {
   travel    Travel   @relation(fields: [travelId], references: [id], onDelete: Cascade)
   photos    Photo[]
   notes     Note[]
+  places    Place[]
 
   @@unique([travelId, alias])
   @@index([travelId])
@@ -115,5 +117,38 @@ model Note {
   photo     Photo?    @relation(fields: [photoId], references: [id], onDelete: SetNull)
 
   @@index([travelId, type])
+  @@index([userId])
+}
+
+enum PlaceType {
+  HOTEL
+  RESTAURANT
+  CAFE
+  MUSEUM
+  PARK
+  BEACH
+  VIEWPOINT
+  TRANSPORT
+  SHOP
+  OTHER
+}
+
+/// Point of interest marked on the trip map (DogTrainer-style pins)
+model Place {
+  id        String    @id @default(cuid())
+  travelId  String
+  userId    String
+  name      String
+  type      PlaceType @default(OTHER)
+  latitude  Float
+  longitude Float
+  comment   String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  travel    Travel    @relation(fields: [travelId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([travelId])
   @@index([userId])
 }
