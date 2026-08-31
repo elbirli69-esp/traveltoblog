@@ -6,7 +6,7 @@ import {
   savePendingPhoto,
   removePendingPhoto,
 } from "@/lib/offline-db";
-import type { ParsedPhoto, TravelDateRange } from "@/types";
+import type { ExifMetadata, ParsedPhoto, TravelDateRange } from "@/types";
 
 interface PhotoUploadSectionProps {
   travelId: string;
@@ -14,6 +14,7 @@ interface PhotoUploadSectionProps {
   userAlias: string;
   dateRange: TravelDateRange;
   incomingFiles?: File[];
+  incomingExifByName?: Record<string, ExifMetadata>;
   onIncomingFilesHandled?: () => void;
   onSyncComplete?: () => void;
   openPickerSignal?: number;
@@ -26,6 +27,7 @@ export default function PhotoUploadSection({
   userAlias,
   dateRange,
   incomingFiles,
+  incomingExifByName,
   onIncomingFilesHandled,
   onSyncComplete,
   openPickerSignal,
@@ -102,6 +104,7 @@ export default function PhotoUploadSection({
       userAlias={userAlias}
       dateRange={dateRange}
       incomingFiles={incomingFiles}
+      incomingExifByName={incomingExifByName}
       onIncomingFilesHandled={onIncomingFilesHandled}
       onPhotosConfirmed={handlePhotosConfirmed}
       onTransportPhotoMarked={handleTransportMarked}

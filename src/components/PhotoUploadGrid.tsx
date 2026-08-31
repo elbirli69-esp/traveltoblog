@@ -4,16 +4,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   extractExifFromFile,
   formatExifDate,
+  formatGpsCoordinates,
   isImageFile,
   isPhotoInTravelRange,
+  isValidGps,
+  mergeExifMetadata,
 } from "@/lib/exif";
+import { applyCurrentLocationToPhotos, isAndroidDevice } from "@/lib/geolocation-photo";
 import { createPhotoPreviewUrl } from "@/lib/photo-preview";
 import { createLocalId } from "@/lib/utils";
 import type { ParsedPhoto, TravelDateRange } from "@/types";
 
-/** Android photo picker strips GPS when accept="image/*". Use explicit types instead. */
+/** Android photo picker strips GPS when accept="image/*". text/plain opens file explorer. */
 const PHOTO_INPUT_ACCEPT =
-  ".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif";
+  ".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif,text/plain,application/octet-stream";
 
 interface PhotoUploadGridProps {
   travelId: string;
@@ -21,6 +25,7 @@ interface PhotoUploadGridProps {
   userAlias: string;
   dateRange: TravelDateRange;
   incomingFiles?: File[];
+  incomingExifByName?: Record<string, import("@/types").ExifMetadata>;
   onIncomingFilesHandled?: () => void;
   onPhotosConfirmed: (photos: ParsedPhoto[]) => Promise<void>;
   onTransportPhotoMarked?: (
@@ -39,6 +44,7 @@ export default function PhotoUploadGrid({
   userAlias,
   dateRange,
   incomingFiles,
+  incomingExifByName,
   onIncomingFilesHandled,
   onPhotosConfirmed,
   onTransportPhotoMarked,
@@ -85,7 +91,7 @@ export default function PhotoUploadGrid({
   );
 
   const processFiles = useCallback(
-    async (files: File[]) => {
+    async (files: File[], serverExif: Record<string, import("@/types").ExifMetadata> = {}) => {
       if (!files.length) return;
 
       setProcessing(true);
@@ -102,7 +108,11 @@ export default function PhotoUploadGrid({
           imageFiles.map(async (file) => {
             const previewUrl = await createPhotoPreviewUrl(file);
             try {
-              const exif = await extractExifFromFile(file);
+              const clientExif = await extractExifFromFile(file);
+              const hint = serverExif[file.name];
+              const exif = hint
+                ? mergeExifMetadata(clientExif, hint)
+                : clientExif;
               const outOfRange = !isPhotoInTravelRange(exif.dateTime, dateRange);
               return {
                 id: createLocalId(),
@@ -156,7 +166,8 @@ export default function PhotoUploadGrid({
 
   useEffect(() => {
     if (!incomingFiles?.length) return;
-    void processFiles(incomingFiles).then(() => onIncomingFilesHandled?.());
+    void processFiles(incomingFiles, incomingExifByName ?? {})
+      .then(() => onIncomingFilesHandled?.());
     // Only re-run when a new batch arrives (by length + first file identity)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incomingFiles?.length, incomingFiles?.[0]?.name, incomingFiles?.[0]?.size]);
@@ -203,10 +214,30 @@ export default function PhotoUploadGrid({
   }, []);
 
   const handleConfirm = async () => {
-    const toUpload = photos.filter((p) => p.selected);
+    let toUpload = photos.filter((p) => p.selected);
     if (!toUpload.length) {
       setError("Selecciona al menos una foto.");
       return;
+    }
+
+    const missingGps = toUpload.some(
+      (p) => !isValidGps(p.exif.latitude, p.exif.longitude)
+    );
+
+    if (missingGps && navigator.geolocation) {
+      const prompt = isAndroidDevice()
+        ? "Android suele quitar el GPS de las fotos al seleccionarlas. ¿Usar tu ubicación actual para las fotos sin coordenadas?"
+        : "Algunas fotos no tienen GPS en el archivo. ¿Usar tu ubicación actual para esas fotos?";
+      if (window.confirm(prompt)) {
+        try {
+          toUpload = await applyCurrentLocationToPhotos(toUpload);
+        } catch {
+          setError(
+            "No se pudo obtener tu ubicación. Revisa el permiso de GPS del navegador."
+          );
+          return;
+        }
+      }
     }
 
     setUploading(true);
@@ -295,8 +326,8 @@ export default function PhotoUploadGrid({
           También puedes compartir desde la galería del móvil a TravelToBlog
         </span>
         <span className="mt-2 max-w-sm text-center text-[11px] text-slate-500">
-          Si no aparece la ubicación GPS, en Android prueba compartir la foto a la app o elegir
-          archivos con el explorador (no el selector rápido de fotos).
+          En Android el selector de fotos suele quitar el GPS. Comparte desde la galería, usa el
+          explorador de archivos o confirma con «usar ubicación actual».
         </span>
       </label>
 
@@ -368,13 +399,12 @@ export default function PhotoUploadGrid({
                   <p className="truncate text-[10px] text-white">
                     {formatExifDate(photo.exif.dateTime)}
                   </p>
-                  {photo.exif.latitude != null && (
+                  {formatGpsCoordinates(photo.exif.latitude, photo.exif.longitude) && (
                     <p className="truncate text-[10px] text-white/70">
-                      {photo.exif.latitude.toFixed(4)},{" "}
-                      {photo.exif.longitude?.toFixed(4)}
+                      {formatGpsCoordinates(photo.exif.latitude, photo.exif.longitude)}
                     </p>
                   )}
-                  {photo.exif.latitude == null && (
+                  {!isValidGps(photo.exif.latitude, photo.exif.longitude) && (
                     <p className="text-[10px] font-medium text-amber-200">Sin GPS en archivo</p>
                   )}
                   {photo.outOfRange && (

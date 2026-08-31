@@ -1,5 +1,6 @@
 import { mkdir, readFile, readdir, rm, writeFile } from "fs/promises";
 import path from "path";
+import { extractExifFromBuffer, sanitizeExifMetadata } from "@/lib/exif";
 import { createLocalId } from "@/lib/utils";
 
 const SHARE_INBOX_DIR =
@@ -12,6 +13,9 @@ export interface SharedFileMeta {
   name: string;
   type: string;
   size: number;
+  exifDateTime?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface SharedBundle {
@@ -48,7 +52,15 @@ export async function saveSharedFiles(files: File[]): Promise<SharedBundle> {
     const name = sanitizeFilename(file.name);
     const buffer = Buffer.from(await file.arrayBuffer());
     await writeFile(path.join(dir, name), buffer);
-    saved.push({ name, type: file.type || "image/jpeg", size: buffer.length });
+    const exif = sanitizeExifMetadata(await extractExifFromBuffer(buffer));
+    saved.push({
+      name,
+      type: file.type || "image/jpeg",
+      size: buffer.length,
+      exifDateTime: exif.dateTime?.toISOString() ?? null,
+      latitude: exif.latitude,
+      longitude: exif.longitude,
+    });
   }
 
   if (saved.length === 0) {

@@ -35,7 +35,7 @@ import {
   fetchSharedFiles,
 } from "@/lib/share-client";
 import { todayKey } from "@/lib/travel-dates";
-import type { TravelDateRange } from "@/types";
+import type { TravelDateRange, ExifMetadata } from "@/types";
 
 interface TravelData {
   id: string;
@@ -103,6 +103,9 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   const [session, setSession] = useState<ReturnType<typeof getSessionFromStorage>>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [incomingFiles, setIncomingFiles] = useState<File[] | undefined>(undefined);
+  const [incomingExifByName, setIncomingExifByName] = useState<
+    Record<string, ExifMetadata> | undefined
+  >(undefined);
   const [sharedNotice, setSharedNotice] = useState<string | null>(null);
   const [activeShareId, setActiveShareId] = useState<string | null>(null);
 
@@ -161,9 +164,10 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
     setSharedNotice("Importando fotos compartidas…");
 
     void fetchSharedFiles(bundleId)
-      .then((files) => {
+      .then(({ files, exifByName }) => {
         if (cancelled) return;
         setIncomingFiles(files);
+        setIncomingExifByName(exifByName);
         setActiveShareId(bundleId);
         setSharedNotice(
           `${files.length} foto${files.length === 1 ? "" : "s"} compartida${files.length === 1 ? "" : "s"} lista${files.length === 1 ? "" : "s"} para revisar.`
@@ -183,6 +187,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
 
   const handleIncomingFilesHandled = useCallback(() => {
     setIncomingFiles(undefined);
+    setIncomingExifByName(undefined);
     // Keep share bundle until photos are confirmed/uploaded (discard after confirm in upload flow)
   }, []);
 
@@ -334,6 +339,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 userAlias={session.alias}
                 dateRange={dateRange}
                 incomingFiles={incomingFiles}
+                incomingExifByName={incomingExifByName}
                 onIncomingFilesHandled={handleIncomingFilesHandled}
                 onSyncComplete={() => {
                   if (activeShareId) {

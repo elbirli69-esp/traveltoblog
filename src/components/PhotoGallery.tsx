@@ -5,6 +5,7 @@ import EditableNote from "@/components/EditableNote";
 import EmptyMemoryState from "@/components/EmptyMemoryState";
 import NoteForm from "@/components/NoteForm";
 import { findNearby, formatDistanceM, NEARBY_THRESHOLD_M } from "@/lib/geo";
+import { isValidGps } from "@/lib/exif";
 
 export interface GalleryPhoto {
   id: string;
@@ -169,12 +170,12 @@ export default function PhotoGallery({
           const badges: string[] = [];
           if (photo.isTransportStart) badges.push("Ida");
           if (photo.isTransportEnd) badges.push("Vuelta");
-          if (photo.latitude != null && photo.longitude != null) badges.push("GPS");
+          if (isValidGps(photo.latitude, photo.longitude)) badges.push("GPS");
 
           const nearby =
-            photo.latitude != null && photo.longitude != null
+            isValidGps(photo.latitude, photo.longitude)
               ? findNearby(
-                  { latitude: photo.latitude, longitude: photo.longitude },
+                  { latitude: photo.latitude!, longitude: photo.longitude! },
                   places,
                   NEARBY_THRESHOLD_M
                 )
