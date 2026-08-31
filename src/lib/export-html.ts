@@ -14,6 +14,7 @@ export interface MapPoint {
   photoPath: string | null;
   date: string;
   emoji?: string;
+  kind?: "photo" | "place" | "flight-out" | "flight-in";
 }
 
 export interface ExportPhoto {
@@ -24,6 +25,8 @@ export interface ExportPhoto {
   longitude: number | null;
   exifDateTime: Date | null;
   alias: string;
+  isTransportStart: boolean;
+  isTransportEnd: boolean;
 }
 
 export interface ExportContext {
@@ -43,9 +46,51 @@ export function getTemplateLabel(id: ExportTemplateId): string {
   return TEMPLATE_LABELS[id];
 }
 
-export function buildMapPoints(photos: ExportPhoto[]): MapPoint[] {
+export function buildFlightMapPoints(photos: ExportPhoto[]): MapPoint[] {
+  const points: MapPoint[] = [];
+
+  const outbound = photos.find(
+    (p) => p.isTransportStart && p.latitude != null && p.longitude != null
+  );
+  if (outbound) {
+    points.push({
+      lat: outbound.latitude!,
+      lng: outbound.longitude!,
+      label: `Vuelo de ida — ${outbound.alias}`,
+      photoPath: outbound.localPath,
+      date: (outbound.exifDateTime ?? new Date()).toISOString(),
+      emoji: "✈️",
+      kind: "flight-out",
+    });
+  }
+
+  const inbound = photos.find(
+    (p) => p.isTransportEnd && p.latitude != null && p.longitude != null
+  );
+  if (inbound) {
+    points.push({
+      lat: inbound.latitude!,
+      lng: inbound.longitude!,
+      label: `Vuelo de vuelta — ${inbound.alias}`,
+      photoPath: inbound.localPath,
+      date: (inbound.exifDateTime ?? new Date()).toISOString(),
+      emoji: "🛬",
+      kind: "flight-in",
+    });
+  }
+
+  return points;
+}
+
+export function buildPhotoRoutePoints(photos: ExportPhoto[]): MapPoint[] {
   return photos
-    .filter((p) => p.latitude != null && p.longitude != null)
+    .filter(
+      (p) =>
+        !p.isTransportStart &&
+        !p.isTransportEnd &&
+        p.latitude != null &&
+        p.longitude != null
+    )
     .sort(
       (a, b) =>
         new Date(a.exifDateTime ?? 0).getTime() -
@@ -57,7 +102,13 @@ export function buildMapPoints(photos: ExportPhoto[]): MapPoint[] {
       label: `Foto ${i + 1} — ${p.alias}`,
       photoPath: p.localPath,
       date: (p.exifDateTime ?? new Date()).toISOString(),
+      kind: "photo" as const,
     }));
+}
+
+/** @deprecated Use buildPhotoRoutePoints — kept for tests/compatibility */
+export function buildMapPoints(photos: ExportPhoto[]): MapPoint[] {
+  return buildPhotoRoutePoints(photos);
 }
 
 export interface ExportPlace {
@@ -77,6 +128,7 @@ export function buildPlaceMapPoints(places: ExportPlace[]): MapPoint[] {
     photoPath: null,
     date: new Date().toISOString(),
     emoji: placeEmojiFromType(p.type),
+    kind: "place" as const,
   }));
 }
 
@@ -97,7 +149,11 @@ function placeEmojiFromType(type: string): string {
 }
 
 export function mergeMapPoints(photos: ExportPhoto[], places: ExportPlace[]): MapPoint[] {
-  return [...buildMapPoints(photos), ...buildPlaceMapPoints(places)];
+  return [
+    ...buildFlightMapPoints(photos),
+    ...buildPhotoRoutePoints(photos),
+    ...buildPlaceMapPoints(places),
+  ];
 }
 
 function rewriteMarkdownImagePaths(markdown: string, urlToLocal: Map<string, string>): string {
@@ -204,7 +260,9 @@ function buildMapScript(points: MapPoint[], assetPrefix = "assets/images"): stri
   });
 
   var map = L.map("map", { scrollWheelZoom: true, zoomControl: true });
-  var latLngs = points.filter(function (p) { return !p.emoji; }).map(function (p) { return [p.lat, p.lng]; });
+  var flightOut = points.find(function (p) { return p.kind === "flight-out"; });
+  var flightIn = points.find(function (p) { return p.kind === "flight-in"; });
+  var latLngs = points.filter(function (p) { return p.kind === "photo"; }).map(function (p) { return [p.lat, p.lng]; });
   var bounds = L.latLngBounds(points.map(function (p) { return [p.lat, p.lng]; }));
   map.fitBounds(bounds.pad(0.15));
 
@@ -212,14 +270,22 @@ function buildMapScript(points: MapPoint[], assetPrefix = "assets/images"): stri
     L.polyline(latLngs, { color: "#0d9488", weight: 3, opacity: 0.85 }).addTo(map);
   }
 
+  if (flightOut && flightIn) {
+    L.polyline(
+      [[flightOut.lat, flightOut.lng], [flightIn.lat, flightIn.lng]],
+      { color: "#6366f1", weight: 3, opacity: 0.85, dashArray: "10 8" }
+    ).addTo(map);
+  }
+
   points.forEach(function (p, i) {
     var marker;
     if (p.emoji) {
+      var size = (p.kind === "flight-out" || p.kind === "flight-in") ? "28" : "22";
       var icon = L.divIcon({
-        html: '<div style="font-size:22px;line-height:1">' + p.emoji + '</div>',
+        html: '<div style="font-size:' + size + 'px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))">' + p.emoji + '</div>',
         className: "",
         iconSize: [0, 0],
-        iconAnchor: [12, 12]
+        iconAnchor: [14, 14]
       });
       marker = L.marker([p.lat, p.lng], { icon: icon }).addTo(map);
     } else {
@@ -332,6 +398,8 @@ export async function loadPhotoFiles(
         longitude: photo.longitude,
         exifDateTime: photo.exifDateTime,
         alias: photo.user.alias,
+        isTransportStart: photo.isTransportStart,
+        isTransportEnd: photo.isTransportEnd,
       };
     })
   );

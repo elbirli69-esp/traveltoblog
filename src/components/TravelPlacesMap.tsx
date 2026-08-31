@@ -2,13 +2,21 @@
 
 import { useEffect, useRef } from "react";
 import type { PlaceType } from "@prisma/client";
+import type { FlightLegPhoto } from "@/lib/flights";
+import {
+  FLIGHT_IN_EMOJI,
+  FLIGHT_OUT_EMOJI,
+  formatFlightDate,
+  photoGpsPoints,
+  resolveFlightLegs,
+} from "@/lib/flights";
 import {
   computeMapCenter,
   MAP_TILE_ATTRIBUTION,
   MAP_TILE_URL,
   placeEmoji,
 } from "@/lib/places";
-import type { Map as LeafletMap, Marker as LeafletMarker } from "leaflet";
+import type { Layer, Map as LeafletMap } from "leaflet";
 
 export interface MapPlace {
   id: string;
@@ -21,7 +29,7 @@ export interface MapPlace {
 
 interface TravelPlacesMapProps {
   places: MapPlace[];
-  photos: { latitude: number | null; longitude: number | null }[];
+  photos: FlightLegPhoto[];
   selectedPlaceId: string | null;
   addMode: boolean;
   draftPin: { lat: number; lng: number } | null;
@@ -40,10 +48,13 @@ export default function TravelPlacesMap({
 }: TravelPlacesMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
-  const markersRef = useRef<LeafletMarker[]>([]);
+  const layersRef = useRef<Layer[]>([]);
   const handlersRef = useRef({ onMapClick, onPlaceClick, addMode });
 
   handlersRef.current = { onMapClick, onPlaceClick, addMode };
+
+  const { outbound, inbound } = resolveFlightLegs(photos);
+  const routePhotos = photoGpsPoints(photos);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -59,7 +70,8 @@ export default function TravelPlacesMap({
       const [lat, lng] = computeMapCenter(places, photos);
       const map = L.map(containerRef.current, {
         center: [lat, lng],
-        zoom: places.length || photos.some((p) => p.latitude != null) ? 6 : 4,
+        zoom:
+          places.length || photos.some((p) => p.latitude != null) ? 6 : 4,
         scrollWheelZoom: true,
       });
 
@@ -76,14 +88,14 @@ export default function TravelPlacesMap({
       });
 
       mapRef.current = map;
-      renderMarkers(L, map);
+      renderLayers(L, map);
     })();
 
     return () => {
       cancelled = true;
       mapRef.current?.remove();
       mapRef.current = null;
-      markersRef.current = [];
+      layersRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -94,34 +106,85 @@ export default function TravelPlacesMap({
 
     import("leaflet").then((leaflet) => {
       const L = leaflet.default ?? leaflet;
-      renderMarkers(L, map);
+      renderLayers(L, map);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [places, photos, selectedPlaceId, draftPin, addMode]);
+  }, [places, photos, selectedPlaceId, draftPin, addMode, outbound, inbound]);
 
-  function renderMarkers(L: typeof import("leaflet"), map: LeafletMap) {
-    for (const marker of markersRef.current) {
-      marker.remove();
+  function clearLayers() {
+    for (const layer of layersRef.current) {
+      layer.remove();
     }
-    markersRef.current = [];
+    layersRef.current = [];
+  }
 
-    for (const photo of photos) {
-      if (photo.latitude == null || photo.longitude == null) continue;
-      const marker = L.circleMarker([photo.latitude, photo.longitude], {
-        radius: 4,
-        color: "#94a3b8",
-        fillColor: "#cbd5e1",
-        fillOpacity: 0.8,
-        weight: 1,
-      }).addTo(map);
-      markersRef.current.push(marker as unknown as LeafletMarker);
+  function addLayer(layer: Layer) {
+    layersRef.current.push(layer);
+  }
+
+  function renderLayers(L: typeof import("leaflet"), map: LeafletMap) {
+    clearLayers();
+
+    const routeLatLngs = routePhotos.map(
+      (p) => [p.latitude!, p.longitude!] as [number, number]
+    );
+    if (routeLatLngs.length > 1) {
+      addLayer(
+        L.polyline(routeLatLngs, {
+          color: "#0d9488",
+          weight: 3,
+          opacity: 0.75,
+        }).addTo(map)
+      );
     }
+
+    if (outbound?.hasGps && inbound?.hasGps) {
+      addLayer(
+        L.polyline(
+          [
+            [outbound.photo.latitude!, outbound.photo.longitude!],
+            [inbound.photo.latitude!, inbound.photo.longitude!],
+          ],
+          { color: "#6366f1", weight: 3, opacity: 0.9, dashArray: "10 8" }
+        ).addTo(map)
+      );
+    }
+
+    for (const photo of routePhotos) {
+      addLayer(
+        L.circleMarker([photo.latitude!, photo.longitude!], {
+          radius: 4,
+          color: "#94a3b8",
+          fillColor: "#cbd5e1",
+          fillOpacity: 0.8,
+          weight: 1,
+        }).addTo(map)
+      );
+    }
+
+    const renderFlight = (leg: NonNullable<typeof outbound>, emoji: string) => {
+      const { photo } = leg;
+      const icon = L.divIcon({
+        html: `<div style="font-size:30px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))">${emoji}</div>`,
+        className: "",
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+      });
+      const marker = L.marker([photo.latitude!, photo.longitude!], { icon }).addTo(map);
+      marker.bindPopup(
+        `<strong>${escapeHtml(leg.label)}</strong><br>${escapeHtml(photo.user.alias)}<br><small>${escapeHtml(formatFlightDate(photo.exifDateTime))}</small>`
+      );
+      addLayer(marker);
+    };
+
+    if (outbound?.hasGps) renderFlight(outbound, FLIGHT_OUT_EMOJI);
+    if (inbound?.hasGps) renderFlight(inbound, FLIGHT_IN_EMOJI);
 
     for (const place of places) {
       const emoji = placeEmoji(place.type);
       const isSelected = place.id === selectedPlaceId;
       const icon = L.divIcon({
-        html: `<div style="font-size:${isSelected ? "28" : "24"}px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));transform:translate(-50%,-50%)">${emoji}</div>`,
+        html: `<div style="font-size:${isSelected ? "28" : "24"}px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">${emoji}</div>`,
         className: "",
         iconSize: [0, 0],
         iconAnchor: [0, 0],
@@ -132,7 +195,7 @@ export default function TravelPlacesMap({
         `<strong>${escapeHtml(place.name)}</strong>${place.comment ? `<br>${escapeHtml(place.comment)}` : ""}`
       );
       marker.on("click", () => handlersRef.current.onPlaceClick(place.id));
-      markersRef.current.push(marker);
+      addLayer(marker);
     }
 
     if (draftPin) {
@@ -142,16 +205,21 @@ export default function TravelPlacesMap({
         iconSize: [0, 0],
         iconAnchor: [0, 0],
       });
-      const marker = L.marker([draftPin.lat, draftPin.lng], { icon }).addTo(map);
-      markersRef.current.push(marker);
+      addLayer(L.marker([draftPin.lat, draftPin.lng], { icon }).addTo(map));
     }
 
     const boundsCoords: [number, number][] = [
       ...places.map((p) => [p.latitude, p.longitude] as [number, number]),
-      ...photos
-        .filter((p) => p.latitude != null && p.longitude != null)
-        .map((p) => [p.latitude!, p.longitude!] as [number, number]),
+      ...routePhotos.map(
+        (p) => [p.latitude!, p.longitude!] as [number, number]
+      ),
     ];
+    if (outbound?.hasGps) {
+      boundsCoords.push([outbound.photo.latitude!, outbound.photo.longitude!]);
+    }
+    if (inbound?.hasGps) {
+      boundsCoords.push([inbound.photo.latitude!, inbound.photo.longitude!]);
+    }
     if (draftPin) boundsCoords.push([draftPin.lat, draftPin.lng]);
 
     if (boundsCoords.length > 1) {
@@ -161,6 +229,8 @@ export default function TravelPlacesMap({
     }
   }
 
+  const hasFlightLine = outbound?.hasGps && inbound?.hasGps;
+
   return (
     <div className="relative">
       <div
@@ -169,6 +239,24 @@ export default function TravelPlacesMap({
           addMode ? "cursor-crosshair ring-2 ring-teal-400/50" : ""
         }`}
       />
+      <div className="pointer-events-none absolute left-3 top-3 space-y-1 rounded-lg bg-white/90 px-2.5 py-2 text-[10px] font-medium text-slate-600 shadow-sm backdrop-blur-sm">
+        {outbound && (
+          <span className="flex items-center gap-1">
+            {FLIGHT_OUT_EMOJI} Ida{outbound.hasGps ? "" : " (sin GPS)"}
+          </span>
+        )}
+        {inbound && (
+          <span className="flex items-center gap-1">
+            {FLIGHT_IN_EMOJI} Vuelta{inbound.hasGps ? "" : " (sin GPS)"}
+          </span>
+        )}
+        {hasFlightLine && (
+          <span className="flex items-center gap-1 text-indigo-600">
+            <span className="inline-block h-0.5 w-4 border-t-2 border-dashed border-indigo-500" />
+            Trayecto aéreo
+          </span>
+        )}
+      </div>
       {addMode && (
         <p className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-teal-700/90 px-3 py-1 text-xs font-medium text-white shadow">
           Toca el mapa para colocar el pin
