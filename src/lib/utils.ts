@@ -26,12 +26,21 @@ export function getJoinUrl(shareCode: string): string {
 }
 
 export const SESSION_KEY = "traveltoblog_session";
+export const TRAVEL_HISTORY_KEY = "traveltoblog_travel_history";
 
-export function getSessionFromStorage(): {
+export type TravelSession = {
   userId: string;
   alias: string;
   travelId: string;
-} | null {
+};
+
+export type TravelHistoryEntry = TravelSession & {
+  title: string;
+  shareCode: string;
+  lastVisited: string;
+};
+
+export function getSessionFromStorage(): TravelSession | null {
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem(SESSION_KEY);
   if (!raw) return null;
@@ -42,10 +51,37 @@ export function getSessionFromStorage(): {
   }
 }
 
-export function saveSession(session: {
-  userId: string;
-  alias: string;
-  travelId: string;
-}): void {
+export function saveSession(session: TravelSession): void {
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+}
+
+export function getTravelHistory(): TravelHistoryEntry[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(TRAVEL_HISTORY_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as TravelHistoryEntry[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function rememberTravel(entry: Omit<TravelHistoryEntry, "lastVisited">): void {
+  if (typeof window === "undefined") return;
+  const now = new Date().toISOString();
+  const history = getTravelHistory().filter((item) => item.travelId !== entry.travelId);
+  history.unshift({ ...entry, lastVisited: now });
+  localStorage.setItem(TRAVEL_HISTORY_KEY, JSON.stringify(history.slice(0, 20)));
+}
+
+export function touchTravelHistory(travelId: string): void {
+  if (typeof window === "undefined") return;
+  const history = getTravelHistory();
+  const index = history.findIndex((item) => item.travelId === travelId);
+  if (index === -1) return;
+  const [entry] = history.splice(index, 1);
+  entry.lastVisited = new Date().toISOString();
+  history.unshift(entry);
+  localStorage.setItem(TRAVEL_HISTORY_KEY, JSON.stringify(history));
 }

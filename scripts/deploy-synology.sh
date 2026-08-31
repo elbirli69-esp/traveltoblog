@@ -234,13 +234,14 @@ echo "   Puerto ${APP_PORT} escucha solo en 127.0.0.1 — no accesible desde la 
 \$COMPOSE ps
 REMOTE
 
-echo "→ Migrando schema SQLite (db push vía agente)…"
-"${SSH_CMD[@]}" "$SSH_TARGET" "docker cp traveltoblog:/app/data/travel.db ${REMOTE_DIR}/travel.db.migrate 2>/dev/null || true"
-if "${SSH_CMD[@]}" "$SSH_TARGET" "test -f ${REMOTE_DIR}/travel.db.migrate"; then
-  "${SSH_CMD[@]}" "$SSH_TARGET" "cat ${REMOTE_DIR}/travel.db.migrate" > /tmp/traveltoblog-migrate.db
-  DATABASE_URL="file:/tmp/traveltoblog-migrate.db" npx prisma db push --accept-data-loss --skip-generate
-  cat /tmp/traveltoblog-migrate.db | "${SSH_CMD[@]}" "$SSH_TARGET" "cat > ${REMOTE_DIR}/travel.db.migrate"
-  "${SSH_CMD[@]}" "$SSH_TARGET" bash -s <<MIGRATE
+if [[ "${MIGRATE_DB:-}" == "1" ]]; then
+  echo "→ Migrando schema SQLite (db push vía agente, sin pérdida de datos)…"
+  "${SSH_CMD[@]}" "$SSH_TARGET" "docker cp traveltoblog:/app/data/travel.db ${REMOTE_DIR}/travel.db.migrate 2>/dev/null || true"
+  if "${SSH_CMD[@]}" "$SSH_TARGET" "test -f ${REMOTE_DIR}/travel.db.migrate"; then
+    "${SSH_CMD[@]}" "$SSH_TARGET" "cat ${REMOTE_DIR}/travel.db.migrate" > /tmp/traveltoblog-migrate.db
+    if DATABASE_URL="file:/tmp/traveltoblog-migrate.db" npx prisma db push --skip-generate; then
+      cat /tmp/traveltoblog-migrate.db | "${SSH_CMD[@]}" "$SSH_TARGET" "cat > ${REMOTE_DIR}/travel.db.migrate"
+      "${SSH_CMD[@]}" "$SSH_TARGET" bash -s <<MIGRATE
 set -euo pipefail
 export PATH="/usr/local/bin:/usr/sbin:/usr/bin:\$PATH"
 cd "${REMOTE_DIR}"
@@ -248,9 +249,17 @@ docker cp travel.db.migrate traveltoblog:/app/data/travel.db
 docker exec -u root traveltoblog sh -c 'chown nextjs:nodejs /app/data/travel.db && chmod 664 /app/data/travel.db' 2>/dev/null || true
 docker compose restart traveltoblog 2>/dev/null || true
 MIGRATE
-  rm -f /tmp/traveltoblog-migrate.db
+      echo "   Schema actualizado en el volumen de producción"
+    else
+      echo "   ⚠️  db push falló — se conserva la BD de producción sin cambios"
+    fi
+    rm -f /tmp/traveltoblog-migrate.db
+  else
+    echo "   (sin BD en volumen — nada que migrar)"
+  fi
 else
-  echo "   (sin BD en volumen — se usará prisma/data/travel.db en primer arranque)"
+  echo "→ Migración de schema omitida (los datos en Docker volumes se conservan)"
+  echo "   Para aplicar cambios de schema: MIGRATE_DB=1 npm run deploy:synology"
 fi
 
 echo ""
