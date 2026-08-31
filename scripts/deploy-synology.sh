@@ -198,5 +198,24 @@ echo "   URL LAN: ${APP_URL}"
 \$COMPOSE ps
 REMOTE
 
+echo "→ Migrando schema SQLite (db push vía agente)…"
+"${SSH_CMD[@]}" "$SSH_TARGET" "docker cp traveltoblog:/app/data/travel.db ${REMOTE_DIR}/travel.db.migrate 2>/dev/null || true"
+if "${SSH_CMD[@]}" "$SSH_TARGET" "test -f ${REMOTE_DIR}/travel.db.migrate"; then
+  "${SSH_CMD[@]}" "$SSH_TARGET" "cat ${REMOTE_DIR}/travel.db.migrate" > /tmp/traveltoblog-migrate.db
+  DATABASE_URL="file:/tmp/traveltoblog-migrate.db" npx prisma db push --accept-data-loss --skip-generate
+  cat /tmp/traveltoblog-migrate.db | "${SSH_CMD[@]}" "$SSH_TARGET" "cat > ${REMOTE_DIR}/travel.db.migrate"
+  "${SSH_CMD[@]}" "$SSH_TARGET" bash -s <<MIGRATE
+set -euo pipefail
+export PATH="/usr/local/bin:/usr/sbin:/usr/bin:\$PATH"
+cd "${REMOTE_DIR}"
+docker cp travel.db.migrate traveltoblog:/app/data/travel.db
+docker exec -u root traveltoblog sh -c 'chown nextjs:nodejs /app/data/travel.db && chmod 664 /app/data/travel.db' 2>/dev/null || true
+docker compose restart traveltoblog 2>/dev/null || true
+MIGRATE
+  rm -f /tmp/traveltoblog-migrate.db
+else
+  echo "   (sin BD en volumen — se usará prisma/data/travel.db en primer arranque)"
+fi
+
 echo ""
 echo "✅ Despliegue completado → ${APP_URL}"
