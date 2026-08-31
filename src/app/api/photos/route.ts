@@ -81,6 +81,11 @@ export async function POST(request: NextRequest) {
       created.push(photo);
     }
 
+    await prisma.travel.update({
+      where: { id: travelId },
+      data: { updatedAt: new Date() },
+    });
+
     return NextResponse.json({ photos: created });
   } catch (error) {
     console.error("POST /api/photos", error);

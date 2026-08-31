@@ -21,6 +21,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Datos incompletos" }, { status: 400 });
     }
 
+    if (localId) {
+      const existing = await prisma.note.findUnique({
+        where: { localId },
+        include: { user: true },
+      });
+      if (existing) {
+        return NextResponse.json({ note: existing });
+      }
+    }
+
     let resolvedPhotoId = photoId ?? null;
     if (!resolvedPhotoId && photoLocalId) {
       const photo = await prisma.photo.findFirst({
@@ -41,6 +51,11 @@ export async function POST(request: NextRequest) {
         localId: localId ?? null,
       },
       include: { user: true },
+    });
+
+    await prisma.travel.update({
+      where: { id: travelId },
+      data: { updatedAt: new Date() },
     });
 
     return NextResponse.json({ note });

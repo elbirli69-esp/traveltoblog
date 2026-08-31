@@ -4,8 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import {
   getPendingPhotos,
   getPendingNotes,
+  getPendingPlaces,
   removePendingPhoto,
   removePendingNote,
+  removePendingPlace,
+  getPendingCounts,
+  type PendingCounts,
 } from "@/lib/offline-db";
 
 interface OfflineSyncBannerProps {
@@ -19,16 +23,30 @@ export default function OfflineSyncBanner({
   userId,
   onSynced,
 }: OfflineSyncBannerProps) {
-  const [pendingCount, setPendingCount] = useState(0);
+  const [counts, setCounts] = useState<PendingCounts>({
+    photos: 0,
+    notes: 0,
+    places: 0,
+    total: 0,
+  });
   const [syncing, setSyncing] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
 
   const refreshCount = useCallback(async () => {
-    const [photos, notes] = await Promise.all([
-      getPendingPhotos(travelId),
-      getPendingNotes(travelId),
-    ]);
-    setPendingCount(photos.length + notes.length);
+    setCounts(await getPendingCounts(travelId));
   }, [travelId]);
+
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     refreshCount();
@@ -37,7 +55,7 @@ export default function OfflineSyncBanner({
     return () => window.removeEventListener("online", handleOnline);
   }, [travelId, refreshCount]);
 
-  const syncAll = async () => {
+  const syncAll = useCallback(async () => {
     if (!navigator.onLine) return;
     setSyncing(true);
 
@@ -109,32 +127,55 @@ export default function OfflineSyncBanner({
         if (res.ok) await removePendingNote(note.localId);
       }
 
+      const pendingPlaces = await getPendingPlaces(travelId);
+      for (const place of pendingPlaces) {
+        const res = await fetch("/api/places", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            travelId: place.travelId,
+            userId: place.userId,
+            name: place.name,
+            type: place.type,
+            latitude: place.latitude,
+            longitude: place.longitude,
+            comment: place.comment,
+            localId: place.localId,
+          }),
+        });
+        if (res.ok) await removePendingPlace(place.localId);
+      }
+
       await refreshCount();
       onSynced?.();
     } finally {
       setSyncing(false);
     }
-  };
+  }, [travelId, userId, onSynced, refreshCount]);
 
   useEffect(() => {
-    if (navigator.onLine && pendingCount > 0) {
+    if (navigator.onLine && counts.total > 0) {
       syncAll();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingCount]);
+  }, [counts.total, syncAll]);
 
-  if (pendingCount === 0) return null;
+  if (counts.total === 0) return null;
+
+  const parts: string[] = [];
+  if (counts.photos) parts.push(`${counts.photos} foto${counts.photos > 1 ? "s" : ""}`);
+  if (counts.notes) parts.push(`${counts.notes} nota${counts.notes > 1 ? "s" : ""}`);
+  if (counts.places) parts.push(`${counts.places} lugar${counts.places > 1 ? "es" : ""}`);
 
   return (
     <div className="flex items-center justify-between rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
       <span>
-        {pendingCount} elemento{pendingCount > 1 ? "s" : ""} pendiente
-        {pendingCount > 1 ? "s" : ""} de sincronizar
+        Pendiente: {parts.join(", ")}
+        {!isOnline && " — esperando conexión"}
       </span>
       <button
         type="button"
         onClick={syncAll}
-        disabled={syncing || !navigator.onLine}
+        disabled={syncing || !isOnline}
         className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
       >
         {syncing ? "Sincronizando…" : "Sincronizar ahora"}

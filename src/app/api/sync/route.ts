@@ -31,6 +31,14 @@ export async function POST(request: NextRequest) {
     const synced = [];
 
     for (const meta of pendingPhotos) {
+      const existing = await prisma.photo.findUnique({
+        where: { localId: meta.localId },
+      });
+      if (existing) {
+        synced.push(existing);
+        continue;
+      }
+
       const file = formData.get(`file_${meta.localId}`) as File | null;
       if (!file) continue;
 
@@ -57,7 +65,40 @@ export async function POST(request: NextRequest) {
       });
 
       synced.push(photo);
+
+      if (meta.isTransportStart) {
+        await prisma.photo.updateMany({
+          where: { travelId, id: { not: photo.id }, isTransportStart: true },
+          data: { isTransportStart: false },
+        });
+        await prisma.travel.update({
+          where: { id: travelId },
+          data: {
+            startPhotoId: photo.id,
+            startDate: meta.exifDateTime ? new Date(meta.exifDateTime) : undefined,
+          },
+        });
+      }
+
+      if (meta.isTransportEnd) {
+        await prisma.photo.updateMany({
+          where: { travelId, id: { not: photo.id }, isTransportEnd: true },
+          data: { isTransportEnd: false },
+        });
+        await prisma.travel.update({
+          where: { id: travelId },
+          data: {
+            endPhotoId: photo.id,
+            endDate: meta.exifDateTime ? new Date(meta.exifDateTime) : undefined,
+          },
+        });
+      }
     }
+
+    await prisma.travel.update({
+      where: { id: travelId },
+      data: { updatedAt: new Date() },
+    });
 
     return NextResponse.json({ synced });
   } catch (error) {

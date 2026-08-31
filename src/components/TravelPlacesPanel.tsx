@@ -11,6 +11,7 @@ import {
 } from "@/lib/places";
 import type { FlightLegPhoto } from "@/lib/flights";
 import { formatFlightDate, resolveFlightLegs } from "@/lib/flights";
+import { createLocalId } from "@/lib/utils";
 
 const TravelPlacesMap = dynamic(() => import("@/components/TravelPlacesMap"), {
   ssr: false,
@@ -84,6 +85,25 @@ export default function TravelPlacesPanel({
     setError(null);
 
     try {
+      if (!navigator.onLine) {
+        const { savePendingPlace } = await import("@/lib/offline-db");
+        await savePendingPlace({
+          localId: createLocalId(),
+          travelId,
+          userId,
+          name: draft.name.trim(),
+          type: draft.type,
+          latitude: draft.lat,
+          longitude: draft.lng,
+          comment: draft.comment.trim() || null,
+          createdAt: new Date().toISOString(),
+        });
+        setDraft(null);
+        setAddMode(false);
+        onChanged?.();
+        return;
+      }
+
       const res = await fetch("/api/places", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

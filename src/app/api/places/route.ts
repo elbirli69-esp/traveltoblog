@@ -6,7 +6,7 @@ import { PLACE_TYPES } from "@/lib/places";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { travelId, userId, name, type, latitude, longitude, comment } = body as {
+    const { travelId, userId, name, type, latitude, longitude, comment, localId } = body as {
       travelId?: string;
       userId?: string;
       name?: string;
@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
       latitude?: number;
       longitude?: number;
       comment?: string | null;
+      localId?: string;
     };
 
     if (
@@ -24,6 +25,16 @@ export async function POST(request: NextRequest) {
       longitude == null
     ) {
       return NextResponse.json({ error: "Datos incompletos" }, { status: 400 });
+    }
+
+    if (localId) {
+      const existing = await prisma.place.findUnique({
+        where: { localId },
+        include: { user: true },
+      });
+      if (existing) {
+        return NextResponse.json({ place: existing });
+      }
     }
 
     const placeType =
@@ -38,8 +49,14 @@ export async function POST(request: NextRequest) {
         latitude,
         longitude,
         comment: comment?.trim() || null,
+        localId: localId ?? null,
       },
       include: { user: true },
+    });
+
+    await prisma.travel.update({
+      where: { id: travelId },
+      data: { updatedAt: new Date() },
     });
 
     return NextResponse.json({ place });
