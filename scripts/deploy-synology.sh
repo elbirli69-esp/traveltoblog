@@ -142,6 +142,16 @@ tar \
   node_modules/prisma \
   | "${SSH_CMD[@]}" "$SSH_TARGET" "tar xzf - -C ${REMOTE_DIR}"
 
+echo "→ Detectando IP Tailscale del NAS…"
+TAILSCALE_BIND_IP="$("${SSH_CMD[@]}" "$SSH_TARGET" "tailscale ip -4 2>/dev/null | head -1" || true)"
+TAILSCALE_BIND_IP="${TAILSCALE_BIND_IP//$'\r'/}"
+if [[ -z "$TAILSCALE_BIND_IP" ]]; then
+  echo "❌ No se pudo obtener la IP Tailscale del NAS. Activa Tailscale en el Synology."
+  exit 1
+fi
+echo "   Bind: ${TAILSCALE_BIND_IP}:${APP_PORT} (solo tailnet, no LAN)"
+APP_URL="http://${TAILSCALE_BIND_IP}:${APP_PORT}"
+
 echo "→ Escribiendo .env en el NAS…"
 if [[ -n "$DEEPSEEK_API_KEY" ]]; then
   ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "cat > ${REMOTE_DIR}/.env" <<EOF
@@ -149,10 +159,26 @@ DATABASE_URL=file:/app/data/travel.db
 DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
 OPENAI_BASE_URL=https://api.deepseek.com/v1
 OPENAI_MODEL=deepseek-chat
+TAILSCALE_BIND_IP=${TAILSCALE_BIND_IP}
 NEXT_PUBLIC_APP_URL=${APP_URL}
 EOF
 else
-  echo "   (sin DEEPSEEK_API_KEY local — no se sobrescribe .env remoto)"
+  echo "   (sin DEEPSEEK_API_KEY local — actualizando solo bind Tailscale)"
+  ssh "${SSH_OPTS[@]}" "$SSH_TARGET" bash -s <<ENVPATCH
+set -euo pipefail
+ENV_FILE="${REMOTE_DIR}/.env"
+touch "\$ENV_FILE"
+if grep -q '^TAILSCALE_BIND_IP=' "\$ENV_FILE" 2>/dev/null; then
+  sed -i "s|^TAILSCALE_BIND_IP=.*|TAILSCALE_BIND_IP=${TAILSCALE_BIND_IP}|" "\$ENV_FILE"
+else
+  echo "TAILSCALE_BIND_IP=${TAILSCALE_BIND_IP}" >> "\$ENV_FILE"
+fi
+if grep -q '^NEXT_PUBLIC_APP_URL=' "\$ENV_FILE" 2>/dev/null; then
+  sed -i "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=${APP_URL}|" "\$ENV_FILE"
+else
+  echo "NEXT_PUBLIC_APP_URL=${APP_URL}" >> "\$ENV_FILE"
+fi
+ENVPATCH
 fi
 
 echo "→ Construyendo y levantando contenedor Docker…"
@@ -194,7 +220,7 @@ fi
 
 echo ""
 echo "✅ TravelToBlog desplegado"
-echo "   URL LAN: ${APP_URL}"
+echo "   URL (solo Tailscale): ${APP_URL}"
 \$COMPOSE ps
 REMOTE
 
