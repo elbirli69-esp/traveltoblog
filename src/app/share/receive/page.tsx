@@ -6,7 +6,7 @@ export default function ShareReceiveRoute() {
     <Suspense
       fallback={
         <main className="mx-auto max-w-lg px-4 py-10">
-          <p className="text-slate-500">Recibiendo fotos…</p>
+          <p className="text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">Recibiendo fotos…</p>
         </main>
       }
     >

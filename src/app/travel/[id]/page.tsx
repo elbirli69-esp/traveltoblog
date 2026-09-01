@@ -247,7 +247,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   if (!travelId || !travel) {
     return (
       <main className="mx-auto max-w-3xl px-4 py-10">
-        <p className="text-slate-500">Cargando viaje…</p>
+        <p className="text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">Cargando viaje…</p>
       </main>
     );
   }
@@ -255,7 +255,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   if (!session || session.travelId !== travelId) {
     return (
       <main className="mx-auto max-w-lg px-4 py-10 text-center">
-        <p className="mb-4 text-slate-600">
+        <p className="mb-4 text-slate-600 dark:text-slate-300">
           Necesitas unirte a este viaje con tu alias primero.
         </p>
         <Link
@@ -309,8 +309,8 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
         <Link href="/" className="text-sm text-teal-600 hover:underline">
           ← Inicio
         </Link>
-        <h1 className="mt-2 text-2xl font-bold text-slate-900">{travel.title}</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100">{travel.title}</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
           {travel.users.length} participante{travel.users.length !== 1 ? "s" : ""}:{" "}
           {travel.users.map((u) => u.alias).join(", ")}
         </p>
@@ -371,7 +371,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
         tabCounts={tabCounts}
         photosContent={
           <div className="space-y-8">
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
               <PhotoUploadSection
                 travelId={travelId}
                 userId={session.userId}
@@ -401,7 +401,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
               />
             </section>
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
               <PhotoGallery
                 travelId={travelId}
                 userId={session.userId}
@@ -420,7 +420,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
           </div>
         }
         daysContent={
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
             <TravelDayCalendar
               travelId={travelId}
               userId={session.userId}
@@ -436,7 +436,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
           </section>
         }
         placesContent={
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
             <TravelPlacesPanel
               travelId={travelId}
               userId={session.userId}
@@ -456,10 +456,10 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
           </section>
         }
         timelineContent={
-          <section className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="space-y-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">Cronología unificada</h2>
-              <p className="mt-1 text-sm text-slate-500">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Cronología unificada</h2>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
                 Fotos, lugares, notas y vuelos en un solo hilo temporal — la misma base que el export HTML.
               </p>
             </div>
@@ -476,11 +476,11 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
           </section>
         }
         tripContent={
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-1 text-lg font-semibold text-slate-900">
+          <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
+            <h2 className="mb-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
               {tripNotes.length > 0 ? "Notas del viaje" : "Nota del viaje"}
             </h2>
-            <p className="mb-4 text-sm text-slate-500">
+            <p className="mb-4 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
               Anécdotas y comentarios sobre el viaje completo — no ligados a un día o una foto.
               La crónica las usa sobre todo en la introducción y la conclusión.
             </p>
@@ -508,7 +508,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
             <div
               ref={tripNoteRef}
               id="trip-note-form"
-              className={tripNotes.length > 0 ? "border-t border-slate-100 pt-4" : undefined}
+              className={tripNotes.length > 0 ? "border-t border-slate-100 dark:border-slate-800/80 pt-4" : undefined}
             >
               <NoteForm
                 travelId={travelId}

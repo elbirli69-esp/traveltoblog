@@ -184,7 +184,7 @@ export default function OfflineSyncBanner({
   if (counts.places) parts.push(`${counts.places} lugar${counts.places > 1 ? "es" : ""}`);
 
   return (
-    <div className="flex items-center justify-between rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+    <div className="flex items-center justify-between rounded-xl bg-amber-50 dark:bg-amber-950/35 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
       <span>
         Pendiente: {parts.join(", ")}
         {!isOnline && " — esperando conexión"}

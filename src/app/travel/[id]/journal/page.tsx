@@ -42,9 +42,9 @@ export default async function JournalPage({
         ← Volver al viaje
       </Link>
 
-      <header className="my-6 border-b border-slate-200 pb-6">
-        <h1 className="text-3xl font-bold text-slate-900">{travel.title}</h1>
-        <p className="mt-2 text-sm text-slate-500">
+      <header className="my-6 border-b border-slate-200 dark:border-slate-800 pb-6">
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">{travel.title}</h1>
+        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
           Edita la crónica antes de exportar a HTML o PDF.
         </p>
       </header>
@@ -56,7 +56,7 @@ export default async function JournalPage({
           generatedAt={travel.journalGeneratedAt?.toISOString() ?? null}
         />
       ) : (
-        <p className="mb-10 text-slate-500">
+        <p className="mb-10 text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
           Aún no se ha generado la crónica. Vuelve al viaje y pulsa &ldquo;Generar diario con IA&rdquo;.
         </p>
       )}

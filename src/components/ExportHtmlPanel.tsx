@@ -136,8 +136,8 @@ export default function ExportHtmlPanel({
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-slate-700">Tipología de viaje</h3>
-        <p className="mb-2 text-xs text-slate-500">
+        <h3 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-300">Tipología de viaje</h3>
+        <p className="mb-2 text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
           Define la estructura del HTML (cronología, mapa, reproducción). La plantilla visual es independiente.
         </p>
         {suggestion && typology === "auto" && (
@@ -154,18 +154,18 @@ export default function ExportHtmlPanel({
               className={`rounded-xl border-2 p-3 text-left transition ${
                 typology === t.id
                   ? "border-teal-500 ring-2 ring-teal-500/20"
-                  : "border-slate-200 hover:border-slate-300"
+                  : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:border-slate-700"
               }`}
             >
-              <p className="text-sm font-semibold text-slate-800">{t.label}</p>
-              <p className="mt-0.5 text-xs text-slate-500">{t.description}</p>
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{t.label}</p>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">{t.description}</p>
             </button>
           ))}
         </div>
       </div>
 
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-slate-700">Plantilla visual</h3>
+        <h3 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-300">Plantilla visual</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           {TEMPLATES.map((t) => (
             <button
@@ -175,7 +175,7 @@ export default function ExportHtmlPanel({
               className={`rounded-xl border-2 p-4 text-left transition ${
                 template === t.id
                   ? "border-teal-500 ring-2 ring-teal-500/20"
-                  : "border-slate-200 hover:border-slate-300"
+                  : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:border-slate-700"
               }`}
             >
               <div
@@ -183,13 +183,13 @@ export default function ExportHtmlPanel({
               >
                 {t.name}
               </div>
-              <p className="text-sm text-slate-600">{t.description}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">{t.description}</p>
             </button>
           ))}
         </div>
       </div>
 
-      <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
         <input
           type="checkbox"
           checked={includeGpsTrail}
@@ -200,7 +200,7 @@ export default function ExportHtmlPanel({
       </label>
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold text-slate-700">Formato</h3>
+        <h3 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-300">Formato</h3>
         <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
           <label className="flex cursor-pointer items-center gap-2 text-sm">
             <input
@@ -236,7 +236,7 @@ export default function ExportHtmlPanel({
           🗺️ Incluye cronología interactiva, mapa sincronizado y modo reproducir por días.
         </p>
       ) : (
-        <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+        <p className="rounded-lg bg-slate-50 dark:bg-slate-950/60 px-3 py-2 text-sm text-slate-600 dark:text-slate-300">
           Sin GPS: cronología textual unificada (fotos, lugares, notas). Añade GPS para mapa completo.
         </p>
       )}

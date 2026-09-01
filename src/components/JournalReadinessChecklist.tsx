@@ -60,7 +60,7 @@ export default function JournalReadinessChecklist({
             <button
               type="button"
               onClick={() => onFix(item.actionKind, item.dayDate)}
-              className="shrink-0 self-start rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-50 sm:self-auto"
+              className="shrink-0 self-start rounded-lg border border-amber-300 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-50 sm:self-auto"
             >
               {item.actionLabel}
             </button>

@@ -2,13 +2,72 @@
 @import "leaflet/dist/leaflet.css";
 @import "mapbox-gl/dist/mapbox-gl.css";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #f8fafc;
+  color-scheme: light;
+  --background: #f1f5f9;
   --foreground: #0f172a;
+  --card: #ffffff;
+  --card-elevated: #ffffff;
+  --muted: #64748b;
+  --border: #e2e8f0;
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --accent: #0d9488;
+  --accent-soft: #ccfbf1;
+  --overlay: rgba(15, 23, 42, 0.55);
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #070b10;
+  --foreground: #e8edf4;
+  --card: #0f1620;
+  --card-elevated: #141d29;
+  --muted: #8b9cb3;
+  --border: #1f2a3a;
+  --input-bg: #111a26;
+  --input-border: #2a384d;
+  --accent: #2dd4bf;
+  --accent-soft: #134e4a;
+  --overlay: rgba(0, 0, 0, 0.65);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+@layer base {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  textarea,
+  select {
+    background-color: var(--input-bg);
+    border-color: var(--input-border);
+    color: var(--foreground);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--muted);
+    opacity: 0.85;
+  }
+}
+
+/* Mapbox / Leaflet popups in dark mode */
+.dark .mapboxgl-popup-content,
+.dark .leaflet-popup-content-wrapper {
+  background: var(--card-elevated);
+  color: var(--foreground);
+}
+
+.dark .mapboxgl-popup-tip {
+  border-top-color: var(--card-elevated);
+  border-bottom-color: var(--card-elevated);
+}
+
+.dark .leaflet-popup-tip {
+  background: var(--card-elevated);
 }

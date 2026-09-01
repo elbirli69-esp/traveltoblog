@@ -78,8 +78,8 @@ export default function TravelCollaborationBar({
     }).format(new Date(lastUpdated));
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm shadow-sm">
-      <div className="flex flex-wrap items-center gap-3 text-slate-600">
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-2.5 text-sm shadow-sm dark:shadow-black/20">
+      <div className="flex flex-wrap items-center gap-3 text-slate-600 dark:text-slate-300">
         <span
           className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${
             isOnline ? "bg-teal-50 text-teal-800" : "bg-amber-50 text-amber-800"
@@ -90,11 +90,11 @@ export default function TravelCollaborationBar({
           />
           {isOnline ? "En línea" : "Sin conexión"}
         </span>
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
           {participantCount} colaborador{participantCount !== 1 ? "es" : ""}
         </span>
         {formattedUpdate && (
-          <span className="text-xs text-slate-400">Actualizado {formattedUpdate}</span>
+          <span className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">Actualizado {formattedUpdate}</span>
         )}
       </div>
 
@@ -106,7 +106,7 @@ export default function TravelCollaborationBar({
           type="button"
           onClick={handleRefresh}
           disabled={!isOnline}
-          className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          className="rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60 disabled:opacity-50"
         >
           Actualizar
         </button>

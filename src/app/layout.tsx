@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import SerwistRegister from "@/components/SerwistRegister";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import ThemeToggle from "@/components/ThemeToggle";
+import { themeInitScript } from "@/lib/theme";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,7 +13,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
     title: "TravelToBlog",
   },
   icons: {
@@ -23,7 +27,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0d9488",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#0d9488" },
+    { media: "(prefers-color-scheme: dark)", color: "#070b10" },
+  ],
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -35,10 +42,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
+    <html lang="es" className="dark" suppressHydrationWarning>
+      <head>
+        <Script id="theme-init" strategy="beforeInteractive">
+          {themeInitScript}
+        </Script>
+      </head>
       <body className="min-h-dvh antialiased">
-        <SerwistRegister />
-        {children}
+        <ThemeProvider>
+          <SerwistRegister />
+          <div className="pointer-events-none fixed right-3 top-3 z-[100] sm:right-4 sm:top-4">
+            <div className="pointer-events-auto">
+              <ThemeToggle />
+            </div>
+          </div>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

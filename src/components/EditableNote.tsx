@@ -95,7 +95,7 @@ export default function EditableNote({
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={3}
-          className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+          className="mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
         />
         {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
         <div className="mt-2 flex flex-wrap gap-2">
@@ -111,7 +111,7 @@ export default function EditableNote({
             type="button"
             onClick={cancel}
             disabled={saving}
-            className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+            className="rounded-lg bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60"
           >
             Cancelar
           </button>
@@ -121,14 +121,14 @@ export default function EditableNote({
   }
 
   return (
-    <li className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
+    <li className="rounded-xl bg-slate-50 dark:bg-slate-950/60 px-3 py-2 text-sm text-slate-700 dark:text-slate-300">
       <div className="flex items-start justify-between gap-2">
         <span className="font-medium text-teal-700">{note.user.alias}</span>
         <div className="flex shrink-0 gap-2">
           <button
             type="button"
             onClick={startEdit}
-            className="text-xs font-medium text-slate-500 hover:text-teal-700"
+            className="text-xs font-medium text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500 hover:text-teal-700"
           >
             Editar
           </button>

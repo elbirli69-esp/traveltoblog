@@ -128,13 +128,13 @@ export default function NoteForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2">
-      <label className="text-sm font-medium text-slate-700">{resolvedLabel}</label>
+      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{resolvedLabel}</label>
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={rows}
         placeholder={placeholder}
-        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+        className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
       />
       {type === "TRIP" && (
         <MemoryDateTimeField

@@ -69,7 +69,7 @@ export default function ExportPdfPanel({
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="mb-2 text-sm font-semibold text-slate-700">Formato de página</h3>
+        <h3 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-300">Formato de página</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           {FORMATS.map((f) => (
             <button
@@ -79,17 +79,17 @@ export default function ExportPdfPanel({
               className={`rounded-xl border-2 p-4 text-left transition ${
                 format === f.id
                   ? "border-violet-500 ring-2 ring-violet-500/20"
-                  : "border-slate-200 hover:border-slate-300"
+                  : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:border-slate-700"
               }`}
             >
-              <p className="font-medium text-slate-800">{f.name}</p>
-              <p className="mt-1 text-sm text-slate-600">{f.description}</p>
+              <p className="font-medium text-slate-800 dark:text-slate-200">{f.name}</p>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{f.description}</p>
             </button>
           ))}
         </div>
       </div>
 
-      <ul className="space-y-1 text-sm text-slate-600">
+      <ul className="space-y-1 text-sm text-slate-600 dark:text-slate-300">
         <li>📖 Portada oscura con título y fechas</li>
         <li>📷 Páginas a dos columnas: fotos + EXIF | narrativa IA + citas</li>
         <li>🖨️ PDF optimizado para imprenta (WeasyPrint, 300 DPI)</li>
