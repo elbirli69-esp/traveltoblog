@@ -35,20 +35,20 @@ export default function JoinCodeForm() {
             spellCheck={false}
             autoComplete="off"
             inputMode="text"
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-4 py-3 font-mono text-lg tracking-wider text-fg focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+            className="form-input form-input-lg input-focus font-mono text-lg tracking-wider"
             required
           />
         </label>
         <button
           type="submit"
           disabled={!code.trim()}
-          className="w-full rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+          className="btn-primary w-full py-3 text-sm disabled:opacity-50"
         >
           Continuar
         </button>
       </form>
 
-      <p className="mt-4 text-xs text-slate-400 dark:text-fg-secondary dark:text-slate-500">
+      <p className="mt-4 text-xs text-fg-tertiary">
         También puedes abrir directamente el enlace de invitación del móvil.
       </p>
 

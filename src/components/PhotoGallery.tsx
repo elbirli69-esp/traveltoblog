@@ -98,7 +98,7 @@ function PhotoDateEditor({
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60/80 p-3 space-y-2">
+    <div className="surface-inset p-3 space-y-2">
       <MemoryDateTimeField
         label="Fecha y hora de la foto"
         date={date}
@@ -111,12 +111,12 @@ function PhotoDateEditor({
             : "Sin EXIF: indica cuándo se tomó para ordenar el recorrido."
         }
       />
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
       <button
         type="button"
         onClick={save}
         disabled={saving}
-        className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
+        className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50"
       >
         {saving ? "Guardando…" : "Guardar fecha"}
       </button>
@@ -268,9 +268,9 @@ export default function PhotoGallery({
         </p>
       </div>
 
-      {loadError && <p className="text-sm text-red-600">{loadError}</p>}
-      {transportError && <p className="text-sm text-red-600">{transportError}</p>}
-      {deleteError && <p className="text-sm text-red-600">{deleteError}</p>}
+      {loadError && <p className="text-sm text-danger">{loadError}</p>}
+      {transportError && <p className="text-sm text-danger">{transportError}</p>}
+      {deleteError && <p className="text-sm text-danger">{deleteError}</p>}
 
       <PaginationBar
         page={page}
@@ -309,10 +309,10 @@ export default function PhotoGallery({
               <article
                 key={photo.id}
                 id={`gallery-photo-${photo.id}`}
-                className={`overflow-hidden rounded-2xl border bg-white dark:bg-slate-900 shadow-sm dark:shadow-black/20 transition-shadow ${
+                className={`surface overflow-hidden shadow-sm transition-shadow ${
                   isExpanded
-                    ? "border-teal-300 ring-2 ring-teal-500/20"
-                    : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:border-slate-700"
+                    ? "photo-tile-active"
+                    : "border-[var(--border)] hover:border-[var(--border-strong)]"
                 }`}
               >
                 <button
@@ -357,7 +357,7 @@ export default function PhotoGallery({
                 </button>
 
                 {isExpanded && (
-                  <div className="space-y-4 border-t border-slate-100 dark:border-slate-800/80 px-4 py-4">
+                  <div className="space-y-4 border-t border-divider px-4 py-4">
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -402,7 +402,7 @@ export default function PhotoGallery({
                     </div>
 
                     {nearby.length > 0 && onOpenPlace && (
-                      <div className="rounded-xl bg-emerald-50/80 px-3 py-2 text-xs text-emerald-900">
+                      <div className="callout callout-success text-xs">
                         <p className="mb-1.5 font-semibold">Cerca de un lugar marcado</p>
                         <ul className="space-y-1">
                           {nearby.slice(0, 3).map((place) => (
@@ -410,7 +410,7 @@ export default function PhotoGallery({
                               <button
                                 type="button"
                                 onClick={() => onOpenPlace(place.id)}
-                                className="font-medium text-emerald-800 underline-offset-2 hover:underline"
+                                className="font-medium text-accent-mint underline-offset-2 hover:underline"
                               >
                                 {place.name} ({formatDistanceM(place.distanceM)})
                               </button>

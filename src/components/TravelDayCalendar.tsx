@@ -144,15 +144,15 @@ export default function TravelDayCalendar({
             onClick={() => changeDate(-1)}
             disabled={atStart}
             aria-label="Día anterior"
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-lg text-fg-secondary hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60 disabled:opacity-40"
+            className="icon-btn disabled:opacity-40"
           >
             ◀
           </button>
-          <div className="min-w-[11rem] rounded-xl bg-teal-50 px-4 py-2 text-center">
+          <div className="month-display">
             <span className="mr-1.5" aria-hidden>
               📅
             </span>
-            <span className="text-sm font-semibold text-teal-900">
+            <span className="text-sm font-semibold text-accent-cyan">
               {formatDateKey(activeDate, "short")}
             </span>
           </div>
@@ -161,7 +161,7 @@ export default function TravelDayCalendar({
             onClick={() => changeDate(1)}
             disabled={atEnd}
             aria-label="Día siguiente"
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-lg text-fg-secondary hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60 disabled:opacity-40"
+            className="icon-btn disabled:opacity-40"
           >
             ▶
           </button>
@@ -179,18 +179,18 @@ export default function TravelDayCalendar({
                 key={key}
                 type="button"
                 onClick={() => setSelectedDate(key)}
-                className={`relative flex h-9 min-w-[2.25rem] items-center justify-center rounded-lg px-2 text-xs font-semibold transition-colors ${
+                className={`day-chip ${
                   isActive
-                    ? "bg-teal-600 text-white"
+                    ? "day-chip-active"
                     : hasContent
-                      ? "bg-teal-50 text-teal-800 hover:bg-teal-100"
-                      : "bg-slate-100 dark:bg-slate-800/80 text-fg-secondary hover:bg-slate-200"
+                      ? "day-chip-content"
+                      : ""
                 }`}
                 title={formatDateKey(key, "long")}
               >
                 {dayNum}
                 {hasContent && !isActive && (
-                  <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-teal-500" />
+                  <span className="day-chip-dot" />
                 )}
               </button>
             );
@@ -224,16 +224,16 @@ export default function TravelDayCalendar({
                     onClick={() =>
                       setPhotoNoteId(isOpen ? null : photo.id)
                     }
-                    className={`overflow-hidden rounded-xl border bg-white dark:bg-slate-900 text-left transition ${
+                    className={`overflow-hidden rounded-xl border bg-[var(--card-elevated)] text-left transition ${
                       isOpen
-                        ? "border-teal-400 ring-2 ring-teal-500/30"
-                        : "border-slate-200 dark:border-slate-800 hover:border-teal-300"
+                        ? "photo-tile-active"
+                        : "border-[var(--border)] hover:border-[var(--border-strong)]"
                     }`}
                   >
                     <PhotoImage
                       photoId={photo.id}
                       url={photo.url}
-                      className="aspect-square w-full bg-slate-100 dark:bg-slate-800/80 object-cover"
+                      className="aspect-square w-full bg-[var(--card-grouped)] object-cover"
                     />
                     <div className="space-y-0.5 px-1.5 py-1.5">
                       <p className="truncate text-[10px] font-medium text-fg-secondary">
@@ -242,7 +242,7 @@ export default function TravelDayCalendar({
                           ? ` · ${photoNotes.length} nota${photoNotes.length !== 1 ? "s" : ""}`
                           : ""}
                       </p>
-                      <p className="text-[10px] font-semibold text-teal-700">
+                      <p className="text-[10px] font-semibold text-accent-mint">
                         {isOpen ? "Cerrar nota" : "Añadir nota"}
                       </p>
                     </div>
@@ -264,15 +264,13 @@ export default function TravelDayCalendar({
                 const photoNotes =
                   photo.notes?.filter((n) => n.type === "PHOTO") ?? [];
                 return (
-                  <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50/40 p-4 space-y-3">
+                  <div className="form-panel mt-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-semibold text-teal-900">
-                        Nota para esta foto
-                      </p>
+                      <p className="form-panel-title">Nota para esta foto</p>
                       <button
                         type="button"
                         onClick={() => setPhotoNoteId(null)}
-                        className="text-xs font-medium text-slate-500 hover:text-fg"
+                        className="text-xs font-medium text-fg-tertiary hover:text-fg"
                       >
                         Cerrar
                       </button>
@@ -327,7 +325,7 @@ export default function TravelDayCalendar({
         <div
           ref={noteFormRef}
           id="day-note-form"
-          className="border-t border-slate-100 dark:border-slate-800/80 pt-4"
+          className="border-t border-divider pt-4"
         >
           <NoteForm
             travelId={travelId}

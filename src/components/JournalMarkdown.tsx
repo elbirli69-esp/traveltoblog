@@ -9,7 +9,7 @@ export default function JournalMarkdown({ markdown }: JournalMarkdownProps) {
 
   return (
     <article
-      className="journal-prose prose prose-slate mb-10 max-w-none prose-headings:font-semibold prose-a:text-teal-600 prose-img:rounded-xl"
+      className="journal-prose"
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

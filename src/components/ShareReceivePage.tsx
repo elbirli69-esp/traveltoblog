@@ -41,13 +41,13 @@ export default function ShareReceivePage() {
       <div className="space-y-3">
         <Link
           href="/"
-          className="block rounded-xl bg-teal-600 px-4 py-3 text-center text-sm font-semibold text-white"
+          className="btn-primary block w-full py-3 text-center text-sm"
         >
           Ir al inicio
         </Link>
         <Link
           href="/join"
-          className="block rounded-xl border border-slate-200 dark:border-slate-800 px-4 py-3 text-center text-sm font-medium text-fg-secondary"
+          className="btn-secondary block w-full py-3 text-center text-sm"
         >
           Unirme a un viaje
         </Link>

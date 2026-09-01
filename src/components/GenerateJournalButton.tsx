@@ -114,18 +114,16 @@ export default function GenerateJournalButton({
   return (
     <div className="space-y-3">
       <fieldset className="space-y-2" disabled={loading}>
-        <legend className="mb-2 text-sm font-medium text-indigo-900">Estilo de la crónica</legend>
+        <legend className="mb-2 text-sm font-medium text-accent-cyan">
+          Estilo de la crónica
+        </legend>
         {(Object.keys(JOURNAL_STYLE_LABELS) as JournalStyle[]).map((key) => {
           const option = JOURNAL_STYLE_LABELS[key];
           const selected = style === key;
           return (
             <label
               key={key}
-              className={`flex cursor-pointer gap-3 rounded-xl border px-4 py-3 transition ${
-                selected
-                  ? "border-indigo-400 bg-white dark:bg-slate-900 shadow-sm dark:shadow-black/20"
-                  : "border-indigo-100 bg-indigo-50/40 hover:bg-white dark:hover:bg-slate-800 dark:bg-slate-900/70"
-              }`}
+              className={`option-radio ${selected ? "option-radio-active" : ""}`}
             >
               <input
                 type="radio"
@@ -136,8 +134,8 @@ export default function GenerateJournalButton({
                 className="mt-1"
               />
               <span>
-                <span className="block text-sm font-semibold text-indigo-950">{option.title}</span>
-                <span className="block text-xs text-indigo-800/80">{option.description}</span>
+                <span className="block text-sm font-semibold text-fg">{option.title}</span>
+                <span className="block text-xs text-fg-secondary">{option.description}</span>
               </span>
             </label>
           );
@@ -148,13 +146,17 @@ export default function GenerateJournalButton({
         type="button"
         onClick={handleGenerate}
         disabled={loading}
-        className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+        className="btn-primary w-full py-3 text-sm disabled:opacity-50"
       >
-        {loading ? "Generando crónica…" : hasExistingJournal ? "✨ Regenerar diario con IA" : "✨ Generar diario con IA"}
+        {loading
+          ? "Generando crónica…"
+          : hasExistingJournal
+            ? "✨ Regenerar diario con IA"
+            : "✨ Generar diario con IA"}
       </button>
 
       {loading && (
-        <ul className="space-y-1.5 rounded-xl bg-indigo-50/80 px-4 py-3 text-xs text-indigo-900">
+        <ul className="progress-panel space-y-1.5">
           {Object.entries(STEP_LABELS).map(([key, label]) => {
             if (key === "complete") return null;
             const done = completedSteps.includes(key);
@@ -163,7 +165,11 @@ export default function GenerateJournalButton({
               <li
                 key={key}
                 className={`flex items-center gap-2 ${
-                  done ? "text-teal-700" : active ? "font-semibold" : "text-indigo-400"
+                  done
+                    ? "progress-step-done"
+                    : active
+                      ? "progress-step-active"
+                      : "progress-step-pending"
                 }`}
               >
                 <span>{done ? "✓" : active ? "…" : "○"}</span>
@@ -172,15 +178,13 @@ export default function GenerateJournalButton({
             );
           })}
           {stepMessage && (
-            <li className="font-medium text-indigo-700">{stepMessage}</li>
+            <li className="progress-step-active font-medium">{stepMessage}</li>
           )}
         </ul>
       )}
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {warning && !loading && (
-        <p className="text-sm text-amber-700">{warning}</p>
-      )}
+      {error && <p className="text-sm text-danger">{error}</p>}
+      {warning && !loading && <p className="callout callout-warning text-sm">{warning}</p>}
     </div>
   );
 }

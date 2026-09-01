@@ -40,7 +40,7 @@ export default function SharePanel({
           </p>
         </div>
         <span
-          className="shrink-0 text-xs font-semibold text-teal-700"
+          className="shrink-0 text-xs font-semibold text-accent-cyan"
           aria-hidden="true"
         >
           {open ? "Ocultar" : "Mostrar"}
@@ -48,27 +48,25 @@ export default function SharePanel({
       </button>
 
       {open && (
-        <div className="border-t border-slate-100 dark:border-slate-800/80 px-5 pb-5 pt-4">
+        <div className="border-t border-[var(--border)] px-5 pb-5 pt-4">
           <p className="mb-4 text-sm text-fg-secondary">
             Comparte el enlace o el código QR para que otros se unan a &ldquo;{title}
             &rdquo;
           </p>
 
           <div className="flex flex-col items-center gap-4 sm:flex-row">
-            <div className="rounded-xl bg-white dark:bg-slate-900 p-3 shadow-inner ring-1 ring-slate-100">
+            <div className="surface-elevated rounded-xl p-3">
               <QRCodeSVG value={joinUrl} size={140} level="M" />
             </div>
             <div className="flex-1 space-y-3">
               <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-fg-secondary dark:text-slate-500">
+                <p className="text-xs font-medium uppercase tracking-wide text-fg-tertiary">
                   Código
                 </p>
-                <p className="font-mono text-2xl font-bold tracking-widest text-teal-700">
-                  {shareCode}
-                </p>
+                <p className="share-code">{shareCode}</p>
               </div>
               <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-fg-secondary dark:text-slate-500">
+                <p className="text-xs font-medium uppercase tracking-wide text-fg-tertiary">
                   Enlace
                 </p>
                 <p className="break-all text-sm text-fg-secondary">{joinUrl}</p>
@@ -76,7 +74,7 @@ export default function SharePanel({
               <button
                 type="button"
                 onClick={copyLink}
-                className="rounded-lg bg-slate-100 dark:bg-slate-800/80 px-4 py-2 text-sm font-medium text-fg-secondary hover:bg-slate-200"
+                className="btn-secondary px-4 py-2 text-sm"
               >
                 Copiar enlace
               </button>

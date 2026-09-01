@@ -56,7 +56,7 @@ export default function TravelTimeline({
 
   if (error) {
     return (
-      <p className="text-sm text-red-600">
+      <p className="text-sm text-danger">
         {error}{" "}
         <button type="button" onClick={() => void load()} className="underline">
           Reintentar
@@ -67,7 +67,7 @@ export default function TravelTimeline({
 
   if (events.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/60 px-4 py-8 text-center text-sm text-fg-secondary">
+      <p className="empty-state text-sm text-fg-secondary">
         Aún no hay eventos en la cronología. Añade fotos, lugares o notas.
       </p>
     );
@@ -117,13 +117,13 @@ export default function TravelTimeline({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-2">
                   <span className="font-semibold text-fg">{ev.title}</span>
-                  <span className="text-xs text-slate-400 dark:text-fg-secondary dark:text-slate-500">{time}</span>
+                  <span className="text-xs text-fg-tertiary">{time}</span>
                 </div>
                 {ev.body && (
                   <p className="mt-0.5 line-clamp-2 text-xs text-fg-secondary">{ev.body}</p>
                 )}
                 {ev.author && (
-                  <p className="mt-0.5 text-xs text-slate-400 dark:text-fg-secondary dark:text-slate-500">{ev.author}</p>
+                  <p className="mt-0.5 text-xs text-fg-tertiary">{ev.author}</p>
                 )}
               </div>
               {ev.mediaUrl && (

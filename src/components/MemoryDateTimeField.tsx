@@ -57,20 +57,20 @@ export default function MemoryDateTimeField({
           type="date"
           value={date}
           onChange={(e) => onDateChange(e.target.value)}
-          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+          className="form-input input-focus"
         />
         {withTime && onTimeChange && (
           <input
             type="time"
             value={time}
             onChange={(e) => onTimeChange(e.target.value)}
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+            className="form-input input-focus"
           />
         )}
       </div>
       {hint && <p className="text-xs text-fg-secondary">{hint}</p>}
       {date && (
-        <p className="text-xs text-teal-700">
+        <p className="text-xs text-accent-mint">
           {formatDateKey(date)}
           {withTime && time ? ` · ${time}` : ""}
         </p>

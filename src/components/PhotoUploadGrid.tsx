@@ -504,10 +504,10 @@ export default function PhotoUploadGrid({
 
   const panelClass = addOnly
     ? showPanel
-      ? "fixed inset-x-0 bottom-0 z-50 max-h-[90vh] overflow-y-auto rounded-t-2xl border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 pb-8 shadow-2xl space-y-6"
+      ? "sheet-bottom space-y-6"
       : "sr-only"
     : `space-y-6 rounded-2xl transition ring-offset-2 ${
-        highlight ? "ring-2 ring-teal-400 ring-offset-4" : ""
+        highlight ? "ring-2 ring-[var(--accent-cyan)] ring-offset-4 highlight-ring" : ""
       }`;
 
   return (
@@ -642,7 +642,7 @@ export default function PhotoUploadGrid({
 
       {/* Date range info */}
       {(dateRange.start || dateRange.end) && (
-        <div className="rounded-xl bg-slate-50 dark:bg-slate-950/60 px-4 py-3 text-sm text-fg-secondary">
+        <div className="surface-inset px-4 py-3 text-sm text-fg-secondary">
           <span className="font-medium">Rango del viaje: </span>
           {dateRange.start
             ? formatExifDate(dateRange.start)
@@ -650,7 +650,7 @@ export default function PhotoUploadGrid({
           {" → "}
           {dateRange.end ? formatExifDate(dateRange.end) : "Fin pendiente"}
           {outOfRangeCount > 0 && (
-            <span className="ml-2 text-amber-600">
+            <span className="ml-2 text-warning-inline">
               ({outOfRangeCount} fuera de rango)
             </span>
           )}
@@ -670,7 +670,7 @@ export default function PhotoUploadGrid({
       )}
 
       {error && (
-        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="callout callout-error text-sm">
           {error}
         </div>
       )}
@@ -684,10 +684,10 @@ export default function PhotoUploadGrid({
                 key={photo.id}
                 className={`group flex flex-col overflow-hidden rounded-xl border-2 transition ${
                   photo.outOfRange
-                    ? "border-amber-300 opacity-60"
+                    ? "photo-tile-warn"
                     : photo.selected
-                      ? "border-teal-500 shadow-md"
-                      : "border-slate-200 dark:border-slate-800 opacity-50"
+                      ? "photo-tile-selected"
+                      : "photo-tile-idle"
                 }`}
               >
                 <div className="relative">
@@ -706,11 +706,9 @@ export default function PhotoUploadGrid({
                   aria-label={photo.selected ? "Deseleccionar" : "Seleccionar"}
                 >
                   <span
-                    className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
-                      photo.selected
-                        ? "bg-teal-500 text-white"
-                        : "bg-white dark:bg-slate-900/80 text-slate-400 dark:text-fg-secondary dark:text-slate-500"
-                    }`}
+                    className={
+                      photo.selected ? "select-check-active" : "select-check-idle"
+                    }
                   >
                     {photo.selected ? "✓" : ""}
                   </span>
@@ -727,12 +725,12 @@ export default function PhotoUploadGrid({
                     </p>
                   )}
                   {!isValidGps(photo.exif.latitude, photo.exif.longitude) && (
-                    <p className="text-[10px] font-medium text-amber-200">
+                    <p className="text-overlay-warn">
                       {photo.gpsStripped ? "GPS quitado por Android" : "Sin GPS en archivo"}
                     </p>
                   )}
                   {photo.outOfRange && (
-                    <p className="text-[10px] font-medium text-amber-300">
+                    <p className="text-overlay-warn">
                       Fuera de rango
                     </p>
                   )}
@@ -744,10 +742,10 @@ export default function PhotoUploadGrid({
                     type="button"
                     onClick={() => markTransport(photo.id, "start")}
                     title="Marcar como transporte de ida"
-                    className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                    className={`transport-mark ${
                       photo.isTransportStart
-                        ? "bg-blue-500 text-white"
-                        : "bg-white dark:bg-slate-900/80 text-fg-secondary opacity-0 group-hover:opacity-100"
+                        ? "transport-mark-blue"
+                        : "transport-mark transport-mark-idle"
                     }`}
                   >
                     Ida
@@ -756,10 +754,10 @@ export default function PhotoUploadGrid({
                     type="button"
                     onClick={() => markTransport(photo.id, "end")}
                     title="Marcar como transporte de vuelta"
-                    className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                    className={`transport-mark ${
                       photo.isTransportEnd
-                        ? "bg-purple-500 text-white"
-                        : "bg-white dark:bg-slate-900/80 text-fg-secondary opacity-0 group-hover:opacity-100"
+                        ? "transport-mark-purple"
+                        : "transport-mark transport-mark-idle"
                     }`}
                   >
                     Vuelta
@@ -780,9 +778,9 @@ export default function PhotoUploadGrid({
                 </div>
 
                 {!isValidGps(photo.exif.latitude, photo.exif.longitude) && (
-                  <div className="space-y-1.5 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-950/60 p-2">
+                  <div className="space-y-1.5 border-t border-[var(--border)] bg-[var(--card-grouped)] p-2">
                     {photo.gpsStripped && (
-                      <p className="text-[10px] leading-tight text-amber-800">
+                      <p className="text-[10px] leading-tight opacity-90">
                         GPS quitado por Android
                       </p>
                     )}
@@ -791,13 +789,13 @@ export default function PhotoUploadGrid({
                         type="button"
                         onClick={() => void applyLocationToPhoto(photo.id)}
                         disabled={locationBusy}
-                        className="rounded bg-indigo-100 px-2 py-0.5 text-[10px] font-medium text-indigo-900 hover:bg-indigo-200 disabled:opacity-50"
+                        className="chip-btn disabled:opacity-50"
                       >
                         {locationBusy ? "…" : "📍 Aquí"}
                       </button>
                       {places.length > 0 && (
                         <select
-                          className="min-w-0 flex-1 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-1 py-0.5 text-[10px]"
+                          className="form-input form-input-sm min-w-0 flex-1"
                           defaultValue=""
                           onChange={(e) => {
                             const placeId = e.target.value;

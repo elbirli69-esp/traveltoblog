@@ -11,7 +11,7 @@ export default function AndroidDownloadPage() {
   return (
     <main className="mx-auto min-h-dvh max-w-lg px-4 py-10">
       <header className="mb-8 text-center">
-        <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-600 text-3xl text-white shadow-lg">
+        <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl btn-primary text-3xl shadow-lg">
           📱
         </div>
         <h1 className="text-2xl font-bold text-fg">App Android</h1>
@@ -24,7 +24,7 @@ export default function AndroidDownloadPage() {
         <a
           href={APK_PATH}
           download="traveltoblog-latest.apk"
-          className="flex w-full items-center justify-center rounded-xl bg-teal-600 px-6 py-4 text-center text-base font-semibold text-white shadow-md transition hover:bg-teal-700"
+          className="btn-primary flex w-full items-center justify-center px-6 py-4 text-center text-base shadow-md"
         >
           Descargar APK
         </a>

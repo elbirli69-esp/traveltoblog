@@ -100,9 +100,9 @@ export default function CreateTravelForm() {
         <button
           type="button"
           onClick={() => pickMode("live")}
-          className="w-full rounded-xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-left transition hover:border-teal-400 hover:shadow-sm dark:shadow-black/20"
+          className="memory-option memory-option-place w-full"
         >
-          <p className="font-semibold text-fg">Estoy de viaje ahora</p>
+          <p className="font-semibold text-accent-cyan">Estoy de viaje ahora</p>
           <p className="mt-1 text-sm text-fg-secondary">
             Fotos y notas en tiempo real. Las fechas se infieren del EXIF y del calendario.
           </p>
@@ -110,10 +110,10 @@ export default function CreateTravelForm() {
         <button
           type="button"
           onClick={() => pickMode("past")}
-          className="w-full rounded-xl border-2 border-violet-200 bg-violet-50/50 p-4 text-left transition hover:border-violet-400 hover:shadow-sm dark:shadow-black/20"
+          className="memory-option memory-option-trip w-full"
         >
-          <p className="font-semibold text-violet-950">Documentar un viaje pasado</p>
-          <p className="mt-1 text-sm text-violet-900/80">
+          <p className="font-semibold text-accent-blue">Documentar un viaje pasado</p>
+          <p className="mt-1 text-sm text-fg-secondary">
             Reconstruye un viaje ya vivido: defines fechas, subes fotos del álbum y marcas lugares
             con su día real.
           </p>
@@ -131,13 +131,13 @@ export default function CreateTravelForm() {
           setMode(null);
           setError(null);
         }}
-        className="text-xs font-medium text-slate-500 hover:text-fg"
+        className="text-xs font-medium text-fg-tertiary hover:text-fg"
       >
         ← Cambiar tipo de viaje
       </button>
 
       {mode === "past" && (
-        <div className="rounded-xl border border-violet-200 bg-violet-50/40 px-3 py-2 text-xs text-violet-900">
+        <div className="callout callout-info text-xs">
           Al crear el viaje te guiaremos paso a paso para ordenar fotos, lugares y notas en el
           calendario correcto.
         </div>
@@ -158,7 +158,7 @@ export default function CreateTravelForm() {
               ? "Ej: Roma con amigos — agosto 2019"
               : "Ej: Road trip por Andalucía 2026"
           }
-          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-4 py-2.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+          className="form-input form-input-lg input-focus"
         />
       </div>
 
@@ -190,15 +190,15 @@ export default function CreateTravelForm() {
           value={alias}
           onChange={(e) => setAlias(e.target.value)}
           placeholder="Ej: María"
-          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-4 py-2.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+          className="form-input form-input-lg input-focus"
         />
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
       <button
         type="submit"
         disabled={loading}
-        className="w-full rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+        className="btn-primary w-full py-3 text-sm disabled:opacity-50"
       >
         {loading
           ? "Creando…"

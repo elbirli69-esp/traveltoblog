@@ -257,7 +257,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
         </p>
         <Link
           href={`/join/${travel.shareCode}`}
-          className="rounded-xl bg-teal-600 px-6 py-2 text-sm font-semibold text-white"
+          className="btn-primary px-6 py-2 text-sm"
         >
           Unirme
         </Link>
@@ -504,7 +504,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
             <div
               ref={tripNoteRef}
               id="trip-note-form"
-              className={tripNotes.length > 0 ? "border-t border-slate-100 dark:border-slate-800/80 pt-4" : undefined}
+              className={tripNotes.length > 0 ? "border-t border-divider pt-4" : undefined}
             >
               <NoteForm
                 travelId={travelId}

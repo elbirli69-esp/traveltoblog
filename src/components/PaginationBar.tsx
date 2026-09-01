@@ -23,7 +23,7 @@ export default function PaginationBar({
   const end = Math.min(page * pageSize, totalItems);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 px-3 py-2.5">
+    <div className="surface-inset flex flex-wrap items-center justify-between gap-3 px-3 py-2.5">
       <p className="text-xs text-fg-secondary">
         {start}–{end} de {totalItems} {itemLabel}
       </p>
@@ -32,7 +32,7 @@ export default function PaginationBar({
           type="button"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
-          className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-fg-secondary hover:bg-slate-100 dark:hover:bg-slate-800 dark:bg-slate-800/80 disabled:opacity-40"
+          className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-40"
         >
           ← Anterior
         </button>
@@ -43,7 +43,7 @@ export default function PaginationBar({
           type="button"
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
-          className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-fg-secondary hover:bg-slate-100 dark:hover:bg-slate-800 dark:bg-slate-800/80 disabled:opacity-40"
+          className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-40"
         >
           Siguiente →
         </button>
