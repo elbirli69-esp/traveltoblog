@@ -265,6 +265,8 @@ export function buildTimeline(input: BuildTimelineInput): TimelineResult {
       at = linked
         ? toIso(linked.exifDateTime ?? linked.createdAt ?? note.createdAt)
         : toIso(note.createdAt);
+    } else if (note.type === "TRIP" && note.dayDate) {
+      at = toIso(note.dayDate);
     } else if (note.type === "TRIP" && input.startDate) {
       at = toIso(input.startDate);
     } else {

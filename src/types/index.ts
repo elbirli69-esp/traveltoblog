@@ -62,6 +62,8 @@ export interface PendingPlace {
   longitude: number;
   /** Legacy offline field; sync creates Note(PLACE) instead of Place.comment */
   comment: string | null;
+  /** When the visit happened (ISO). Used for chronology of past trips. */
+  visitedAt?: string | null;
   createdAt: string;
 }
 

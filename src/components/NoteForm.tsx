@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { createLocalId } from "@/lib/utils";
+import MemoryDateTimeField from "@/components/MemoryDateTimeField";
+import { todayKey } from "@/lib/travel-dates";
 
 const DEFAULT_LABELS = {
   PHOTO: "Nota para esta foto",
@@ -21,6 +23,8 @@ interface NoteFormProps {
   placeLocalId?: string | null;
   type?: NoteFormType;
   dayDate?: string;
+  /** Suggested default for TRIP note date (e.g. travel start). */
+  defaultTripDate?: string;
   onCreated?: () => void;
   /** Overrides the default label for `type`, or required when using `onPersist`. */
   label?: string;
@@ -42,6 +46,7 @@ export default function NoteForm({
   placeLocalId,
   type,
   dayDate,
+  defaultTripDate,
   onCreated,
   label,
   placeholder = "Escribe tu anécdota, impresión o detalle…",
@@ -50,6 +55,7 @@ export default function NoteForm({
   onPersist,
 }: NoteFormProps) {
   const [text, setText] = useState("");
+  const [tripDate, setTripDate] = useState(defaultTripDate ?? todayKey());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,7 +92,7 @@ export default function NoteForm({
           placeId: type === "PLACE" ? (placeId ?? null) : null,
           placeLocalId: type === "PLACE" ? (placeLocalId ?? null) : null,
           type,
-          dayDate: dayDate ?? null,
+          dayDate: type === "TRIP" ? tripDate : (dayDate ?? null),
           text: text.trim(),
           createdAt: new Date().toISOString(),
         });
@@ -105,7 +111,7 @@ export default function NoteForm({
           placeId,
           placeLocalId,
           type,
-          dayDate,
+          dayDate: type === "TRIP" ? tripDate : dayDate,
           text: text.trim(),
         }),
       });
@@ -130,6 +136,15 @@ export default function NoteForm({
         placeholder={placeholder}
         className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
       />
+      {type === "TRIP" && (
+        <MemoryDateTimeField
+          label="¿Cuándo ocurrió? (opcional)"
+          date={tripDate}
+          onDateChange={setTripDate}
+          showTime={false}
+          hint="Si no indicas fecha, se usará el inicio del viaje en la cronología."
+        />
+      )}
       {error && <p className="text-xs text-red-600">{error}</p>}
       <button
         type="submit"

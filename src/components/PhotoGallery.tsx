@@ -4,8 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import EditableNote from "@/components/EditableNote";
 import EmptyMemoryState from "@/components/EmptyMemoryState";
 import NoteForm from "@/components/NoteForm";
+import MemoryDateTimeField, {
+  dateTimeToIso,
+  isoToDateAndTime,
+} from "@/components/MemoryDateTimeField";
 import { findNearby, formatDistanceM, NEARBY_THRESHOLD_M } from "@/lib/geo";
 import { isValidGps } from "@/lib/exif";
+import { todayKey } from "@/lib/travel-dates";
 
 export interface GalleryPhoto {
   id: string;
@@ -54,7 +59,66 @@ function formatPhotoDate(iso: string | null): string {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  });
+  }  );
+}
+
+function PhotoDateEditor({
+  photo,
+  onSaved,
+}: {
+  photo: GalleryPhoto;
+  onSaved?: () => void;
+}) {
+  const initial = isoToDateAndTime(photo.exifDateTime);
+  const [date, setDate] = useState(initial.date || todayKey());
+  const [time, setTime] = useState(initial.time);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const exifDateTime = dateTimeToIso(date, time);
+      const res = await fetch(`/api/photos/${photo.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exifDateTime }),
+      });
+      if (!res.ok) throw new Error("No se pudo guardar");
+      onSaved?.();
+    } catch {
+      setError("Error al guardar la fecha");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 space-y-2">
+      <MemoryDateTimeField
+        label="Fecha y hora de la foto"
+        date={date}
+        time={time}
+        onDateChange={setDate}
+        onTimeChange={setTime}
+        hint={
+          photo.exifDateTime
+            ? "Corrige la fecha si el EXIF no coincide con el viaje real."
+            : "Sin EXIF: indica cuándo se tomó para ordenar el recorrido."
+        }
+      />
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <button
+        type="button"
+        onClick={save}
+        disabled={saving}
+        className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
+      >
+        {saving ? "Guardando…" : "Guardar fecha"}
+      </button>
+    </div>
+  );
 }
 
 export default function PhotoGallery({
@@ -233,6 +297,7 @@ export default function PhotoGallery({
 
               {isExpanded && (
                 <div className="space-y-4 border-t border-slate-100 px-4 py-4">
+                  <PhotoDateEditor photo={photo} onSaved={onNoteCreated} />
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"

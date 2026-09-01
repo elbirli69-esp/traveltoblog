@@ -18,6 +18,7 @@ import TravelWorkspaceTabs, {
 import TravelDayCalendar from "@/components/TravelDayCalendar";
 import TravelPlacesPanel from "@/components/TravelPlacesPanel";
 import TravelCollaborationBar from "@/components/TravelCollaborationBar";
+import TravelDatesPanel from "@/components/TravelDatesPanel";
 import AddMemorySheet, {
   type AddMemoryKind,
 } from "@/components/AddMemorySheet";
@@ -78,6 +79,7 @@ interface TravelData {
     latitude: number;
     longitude: number;
     comment: string | null;
+    visitedAt: string | null;
     user: { alias: string };
     notes?: {
       id: string;
@@ -324,6 +326,13 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
         onRefresh={() => setRefreshKey((k) => k + 1)}
       />
 
+      <TravelDatesPanel
+        travelId={travelId}
+        startDate={travel.startDate}
+        endDate={travel.endDate}
+        onSaved={() => setRefreshKey((k) => k + 1)}
+      />
+
       <SharePanel shareCode={travel.shareCode} title={travel.title} />
 
       <TravelWorkspaceTabs
@@ -412,6 +421,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 setActiveTab("photos");
               }}
               onAddPlace={() => applyAddMemory("place")}
+              travelStartDate={travel.startDate}
             />
           </section>
         }
@@ -474,6 +484,9 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 travelId={travelId}
                 userId={session.userId}
                 type="TRIP"
+                defaultTripDate={
+                  travel.startDate ? isoToDateKey(travel.startDate) : undefined
+                }
                 onCreated={() => setRefreshKey((k) => k + 1)}
               />
             </div>
