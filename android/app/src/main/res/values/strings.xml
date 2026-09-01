@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">TravelToBlog</string>
     <string name="title_activity_main">TravelToBlog</string>
+    <string name="share_target_label">TravelToBlog · App</string>
     <string name="package_name">com.traveltoblog.app</string>
     <string name="custom_url_scheme">com.traveltoblog.app</string>
 </resources>

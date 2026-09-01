@@ -41,6 +41,10 @@ export default function AndroidDownloadPage() {
           <li>
             Al subir fotos, usa <strong>Galería nativa (GPS)</strong> dentro de la app.
           </li>
+          <li>
+            También puedes <strong>compartir fotos desde la galería</strong> y elegir{" "}
+            <strong>TravelToBlog · App</strong> (v1.0.5+).
+          </li>
         </ol>
 
         <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950">

@@ -4,15 +4,11 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
-import android.provider.MediaStore;
-import android.provider.OpenableColumns;
 import android.util.Base64;
 import androidx.activity.result.ActivityResult;
 import androidx.core.content.ContextCompat;
-import androidx.exifinterface.media.ExifInterface;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -26,14 +22,9 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
-import java.util.Locale;
-import java.util.TimeZone;
 
 @CapacitorPlugin(
     name = "PhotoExif",
@@ -90,7 +81,7 @@ public class PhotoExifPlugin extends Plugin {
                 return;
             }
 
-            String mimeType = guessMimeType(file.getName());
+            String mimeType = ImageImportHelper.guessMimeType(file.getName());
             JSObject ret = new JSObject();
             ret.put("base64", readFileBase64(file));
             ret.put("mimeType", mimeType);
@@ -193,101 +184,42 @@ public class PhotoExifPlugin extends Plugin {
     }
 
     private JSObject processUri(Uri uri) {
-        File cacheFile = null;
-        try {
-            Uri readUri = uri;
-            if (
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-                getPermissionState("medialocation") == PermissionState.GRANTED
-            ) {
-                try {
-                    readUri = MediaStore.setRequireOriginal(uri);
-                } catch (Exception ignored) {
-                    readUri = uri;
-                }
-            }
+        boolean allowOriginalMedia =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            getPermissionState("medialocation") == PermissionState.GRANTED;
 
-            String name = queryDisplayName(uri);
-            if (name == null || name.isEmpty()) {
-                name = "photo_" + System.currentTimeMillis() + ".jpg";
-            }
-
-            String mimeType = getContext().getContentResolver().getType(uri);
-            if (mimeType == null) {
-                mimeType = "image/jpeg";
-            }
-
-            cacheFile =
-                new File(
-                    getContext().getCacheDir(),
-                    "picked_" + System.currentTimeMillis() + "_" + sanitize(name)
-                );
-
-            try {
-                copyUriToFile(readUri, cacheFile);
-            } catch (Exception first) {
-                if (!readUri.equals(uri)) {
-                    copyUriToFile(uri, cacheFile);
-                } else {
-                    throw first;
-                }
-            }
-
-            Double latitude = null;
-            Double longitude = null;
-            String dateTime = null;
-            boolean gpsStripped = false;
-
-            ExifInterface exif = new ExifInterface(cacheFile.getAbsolutePath());
-            float[] latLong = new float[2];
-            if (exif.getLatLong(latLong)) {
-                latitude = (double) latLong[0];
-                longitude = (double) latLong[1];
-            } else {
-                gpsStripped = hasGpsIfdWithoutCoords(exif);
-            }
-
-            String exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
-            if (exifDate == null) {
-                exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME);
-            }
-            if (exifDate != null) {
-                dateTime = parseExifDate(exifDate);
-            }
-
-            String absolutePath = cacheFile.getAbsolutePath();
-            String webPath = getBridge().getLocalUrl() + Bridge.CAPACITOR_FILE_START + absolutePath;
-
-            JSObject obj = new JSObject();
-            obj.put("name", name);
-            obj.put("mimeType", mimeType);
-            obj.put("path", absolutePath);
-            obj.put("webPath", webPath);
-            if (latitude != null) {
-                obj.put("latitude", latitude);
-            } else {
-                obj.put("latitude", JSObject.NULL);
-            }
-            if (longitude != null) {
-                obj.put("longitude", longitude);
-            } else {
-                obj.put("longitude", JSObject.NULL);
-            }
-            if (dateTime != null) {
-                obj.put("dateTime", dateTime);
-            } else {
-                obj.put("dateTime", JSObject.NULL);
-            }
-            obj.put("gpsStripped", gpsStripped);
-
-            return obj;
-        } catch (Exception e) {
-            if (cacheFile != null && cacheFile.exists()) {
-                //noinspection ResultOfMethodCallIgnored
-                cacheFile.delete();
-            }
+        ImageImportHelper.ImportedImage image =
+            ImageImportHelper.importUri(getContext(), uri, allowOriginalMedia);
+        if (image == null) {
             return null;
         }
+
+        String absolutePath = image.file.getAbsolutePath();
+        String webPath = getBridge().getLocalUrl() + Bridge.CAPACITOR_FILE_START + absolutePath;
+
+        JSObject obj = new JSObject();
+        obj.put("name", image.name);
+        obj.put("mimeType", image.mimeType);
+        obj.put("path", absolutePath);
+        obj.put("webPath", webPath);
+        if (image.latitude != null) {
+            obj.put("latitude", image.latitude);
+        } else {
+            obj.put("latitude", JSObject.NULL);
+        }
+        if (image.longitude != null) {
+            obj.put("longitude", image.longitude);
+        } else {
+            obj.put("longitude", JSObject.NULL);
+        }
+        if (image.dateTime != null) {
+            obj.put("dateTime", image.dateTime);
+        } else {
+            obj.put("dateTime", JSObject.NULL);
+        }
+        obj.put("gpsStripped", image.gpsStripped);
+
+        return obj;
     }
 
     private String readFileBase64(File file) throws Exception {
@@ -300,75 +232,5 @@ public class PhotoExifPlugin extends Plugin {
             }
             return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
         }
-    }
-
-    private boolean hasGpsIfdWithoutCoords(ExifInterface exif) {
-        String lat = exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE);
-        String lon = exif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE);
-        return (lat != null || lon != null);
-    }
-
-    private String parseExifDate(String raw) {
-        try {
-            SimpleDateFormat parser = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US);
-            parser.setTimeZone(TimeZone.getDefault());
-            Date parsed = parser.parse(raw);
-            if (parsed == null) {
-                return null;
-            }
-            SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US);
-            iso.setTimeZone(TimeZone.getDefault());
-            return iso.format(parsed);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private String queryDisplayName(Uri uri) {
-        Cursor cursor = null;
-        try {
-            cursor =
-                getContext()
-                    .getContentResolver()
-                    .query(uri, new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null);
-            if (cursor != null && cursor.moveToFirst()) {
-                int idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
-                if (idx >= 0) {
-                    return cursor.getString(idx);
-                }
-            }
-        } finally {
-            if (cursor != null) {
-                cursor.close();
-            }
-        }
-        return null;
-    }
-
-    private void copyUriToFile(Uri uri, File dest) throws Exception {
-        try (InputStream in = getContext().getContentResolver().openInputStream(uri);
-            FileOutputStream out = new FileOutputStream(dest)) {
-            if (in == null) {
-                throw new Exception("Cannot open uri");
-            }
-            byte[] buffer = new byte[8192];
-            int read;
-            while ((read = in.read(buffer)) != -1) {
-                out.write(buffer, 0, read);
-            }
-        }
-    }
-
-    private String sanitize(String name) {
-        return name.replaceAll("[^a-zA-Z0-9._-]", "_");
-    }
-
-    private String guessMimeType(String name) {
-        String lower = name.toLowerCase(Locale.US);
-        if (lower.endsWith(".png")) return "image/png";
-        if (lower.endsWith(".webp")) return "image/webp";
-        if (lower.endsWith(".heic")) return "image/heic";
-        if (lower.endsWith(".heif")) return "image/heif";
-        return "image/jpeg";
     }
 }
