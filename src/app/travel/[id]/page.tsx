@@ -9,12 +9,10 @@ import SharePanel from "@/components/SharePanel";
 import EditableNote from "@/components/EditableNote";
 import NoteForm from "@/components/NoteForm";
 import OfflineSyncBanner from "@/components/OfflineSyncBanner";
-import GenerateJournalButton from "@/components/GenerateJournalButton";
-import ExportHtmlPanel from "@/components/ExportHtmlPanel";
-import ExportPdfPanel from "@/components/ExportPdfPanel";
 import TravelWorkspaceTabs, {
   type TravelTab,
 } from "@/components/TravelWorkspaceTabs";
+import TravelWorkspaceNav from "@/components/TravelWorkspaceNav";
 import TravelDayCalendar from "@/components/TravelDayCalendar";
 import TravelPlacesPanel from "@/components/TravelPlacesPanel";
 import TravelCollaborationBar from "@/components/TravelCollaborationBar";
@@ -24,7 +22,6 @@ import AddMemorySheet, {
   type AddMemoryKind,
 } from "@/components/AddMemorySheet";
 import EmptyMemoryState from "@/components/EmptyMemoryState";
-import JournalReadinessChecklist from "@/components/JournalReadinessChecklist";
 import TravelTimeline from "@/components/TravelTimeline";
 import GpsTrailRecorder from "@/components/GpsTrailRecorder";
 import type { TimelineEvent } from "@/lib/timeline";
@@ -365,59 +362,58 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
 
       <SharePanel shareCode={travel.shareCode} title={travel.title} />
 
+      <TravelWorkspaceNav travelId={travelId} />
+
+      <PhotoUploadSection
+        travelId={travelId}
+        userId={session.userId}
+        userAlias={session.alias}
+        dateRange={dateRange}
+        incomingFiles={incomingFiles}
+        incomingExifByName={incomingExifByName}
+        shareBundleId={activeShareId}
+        places={travel.places
+          .filter((p) => p.latitude != null && p.longitude != null)
+          .map((p) => ({
+            id: p.id,
+            name: p.name,
+            latitude: p.latitude!,
+            longitude: p.longitude!,
+          }))}
+        onIncomingFilesHandled={handleIncomingFilesHandled}
+        onSyncComplete={() => {
+          if (activeShareId) {
+            void discardSharedBundle(activeShareId);
+            setActiveShareId(null);
+          }
+          setRefreshKey((k) => k + 1);
+        }}
+        openPickerSignal={photoPickerSignal}
+        highlight={highlightUpload}
+        addOnly
+      />
+
       <TravelWorkspaceTabs
         activeTab={activeTab}
         onTabChange={setActiveTab}
         tabCounts={tabCounts}
         photosContent={
-          <div className="space-y-8">
-            <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
-              <PhotoUploadSection
-                travelId={travelId}
-                userId={session.userId}
-                userAlias={session.alias}
-                dateRange={dateRange}
-                incomingFiles={incomingFiles}
-                incomingExifByName={incomingExifByName}
-                shareBundleId={activeShareId}
-                places={travel.places
-                  .filter((p) => p.latitude != null && p.longitude != null)
-                  .map((p) => ({
-                    id: p.id,
-                    name: p.name,
-                    latitude: p.latitude!,
-                    longitude: p.longitude!,
-                  }))}
-                onIncomingFilesHandled={handleIncomingFilesHandled}
-                onSyncComplete={() => {
-                  if (activeShareId) {
-                    void discardSharedBundle(activeShareId);
-                    setActiveShareId(null);
-                  }
-                  setRefreshKey((k) => k + 1);
-                }}
-                openPickerSignal={photoPickerSignal}
-                highlight={highlightUpload}
-              />
-            </section>
-
-            <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
-              <PhotoGallery
-                travelId={travelId}
-                userId={session.userId}
-                places={travel.places}
-                focusPhotoId={focusPhotoId}
-                refreshSignal={refreshKey}
-                onOpenPlace={(placeId) => {
-                  setFocusPlaceId(placeId);
-                  setActiveTab("places");
-                }}
-                onAddPhoto={() => applyAddMemory("photo")}
-                onNoteCreated={() => setRefreshKey((k) => k + 1)}
-                onPhotoDeleted={() => setRefreshKey((k) => k + 1)}
-              />
-            </section>
-          </div>
+          <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
+            <PhotoGallery
+              travelId={travelId}
+              userId={session.userId}
+              places={travel.places}
+              focusPhotoId={focusPhotoId}
+              refreshSignal={refreshKey}
+              onOpenPlace={(placeId) => {
+                setFocusPlaceId(placeId);
+                setActiveTab("places");
+              }}
+              onAddPhoto={() => applyAddMemory("photo")}
+              onNoteCreated={() => setRefreshKey((k) => k + 1)}
+              onPhotoDeleted={() => setRefreshKey((k) => k + 1)}
+            />
+          </section>
         }
         daysContent={
           <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
@@ -523,60 +519,6 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
           </section>
         }
       />
-
-      <section className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-6">
-        <h2 className="mb-2 text-lg font-semibold text-indigo-900">Crónica del viaje</h2>
-        <p className="mb-4 text-sm text-indigo-700/80">
-          Elige el estilo y genera un artículo en varios pasos: introducción, resumen por día,
-          leyendas de fotos y conclusión.
-        </p>
-        <JournalReadinessChecklist
-          startDate={travel.startDate}
-          endDate={travel.endDate}
-          photos={travel.photos}
-          dayNotes={dayNotes}
-          tripNoteCount={tripNotes.length}
-          onFix={(kind, dayDate) => applyAddMemory(kind, dayDate)}
-        />
-        {travel.journalMarkdown ? (
-          <Link
-            href={`/travel/${travelId}/journal`}
-            className="mb-4 inline-block text-sm font-medium text-indigo-600 hover:underline"
-          >
-            Ver y editar crónica →
-          </Link>
-        ) : null}
-        <GenerateJournalButton
-          travelId={travelId}
-          hasExistingJournal={Boolean(travel.journalMarkdown)}
-        />
-      </section>
-
-      <section className="rounded-2xl border border-teal-100 bg-teal-50/40 p-6">
-        <h2 className="mb-2 text-lg font-semibold text-teal-900">Exportar viaje</h2>
-        <p className="mb-4 text-sm text-teal-800/80">
-          Exporta un diario HTML interactivo con cronología, mapa sincronizado, tipología de viaje y modo reproducir.
-        </p>
-        <ExportHtmlPanel
-          travelId={travelId}
-          hasJournal={Boolean(travel.journalMarkdown)}
-          hasGpsPhotos={travel.photos.some(
-            (p) => p.latitude != null && p.longitude != null
-          )}
-        />
-      </section>
-
-      <section className="rounded-2xl border border-violet-100 bg-violet-50/40 p-6">
-        <h2 className="mb-2 text-lg font-semibold text-violet-900">Álbum para imprenta</h2>
-        <p className="mb-4 text-sm text-violet-800/80">
-          PDF maquetado para imprenta profesional (A4 horizontal o cuadrado 21×21 cm).
-        </p>
-        <ExportPdfPanel
-          travelId={travelId}
-          hasJournal={Boolean(travel.journalMarkdown)}
-          photoCount={travel.photos.filter((p) => p.selected).length}
-        />
-      </section>
 
       <button
         type="button"

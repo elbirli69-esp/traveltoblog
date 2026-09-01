@@ -22,6 +22,8 @@ interface PhotoUploadSectionProps {
   onSyncComplete?: () => void;
   openPickerSignal?: number;
   highlight?: boolean;
+  /** Hide pickers; upload only via Añadir recuerdo or share import. */
+  addOnly?: boolean;
 }
 
 export default function PhotoUploadSection({
@@ -37,6 +39,7 @@ export default function PhotoUploadSection({
   onSyncComplete,
   openPickerSignal,
   highlight,
+  addOnly = false,
 }: PhotoUploadSectionProps) {
   const handlePhotosConfirmed = useCallback(
     async (photos: ParsedPhoto[]) => {
@@ -137,6 +140,7 @@ export default function PhotoUploadSection({
       onTransportPhotoMarked={handleTransportMarked}
       openPickerSignal={openPickerSignal}
       highlight={highlight}
+      addOnly={addOnly}
     />
   );
 }
