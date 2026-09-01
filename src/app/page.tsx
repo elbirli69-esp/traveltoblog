@@ -9,29 +9,29 @@ export default function HomePage() {
         <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-600 text-3xl text-white shadow-lg">
           ✈️
         </div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
           TravelToBlog
         </h1>
-        <p className="mt-2 text-slate-500">
+        <p className="mt-2 text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
           Diario colaborativo de viajes con fotos, notas e IA
         </p>
       </header>
 
       <RecentTravels />
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
         <h2 className="mb-4 text-lg font-semibold">Nuevo viaje</h2>
         <CreateTravelForm />
       </section>
 
-      <p className="mt-6 text-center text-sm text-slate-400">
+      <p className="mt-6 text-center text-sm text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
         ¿Tienes un código?{" "}
         <Link href="/join" className="font-medium text-teal-600 hover:underline">
           Unirte a un viaje
         </Link>
       </p>
 
-      <footer className="mt-12 space-y-2 text-center text-xs text-slate-400">
+      <footer className="mt-12 space-y-2 text-center text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
         <p>
           <Link href="/download/android" className="font-medium text-teal-600 hover:underline">
             App Android (GPS en fotos)

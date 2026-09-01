@@ -41,7 +41,7 @@ export default function RecentTravels() {
   };
 
   return (
-    <section className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/80 p-6 shadow-sm">
+    <section className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/80 p-6 shadow-sm dark:shadow-black/20">
       <h2 className="mb-1 text-lg font-semibold text-amber-950">Tus viajes en este dispositivo</h2>
       <p className="mb-4 text-sm text-amber-900/80">
         Cada viaje tiene su propia sala. Si creas otro con el mismo nombre, no recupera el anterior.
@@ -52,11 +52,11 @@ export default function RecentTravels() {
           return (
             <li
               key={entry.travelId}
-              className="flex flex-col gap-2 rounded-xl border border-amber-200/80 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-2 rounded-xl border border-amber-200/80 bg-white dark:bg-slate-900 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="min-w-0">
-                <p className="truncate font-medium text-slate-900">{entry.title}</p>
-                <p className="text-xs text-slate-500">
+                <p className="truncate font-medium text-slate-900 dark:text-slate-100">{entry.title}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
                   {entry.alias} · código {entry.shareCode} · {formatWhen(entry.lastVisited)}
                 </p>
               </div>

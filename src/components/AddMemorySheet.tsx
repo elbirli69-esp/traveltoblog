@@ -59,24 +59,24 @@ export default function AddMemorySheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-memory-title"
-        className="relative z-10 w-full max-w-md rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl sm:p-6"
+        className="relative z-10 w-full max-w-md rounded-t-3xl bg-white dark:bg-slate-900 p-5 shadow-xl sm:rounded-3xl sm:p-6"
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h2
               id="add-memory-title"
-              className="text-lg font-semibold text-slate-900"
+              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
             >
               Añadir recuerdo
             </h2>
-            <p className="mt-0.5 text-sm text-slate-500">
+            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
               ¿Qué tienes a mano? No hace falta elegir el tipo técnico.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-2 py-1 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+            className="rounded-lg px-2 py-1 text-sm font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 dark:bg-slate-800/80 hover:text-slate-800 dark:text-slate-200"
           >
             Cerrar
           </button>

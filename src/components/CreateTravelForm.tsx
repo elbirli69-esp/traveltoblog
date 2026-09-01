@@ -94,23 +94,23 @@ export default function CreateTravelForm() {
   if (step === 0) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-slate-600 dark:text-slate-300">
           ¿Cómo quieres documentar este viaje?
         </p>
         <button
           type="button"
           onClick={() => pickMode("live")}
-          className="w-full rounded-xl border-2 border-slate-200 bg-white p-4 text-left transition hover:border-teal-400 hover:shadow-sm"
+          className="w-full rounded-xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-left transition hover:border-teal-400 hover:shadow-sm dark:shadow-black/20"
         >
-          <p className="font-semibold text-slate-900">Estoy de viaje ahora</p>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="font-semibold text-slate-900 dark:text-slate-100">Estoy de viaje ahora</p>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
             Fotos y notas en tiempo real. Las fechas se infieren del EXIF y del calendario.
           </p>
         </button>
         <button
           type="button"
           onClick={() => pickMode("past")}
-          className="w-full rounded-xl border-2 border-violet-200 bg-violet-50/50 p-4 text-left transition hover:border-violet-400 hover:shadow-sm"
+          className="w-full rounded-xl border-2 border-violet-200 bg-violet-50/50 p-4 text-left transition hover:border-violet-400 hover:shadow-sm dark:shadow-black/20"
         >
           <p className="font-semibold text-violet-950">Documentar un viaje pasado</p>
           <p className="mt-1 text-sm text-violet-900/80">
@@ -131,7 +131,7 @@ export default function CreateTravelForm() {
           setMode(null);
           setError(null);
         }}
-        className="text-xs font-medium text-slate-500 hover:text-slate-800"
+        className="text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-200"
       >
         ← Cambiar tipo de viaje
       </button>
@@ -144,7 +144,7 @@ export default function CreateTravelForm() {
       )}
 
       <div>
-        <label htmlFor="title" className="mb-1 block text-sm font-medium text-slate-700">
+        <label htmlFor="title" className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
           Nombre del viaje
         </label>
         <input
@@ -158,7 +158,7 @@ export default function CreateTravelForm() {
               ? "Ej: Roma con amigos — agosto 2019"
               : "Ej: Road trip por Andalucía 2026"
           }
-          className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-4 py-2.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
         />
       </div>
 
@@ -180,7 +180,7 @@ export default function CreateTravelForm() {
       )}
 
       <div>
-        <label htmlFor="alias" className="mb-1 block text-sm font-medium text-slate-700">
+        <label htmlFor="alias" className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
           Tu alias
         </label>
         <input
@@ -190,7 +190,7 @@ export default function CreateTravelForm() {
           value={alias}
           onChange={(e) => setAlias(e.target.value)}
           placeholder="Ej: María"
-          className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-4 py-2.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
         />
       </div>
 

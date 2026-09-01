@@ -98,7 +98,7 @@ function PhotoDateEditor({
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 space-y-2">
+    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60/80 p-3 space-y-2">
       <MemoryDateTimeField
         label="Fecha y hora de la foto"
         date={date}
@@ -260,10 +260,10 @@ export default function PhotoGallery({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold text-slate-900">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
           Galería {total > 0 ? `(${total})` : ""}
         </h2>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
           Miniaturas en la app · resolución completa al exportar
         </p>
       </div>
@@ -285,7 +285,7 @@ export default function PhotoGallery({
       />
 
       {loading ? (
-        <p className="py-12 text-center text-sm text-slate-500">Cargando fotos…</p>
+        <p className="py-12 text-center text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">Cargando fotos…</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {photos.map((photo) => {
@@ -309,10 +309,10 @@ export default function PhotoGallery({
               <article
                 key={photo.id}
                 id={`gallery-photo-${photo.id}`}
-                className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition-shadow ${
+                className={`overflow-hidden rounded-2xl border bg-white dark:bg-slate-900 shadow-sm dark:shadow-black/20 transition-shadow ${
                   isExpanded
                     ? "border-teal-300 ring-2 ring-teal-500/20"
-                    : "border-slate-200 hover:border-slate-300"
+                    : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:border-slate-700"
                 }`}
               >
                 <button
@@ -329,7 +329,7 @@ export default function PhotoGallery({
                   />
                   <div className="space-y-1 px-3 py-2">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-xs font-medium text-slate-700">
+                      <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                         {photo.user.alias}
                       </span>
                       {badges.map((badge) => (
@@ -338,7 +338,7 @@ export default function PhotoGallery({
                           className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
                             badge === "Ida" || badge === "Vuelta"
                               ? "bg-indigo-50 text-indigo-700"
-                              : "bg-slate-100 text-slate-600"
+                              : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300"
                           }`}
                         >
                           {badge}
@@ -350,14 +350,14 @@ export default function PhotoGallery({
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
                       {formatPhotoDate(photo.exifDateTime)}
                     </p>
                   </div>
                 </button>
 
                 {isExpanded && (
-                  <div className="space-y-4 border-t border-slate-100 px-4 py-4">
+                  <div className="space-y-4 border-t border-slate-100 dark:border-slate-800/80 px-4 py-4">
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -368,7 +368,7 @@ export default function PhotoGallery({
                         className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
                           photo.isTransportStart
                             ? "bg-indigo-600 text-white"
-                            : "bg-white text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50"
+                            : "bg-white dark:bg-slate-900 text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50"
                         }`}
                       >
                         {photo.isTransportStart ? "Quitar Ida" : "Marcar Ida"}
@@ -384,7 +384,7 @@ export default function PhotoGallery({
                         className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
                           photo.isTransportEnd
                             ? "bg-indigo-600 text-white"
-                            : "bg-white text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50"
+                            : "bg-white dark:bg-slate-900 text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50"
                         }`}
                       >
                         {photo.isTransportEnd ? "Quitar Vuelta" : "Marcar Vuelta"}

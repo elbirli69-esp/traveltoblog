@@ -76,7 +76,7 @@ export default function TravelWorkspaceTabs({
       <div
         role="tablist"
         aria-label="Secciones del viaje"
-        className="flex gap-1 rounded-xl bg-slate-100 p-1"
+        className="flex gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 p-1"
       >
         {TAB_BASE.map((tab) => (
           <button
@@ -87,8 +87,8 @@ export default function TravelWorkspaceTabs({
             onClick={() => setTab(tab.id)}
             className={`flex-1 rounded-lg px-2 py-2.5 text-sm font-semibold transition-colors sm:px-4 ${
               activeTab === tab.id
-                ? "bg-white text-teal-800 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
+                ? "bg-white dark:bg-slate-900 text-teal-800 shadow-sm dark:shadow-black/20"
+                : "text-slate-600 hover:text-slate-900 dark:text-slate-100"
             }`}
           >
             {tabLabel(tab.label, tabCounts?.[tab.id])}

@@ -61,7 +61,7 @@ export default function PastTripGuide({
   };
 
   return (
-    <section className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-5 shadow-sm">
+    <section className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-5 shadow-sm dark:shadow-black/20">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-violet-600">
@@ -80,7 +80,7 @@ export default function PastTripGuide({
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
-            className="rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-800 hover:bg-violet-50"
+            className="rounded-lg border border-violet-200 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-violet-800 hover:bg-violet-50"
           >
             {collapsed ? "Expandir" : "Minimizar"}
           </button>
@@ -106,16 +106,16 @@ export default function PastTripGuide({
                 className={`flex flex-col gap-2 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${
                   done
                     ? "border-emerald-200 bg-emerald-50/60"
-                    : "border-violet-100 bg-white/80"
+                    : "border-violet-100 bg-white dark:bg-slate-900/80"
                 }`}
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-900">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                     <span className="mr-2 text-violet-500">{index + 1}.</span>
                     {done ? "✓ " : ""}
                     {step.title}
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-600">{step.description}</p>
+                  <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">{step.description}</p>
                 </div>
                 {!done && (
                   <button

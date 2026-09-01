@@ -123,8 +123,8 @@ export default function GenerateJournalButton({
               key={key}
               className={`flex cursor-pointer gap-3 rounded-xl border px-4 py-3 transition ${
                 selected
-                  ? "border-indigo-400 bg-white shadow-sm"
-                  : "border-indigo-100 bg-indigo-50/40 hover:bg-white/70"
+                  ? "border-indigo-400 bg-white dark:bg-slate-900 shadow-sm dark:shadow-black/20"
+                  : "border-indigo-100 bg-indigo-50/40 hover:bg-white dark:hover:bg-slate-800 dark:bg-slate-900/70"
               }`}
             >
               <input
