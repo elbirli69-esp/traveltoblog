@@ -3,11 +3,8 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 export interface NativePickedPhoto {
   name: string;
   mimeType: string;
-  /** Absolute path on device — prefer this with Capacitor.convertFileSrc */
   path?: string;
-  webPath: string;
-  /** Base64 payload when file is small enough for the bridge */
-  base64?: string;
+  webPath?: string;
   latitude: number | null;
   longitude: number | null;
   dateTime: string | null;
@@ -16,6 +13,7 @@ export interface NativePickedPhoto {
 
 export interface PhotoExifPlugin {
   pickImages(options?: { limit?: number }): Promise<{ photos: NativePickedPhoto[] }>;
+  readPhotoFile(options: { path: string }): Promise<{ base64: string; mimeType: string }>;
 }
 
 export const PhotoExif = registerPlugin<PhotoExifPlugin>("PhotoExif");
@@ -28,27 +26,22 @@ export function isCapacitorNative(): boolean {
   return Capacitor.isNativePlatform();
 }
 
-function base64ToFile(base64: string, name: string, mimeType: string): File {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return new File([bytes], name, { type: mimeType || "image/jpeg" });
+async function base64ToFile(base64: string, name: string, mimeType: string): Promise<File> {
+  const dataUrl = `data:${mimeType || "image/jpeg"};base64,${base64}`;
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  return new File([blob], name, { type: mimeType || blob.type || "image/jpeg" });
 }
 
 export async function nativePhotoToFile(photo: NativePickedPhoto): Promise<File> {
-  if (photo.base64) {
-    return base64ToFile(photo.base64, photo.name, photo.mimeType);
+  if (photo.path) {
+    const { base64, mimeType } = await PhotoExif.readPhotoFile({ path: photo.path });
+    return base64ToFile(base64, photo.name, mimeType || photo.mimeType);
   }
 
   const sources: string[] = [];
-  if (photo.path) {
-    sources.push(Capacitor.convertFileSrc(photo.path));
-  }
-  if (photo.webPath) {
-    sources.push(photo.webPath);
-  }
+  if (photo.webPath) sources.push(photo.webPath);
+  if (photo.path) sources.push(Capacitor.convertFileSrc(photo.path));
 
   let lastError: unknown;
   for (const src of sources) {
