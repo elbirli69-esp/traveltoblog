@@ -275,7 +275,7 @@ export function buildTimeline(input: BuildTimelineInput): TimelineResult {
       kind: "note",
       at,
       dayKey: note.type === "DAY" && note.dayDate ? dayKeyFrom(note.dayDate) : dayKeyFrom(at),
-      title: note.type === "TRIP" ? "Nota del trayecto" : note.type === "DAY" ? "Nota del día" : "Nota",
+      title: note.type === "TRIP" ? "Nota del viaje" : note.type === "DAY" ? "Nota del día" : "Nota",
       body: note.text,
       author: note.alias,
       meta: { noteType: note.type, photoId: note.photoId ?? undefined, placeId: note.placeId ?? undefined },

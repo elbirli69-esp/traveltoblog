@@ -33,8 +33,8 @@ export const TYPOLOGY_PROFILES: Record<TravelType, TypologyProfile> = {
   GENERIC: {
     id: "GENERIC",
     label: "Genérico",
-    description: "Equilibrio entre mapa, cronología y galería",
-    sectionOrder: ["hero", "map", "timeline", "gallery", "journal", "play"],
+    description: "Recorrido cronológico, mapa y galería",
+    sectionOrder: ["hero", "stats", "map", "timeline", "journal", "gallery", "play"],
     mapConfig: {
       showRoute: true,
       showDaySidebar: true,

@@ -16,8 +16,8 @@ const TEMPLATES: {
   {
     id: "visual-journey",
     name: "Visual Journey",
-    description:
-      "Hero con foto de portada, galería tipo mosaico, lightbox, animaciones y navegación sticky.",
+        description:
+      "Hero con foto de portada, recorrido cronológico visual, galería, lightbox y animaciones.",
     preview: "bg-gradient-to-br from-teal-900 to-stone-900 text-teal-200 border-teal-700",
   },
   {

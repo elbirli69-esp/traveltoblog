@@ -333,20 +333,33 @@ function buildInteractiveScripts(template: ExportTemplateId): string {
 }
 
 function buildGallerySection(photos: ExportPhoto[]): string {
-  const galleryPhotos = photos.filter((p) => !p.isTransportStart && !p.isTransportEnd);
+  const galleryPhotos = photos
+    .filter((p) => !p.isTransportStart && !p.isTransportEnd)
+    .sort(
+      (a, b) =>
+        new Date(a.exifDateTime ?? 0).getTime() - new Date(b.exifDateTime ?? 0).getTime()
+    );
   if (galleryPhotos.length === 0) return "";
 
   const tiles = galleryPhotos
-    .map(
-      (p, i) =>
-        `<figure class="gallery-tile reveal" style="animation-delay:${Math.min(i * 40, 400)}ms"><img src="${escapeHtml(p.localPath)}" alt="Foto de ${escapeHtml(p.alias)}" loading="lazy"><figcaption>${escapeHtml(p.alias)}</figcaption></figure>`
-    )
+    .map((p, i) => {
+      const when = p.exifDateTime
+        ? new Intl.DateTimeFormat("es-ES", {
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+          }).format(p.exifDateTime)
+        : "";
+      const caption = when ? `${p.alias} · ${when}` : p.alias;
+      return `<figure class="gallery-tile reveal" style="animation-delay:${Math.min(i * 40, 400)}ms"><img src="${escapeHtml(p.localPath)}" alt="Foto de ${escapeHtml(p.alias)}" loading="lazy"><figcaption>${escapeHtml(caption)}</figcaption></figure>`;
+    })
     .join("\n");
 
   return `
 <section id="galeria" class="gallery-section reveal">
-  <h2 class="section-title">Galería del viaje</h2>
-  <p class="gallery-lead">${galleryPhotos.length} momentos capturados</p>
+  <h2 class="section-title">Galería completa</h2>
+  <p class="gallery-lead">${galleryPhotos.length} momentos en orden cronológico</p>
   <div class="gallery-grid">${tiles}</div>
 </section>`;
 }
@@ -657,6 +670,9 @@ article .photo-credit { text-align: center; font-size: .85rem; color: var(--mute
 }
 .gallery-section { margin: 3rem 0 1rem; }
 .gallery-lead { color: var(--muted); margin: -.5rem 0 1.5rem; }
+.journal-section { margin: 3rem 0 2rem; }
+.journal-section .section-title { margin-bottom: 1.25rem; }
+.journal-section article { padding-top: 0; }
 .gallery-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -826,6 +842,16 @@ article img { width: 100%; border-radius: 4px; margin: 1.75rem 0; }
 article p { margin: 1rem 0; }
 footer { margin-top: 3rem; text-align: center; color: var(--muted); font-size: 0.85rem; font-family: system-ui, sans-serif; }
 .leaflet-container { background: #f5f5f4 !important; }
+.story-day-inner { background: linear-gradient(135deg, rgba(13,148,136,.1), rgba(13,148,136,.04)); border-color: rgba(13,148,136,.25); }
+.story-day-title { color: var(--text); }
+.story-card-content { background: #fff; border-color: var(--border); box-shadow: 0 8px 30px rgba(28,25,23,.06); }
+.story-card:hover .story-card-content, .story-card.active .story-card-content { border-color: rgba(13,148,136,.35); }
+.story-kind { color: var(--accent); }
+.story-quote { background: rgba(13,148,136,.08); color: var(--text); }
+.story-place-note p, .story-note-body p, .story-journal-body p { color: var(--text); opacity: 1; }
+.story-rail-line { background: linear-gradient(180deg, rgba(28,25,23,.12), rgba(28,25,23,.04)); }
+.story-dot { border-color: var(--bg); }
+.journal-section { margin: 2.5rem 0; }
 `;
 }
 
@@ -1251,6 +1277,9 @@ export function buildExportHtml(ctx: ExportContext): string {
     ? `background-image: linear-gradient(to top, rgba(12,10,9,.88), rgba(12,10,9,.25)), url('${coverPhoto.localPath}');`
     : "";
 
+  const hasJournalArticle = Boolean(travel.journalMarkdown?.trim());
+  const storyTimelineOptions = { excludeJournalChunks: hasJournalArticle };
+
   const headerBlock = isVisual
     ? `<header class="hero" style="${heroStyle}">
       <div class="hero-content reveal">
@@ -1266,8 +1295,8 @@ export function buildExportHtml(ctx: ExportContext): string {
     </header>
     <nav class="section-nav">
       ${hasMap ? '<a href="#mapa">Mapa</a>' : ""}
-      <a href="#cronologia">Cronología</a>
-      <a href="#historia">Historia</a>
+      <a href="#cronologia">Recorrido</a>
+      ${hasJournalArticle ? '<a href="#historia">Crónica</a>' : ""}
       <a href="#galeria">Galería</a>
       ${profile.playProfile.showScrubber ? '<a href="#reproducir">Reproducir</a>' : ""}
     </nav>`
@@ -1285,8 +1314,12 @@ export function buildExportHtml(ctx: ExportContext): string {
 
   const galleryBlock = isVisual ? buildGallerySection(photos) : "";
   const storyAnchor = isVisual ? ' id="historia"' : "";
-  const timelineBlock = buildTimelineSectionHtml(timelineEvents);
-  const flightsBlock = buildFlightsSectionHtml(timelineEvents);
+  const timelineBlock = buildTimelineSectionHtml(timelineEvents, storyTimelineOptions);
+  const hasFlightsInTimeline = timelineEvents.some(
+    (e) => e.kind === "flight-out" || e.kind === "flight-in"
+  );
+  const flightsBlock =
+    hasFlightsInTimeline ? "" : buildFlightsSectionHtml(timelineEvents);
   const statsBlock = buildStatsSectionHtml({
     photoCount: photos.length,
     placeCount: places.length,
@@ -1303,7 +1336,9 @@ export function buildExportHtml(ctx: ExportContext): string {
     map: mapBlock,
     timeline: timelineBlock,
     gallery: galleryBlock,
-    journal: `<article${storyAnchor}>${contentHtml}</article>`,
+    journal: hasJournalArticle
+      ? `<section class="journal-section reveal"><h2 class="section-title">Crónica del viaje</h2><article${storyAnchor}>${contentHtml}</article></section>`
+      : "",
     play: playBlock,
   };
 
