@@ -314,7 +314,7 @@ export function buildVisualStoryTimelineHtml(
 
 export function storyTimelineStyles(): string {
   return `
-.story-timeline { margin: 3rem 0 4rem; }
+.story-timeline { margin: 3rem 0 4rem; scroll-margin-top: 4.5rem; }
 .story-timeline-header { margin-bottom: 2.5rem; text-align: center; max-width: 640px; margin-left: auto; margin-right: auto; }
 .story-timeline-eyebrow {
   margin: 0 0 .5rem;

@@ -351,6 +351,16 @@ body {
 }
 .mag-section-nav a:hover { color: var(--text); background: rgba(13,148,136,.08); }
 
+#cronologia,
+#mapa,
+#galeria,
+#guia,
+#cierre,
+#historia,
+.journal-section {
+  scroll-margin-top: 4.5rem;
+}
+
 .mag-toc {
   max-width: 760px;
   margin: 0 auto;
@@ -479,7 +489,7 @@ body {
 .journal-section article h2 { font-size: 1.35rem; margin-top: 2rem; }
 .journal-section article img { width: 100%; border-radius: 8px; margin: 1.5rem 0; }
 
-.gallery-section { margin: 2.5rem 0 1rem; }
+.gallery-section { margin: 2.5rem 0 1rem; scroll-margin-top: 4.5rem; }
 .gallery-lead { color: var(--muted); font-family: system-ui, sans-serif; font-size: .9rem; }
 .gallery-grid {
   display: grid;
@@ -540,6 +550,15 @@ export function buildMagazineInteractiveScript(): string {
     }, { passive: true });
   }
 
+  function revealBlock(el) {
+    if (!el) return;
+    el.classList.add("visible");
+    el.querySelectorAll(".reveal").forEach(function (child) { child.classList.add("visible"); });
+    if (el.id === "mapa" && window.__refreshTravelMap) {
+      setTimeout(function () { window.__refreshTravelMap(); }, 80);
+    }
+  }
+
   var tocLinks = document.querySelectorAll(".mag-toc-link[data-day]");
   if (tocLinks.length && "IntersectionObserver" in window) {
     var days = document.querySelectorAll(".story-day");
@@ -559,9 +578,14 @@ export function buildMagazineInteractiveScript(): string {
     var reveals = document.querySelectorAll(".reveal");
     var revObs = new IntersectionObserver(function (entries) {
       entries.forEach(function (e) {
-        if (e.isIntersecting) { e.target.classList.add("visible"); revObs.unobserve(e.target); }
+        if (!e.isIntersecting) return;
+        revealBlock(e.target);
+        revObs.unobserve(e.target);
+        if (e.target.id === "mapa" && window.__refreshTravelMap) {
+          setTimeout(function () { window.__refreshTravelMap(); }, 80);
+        }
       });
-    }, { threshold: 0.08 });
+    }, { threshold: 0.05, rootMargin: "-4.5rem 0px -10% 0px" });
     reveals.forEach(function (el) { revObs.observe(el); });
   } else {
     document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("visible"); });
