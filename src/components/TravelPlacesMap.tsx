@@ -14,9 +14,10 @@ import { computeMapCenter, placeEmoji, isGeolocationSecureContext } from "@/lib/
 import {
   createEmojiMarkerElement,
   loadMapbox,
-  MAPBOX_STYLE,
+  resolveMapboxStyle,
   MAPBOX_TOKEN,
 } from "@/lib/mapbox";
+import { getThemeColor } from "@/lib/theme";
 import type { GeoJSONSource, Map as MapboxMap, Marker, GeolocateControl } from "mapbox-gl";
 
 export interface MapPlace {
@@ -114,7 +115,7 @@ export default function TravelPlacesMap({
 
         const map = new mapboxgl.Map({
           container: containerRef.current,
-          style: MAPBOX_STYLE,
+          style: resolveMapboxStyle(),
           center: [lng, lat],
           zoom:
             places.length || photos.some((p) => p.latitude != null) ? 6 : 5,
@@ -215,6 +216,11 @@ export default function TravelPlacesMap({
     void loadMapbox().then((mapboxgl) => {
       clearMarkers();
 
+      const accentMint = getThemeColor("--accent-mint", "#3dffb8");
+      const accentBlue = getThemeColor("--accent-blue", "#4dabff");
+      const accentCyan = getThemeColor("--accent-cyan", "#5de4ff");
+      const fgTertiary = getThemeColor("--foreground-tertiary", "#6b7a8f");
+
       const bounds: [number, number][] = [];
 
       const routeCoords = routePhotos.map(
@@ -243,7 +249,7 @@ export default function TravelPlacesMap({
           type: "line",
           source: "photo-route",
           paint: {
-            "line-color": "#0d9488",
+            "line-color": accentMint,
             "line-width": 3,
             "line-opacity": 0.75,
           },
@@ -280,7 +286,7 @@ export default function TravelPlacesMap({
           type: "line",
           source: "flight-route",
           paint: {
-            "line-color": "#6366f1",
+            "line-color": accentBlue,
             "line-width": 3,
             "line-opacity": 0.9,
             "line-dasharray": [2, 1.5],
@@ -295,8 +301,8 @@ export default function TravelPlacesMap({
         el.style.width = isSelected ? "14px" : "10px";
         el.style.height = isSelected ? "14px" : "10px";
         el.style.borderRadius = "50%";
-        el.style.background = isSelected ? "#0d9488" : "#94a3b8";
-        el.style.border = isSelected ? "2px solid #99f6e4" : "1px solid #64748b";
+        el.style.background = isSelected ? accentMint : fgTertiary;
+        el.style.border = isSelected ? `2px solid ${accentCyan}` : `1px solid ${fgTertiary}`;
         el.style.cursor = "pointer";
         el.title = "Ver foto";
         el.addEventListener("click", (ev) => {

@@ -449,6 +449,10 @@ body {
     border-color: rgba(93, 228, 255, 0.2);
   }
 
+  .picker-zone-cyan:hover {
+    border-color: var(--accent-cyan);
+  }
+
   .picker-zone-blue:hover {
     border-color: var(--accent-blue);
   }

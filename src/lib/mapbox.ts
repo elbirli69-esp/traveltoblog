@@ -5,8 +5,21 @@ let mapboxPromise: Promise<MapboxGL> | null = null;
 export const MAPBOX_TOKEN =
   process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.trim() || "";
 
-/** Same light streets style used by DogTrainer (dogaze). */
-export const MAPBOX_STYLE = "mapbox://styles/mapbox/streets-v12";
+/** Light streets style (default). */
+export const MAPBOX_STYLE_LIGHT = "mapbox://styles/mapbox/streets-v12";
+
+/** Dark style for app dark mode. */
+export const MAPBOX_STYLE_DARK = "mapbox://styles/mapbox/dark-v11";
+
+/** @deprecated Use resolveMapboxStyle() */
+export const MAPBOX_STYLE = MAPBOX_STYLE_LIGHT;
+
+export function resolveMapboxStyle(): string {
+  if (typeof document !== "undefined" && document.documentElement.classList.contains("dark")) {
+    return MAPBOX_STYLE_DARK;
+  }
+  return MAPBOX_STYLE_LIGHT;
+}
 
 export function loadMapbox(): Promise<MapboxGL> {
   if (!mapboxPromise) {

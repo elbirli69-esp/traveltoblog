@@ -768,7 +768,7 @@ export default function PhotoUploadGrid({
                 <button
                   type="button"
                   onClick={() => removePhoto(photo.id)}
-                  className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white shadow-sm dark:shadow-black/20"
+                  className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white shadow-sm"
                   aria-label="Eliminar"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
