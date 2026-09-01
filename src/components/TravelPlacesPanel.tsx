@@ -19,7 +19,12 @@ import EmptyMemoryState from "@/components/EmptyMemoryState";
 import { pageSlice, PLACES_PAGE_SIZE, totalPages } from "@/lib/pagination";
 import NoteForm from "@/components/NoteForm";
 import EditableNote from "@/components/EditableNote";
+import MemoryDateTimeField, {
+  dateTimeToIso,
+  isoToDateAndTime,
+} from "@/components/MemoryDateTimeField";
 import { findNearby, formatDistanceM, NEARBY_THRESHOLD_M } from "@/lib/geo";
+import { formatDateKey, isoToDateKey, todayKey } from "@/lib/travel-dates";
 
 const TravelPlacesMap = dynamic(() => import("@/components/TravelPlacesMap"), {
   ssr: false,
@@ -39,6 +44,7 @@ export interface TravelPlace {
   /** @deprecated Prefer `notes` (NoteType.PLACE) */
   comment: string | null;
   user: { alias: string };
+  visitedAt?: string | null;
   notes?: {
     id: string;
     text: string;
@@ -59,6 +65,8 @@ interface TravelPlacesPanelProps {
   onOpenPhoto?: (photoId: string) => void;
   onOpenFotosTab?: () => void;
   onAddPlace?: () => void;
+  /** Default date when marking a place (e.g. travel start). */
+  travelStartDate?: string | null;
 }
 
 interface DraftPlace {
@@ -67,6 +75,23 @@ interface DraftPlace {
   name: string;
   type: PlaceType;
   comment: string;
+  visitedAtDate: string;
+  visitedAtTime: string;
+}
+
+function defaultPlaceDate(travelStartDate?: string | null): string {
+  if (travelStartDate) return isoToDateKey(travelStartDate);
+  return todayKey();
+}
+
+function formatVisitedAt(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const key = isoToDateKey(iso);
+  const time = new Intl.DateTimeFormat("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
+  return `${formatDateKey(key)} · ${time}`;
 }
 
 export default function TravelPlacesPanel({
@@ -80,6 +105,7 @@ export default function TravelPlacesPanel({
   onOpenPhoto,
   onOpenFotosTab,
   onAddPlace,
+  travelStartDate = null,
 }: TravelPlacesPanelProps) {
   const [addMode, setAddMode] = useState(false);
   const [pickOnMap, setPickOnMap] = useState(true);
@@ -91,6 +117,8 @@ export default function TravelPlacesPanel({
     id: string;
     name: string;
     type: PlaceType;
+    visitedAtDate: string;
+    visitedAtTime: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -152,19 +180,26 @@ export default function TravelPlacesPanel({
     return [];
   };
 
-  const handleMapClick = useCallback((lat: number, lng: number) => {
-    setDraft({
-      lat,
-      lng,
-      name: "",
-      type: "OTHER",
-      comment: "",
-    });
-    setSelectedPlaceId(null);
-    setEditForm(null);
-  }, []);
+  const handleMapClick = useCallback(
+    (lat: number, lng: number) => {
+      const defaultDate = defaultPlaceDate(travelStartDate);
+      setDraft({
+        lat,
+        lng,
+        name: "",
+        type: "OTHER",
+        comment: "",
+        visitedAtDate: defaultDate,
+        visitedAtTime: "12:00",
+      });
+      setSelectedPlaceId(null);
+      setEditForm(null);
+    },
+    [travelStartDate]
+  );
 
   const startEditPlace = (place: TravelPlace) => {
+    const when = isoToDateAndTime(place.visitedAt);
     setAddMode(false);
     setDraft(null);
     setSelectedPlaceId(place.id);
@@ -172,6 +207,8 @@ export default function TravelPlacesPanel({
       id: place.id,
       name: place.name,
       type: place.type,
+      visitedAtDate: when.date || defaultPlaceDate(travelStartDate),
+      visitedAtTime: when.time,
     });
     setError(null);
   };
@@ -184,12 +221,14 @@ export default function TravelPlacesPanel({
     setSaving(true);
     setError(null);
     try {
+      const visitedAt = dateTimeToIso(editForm.visitedAtDate, editForm.visitedAtTime);
       const res = await fetch(`/api/places/${editForm.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: editForm.name.trim(),
           type: editForm.type,
+          visitedAt,
         }),
       });
       if (!res.ok) throw new Error("No se pudo guardar");
@@ -212,6 +251,13 @@ export default function TravelPlacesPanel({
     setError(null);
 
     try {
+      const visitedAt = dateTimeToIso(draft.visitedAtDate, draft.visitedAtTime);
+      if (!visitedAt) {
+        setError("Indica cuándo visitaste este lugar");
+        setSaving(false);
+        return;
+      }
+
       if (!navigator.onLine) {
         const { savePendingPlace, savePendingNote } = await import(
           "@/lib/offline-db"
@@ -226,7 +272,8 @@ export default function TravelPlacesPanel({
           latitude: draft.lat,
           longitude: draft.lng,
           comment: null,
-          createdAt: new Date().toISOString(),
+          visitedAt,
+          createdAt: visitedAt,
         });
         if (draft.comment.trim()) {
           await savePendingNote({
@@ -259,6 +306,7 @@ export default function TravelPlacesPanel({
           latitude: draft.lat,
           longitude: draft.lng,
           comment: draft.comment.trim() || null,
+          visitedAt,
         }),
       });
 
@@ -437,6 +485,14 @@ export default function TravelPlacesPanel({
               </select>
             </label>
           </div>
+          <MemoryDateTimeField
+            label="¿Cuándo estuviste aquí?"
+            date={draft.visitedAtDate}
+            time={draft.visitedAtTime}
+            onDateChange={(d) => setDraft({ ...draft, visitedAtDate: d })}
+            onTimeChange={(t) => setDraft({ ...draft, visitedAtTime: t })}
+            hint="Importante para viajes pasados: ordena el recorrido en la crónica y el blog."
+          />
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-700">
               Nota del lugar (opcional)
@@ -493,6 +549,13 @@ export default function TravelPlacesPanel({
               </select>
             </label>
           </div>
+          <MemoryDateTimeField
+            label="Fecha de la visita"
+            date={editForm.visitedAtDate}
+            time={editForm.visitedAtTime}
+            onDateChange={(d) => setEditForm({ ...editForm, visitedAtDate: d })}
+            onTimeChange={(t) => setEditForm({ ...editForm, visitedAtTime: t })}
+          />
           <p className="text-xs text-slate-500">
             Nombre y tipo. La nota se escribe debajo al seleccionar el lugar, con la misma UI que
             foto, día o viaje.
@@ -555,6 +618,9 @@ export default function TravelPlacesPanel({
                 <span className="ml-2 text-xs text-slate-400">{placeLabel(place.type)}</span>
                 <p className="mt-0.5 text-xs text-slate-500">
                   {place.user.alias}
+                  {formatVisitedAt(place.visitedAt)
+                    ? ` · ${formatVisitedAt(place.visitedAt)}`
+                    : ""}
                   {placeNotes(place).length > 0 ? " · con nota" : ""}
                 </p>
               </button>
@@ -588,6 +654,9 @@ export default function TravelPlacesPanel({
             </p>
             <p className="text-xs text-slate-500">
               Notas del lugar · {selectedPlace.user.alias}
+              {formatVisitedAt(selectedPlace.visitedAt)
+                ? ` · ${formatVisitedAt(selectedPlace.visitedAt)}`
+                : ""}
             </p>
           </div>
           {placeNotes(selectedPlace).length > 0 && (

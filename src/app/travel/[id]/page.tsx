@@ -18,6 +18,8 @@ import TravelWorkspaceTabs, {
 import TravelDayCalendar from "@/components/TravelDayCalendar";
 import TravelPlacesPanel from "@/components/TravelPlacesPanel";
 import TravelCollaborationBar from "@/components/TravelCollaborationBar";
+import PastTripGuide from "@/components/PastTripGuide";
+import TravelDatesPanel from "@/components/TravelDatesPanel";
 import AddMemorySheet, {
   type AddMemoryKind,
 } from "@/components/AddMemorySheet";
@@ -78,6 +80,7 @@ interface TravelData {
     latitude: number;
     longitude: number;
     comment: string | null;
+    visitedAt: string | null;
     user: { alias: string };
     notes?: {
       id: string;
@@ -120,6 +123,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   const [focusPhotoId, setFocusPhotoId] = useState<string | null>(null);
   const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
   const [activeTimelineEventId, setActiveTimelineEventId] = useState<string | null>(null);
+  const [showPastGuide, setShowPastGuide] = useState(false);
   const deepLinkHandled = useRef<string | null>(null);
   const tripNoteRef = useRef<HTMLDivElement>(null);
 
@@ -151,6 +155,13 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   useEffect(() => {
     loadTravel();
   }, [loadTravel, refreshKey]);
+
+  useEffect(() => {
+    if (!travelId || !session || session.travelId !== travelId) return;
+    if (searchParams.get("guide") === "past") {
+      setShowPastGuide(true);
+    }
+  }, [travelId, session, searchParams]);
 
   useEffect(() => {
     if (!travelId || !session || session.travelId !== travelId) return;
@@ -324,6 +335,34 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
         onRefresh={() => setRefreshKey((k) => k + 1)}
       />
 
+      <PastTripGuide
+        travelId={travelId}
+        forceOpen={showPastGuide}
+        input={{
+          startDate: travel.startDate,
+          endDate: travel.endDate,
+          photoCount: travel.photos.length,
+          placeCount: travel.places.length,
+          dayNoteCount: dayNotes.length,
+          tripNoteCount: tripNotes.length,
+        }}
+        onAction={(kind, dayDate) => applyAddMemory(kind, dayDate)}
+        onEditDates={() => {
+          document.getElementById("travel-dates-panel")?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }}
+      />
+
+      <TravelDatesPanel
+        travelId={travelId}
+        startDate={travel.startDate}
+        endDate={travel.endDate}
+        defaultOpen={!travel.startDate || !travel.endDate}
+        onSaved={() => setRefreshKey((k) => k + 1)}
+      />
+
       <SharePanel shareCode={travel.shareCode} title={travel.title} />
 
       <TravelWorkspaceTabs
@@ -412,6 +451,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 setActiveTab("photos");
               }}
               onAddPlace={() => applyAddMemory("place")}
+              travelStartDate={travel.startDate}
             />
           </section>
         }
@@ -474,6 +514,9 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 travelId={travelId}
                 userId={session.userId}
                 type="TRIP"
+                defaultTripDate={
+                  travel.startDate ? isoToDateKey(travel.startDate) : undefined
+                }
                 onCreated={() => setRefreshKey((k) => k + 1)}
               />
             </div>

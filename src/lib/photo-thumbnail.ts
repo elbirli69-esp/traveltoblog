@@ -42,7 +42,7 @@ export async function generateThumbnail(
   const thumbName = thumbFilename(filename);
   const thumbPath = path.join(thumbDir, thumbName);
 
-  const thumbBuffer = await sharp(sourceBuffer, { failOnError: false })
+  const thumbBuffer = await sharp(sourceBuffer)
     .rotate()
     .resize({ width: THUMB_MAX_WIDTH, withoutEnlargement: true })
     .jpeg({ quality: THUMB_JPEG_QUALITY, mozjpeg: true })

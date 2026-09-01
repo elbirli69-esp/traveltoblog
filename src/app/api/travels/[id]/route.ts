@@ -42,7 +42,7 @@ export async function GET(
             orderBy: { createdAt: "asc" },
           },
         },
-        orderBy: { createdAt: "asc" },
+        orderBy: { visitedAt: "asc" },
       },
       startPhoto: true,
       endPhoto: true,
@@ -54,4 +54,40 @@ export async function GET(
   }
 
   return NextResponse.json({ travel });
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = await request.json();
+    const { startDate, endDate, title } = body as {
+      startDate?: string | null;
+      endDate?: string | null;
+      title?: string;
+    };
+
+    const data: {
+      startDate?: Date | null;
+      endDate?: Date | null;
+      title?: string;
+      updatedAt: Date;
+    } = { updatedAt: new Date() };
+
+    if (title !== undefined) data.title = title.trim();
+    if (startDate !== undefined) data.startDate = startDate ? new Date(startDate) : null;
+    if (endDate !== undefined) data.endDate = endDate ? new Date(endDate) : null;
+
+    const travel = await prisma.travel.update({
+      where: { id },
+      data,
+    });
+
+    return NextResponse.json({ travel });
+  } catch (error) {
+    console.error("PATCH /api/travels/[id]", error);
+    return NextResponse.json({ error: "Error al actualizar viaje" }, { status: 500 });
+  }
 }

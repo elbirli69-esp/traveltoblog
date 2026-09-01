@@ -118,6 +118,7 @@ export default function OfflineSyncBanner({
             longitude: place.longitude,
             comment: place.comment,
             localId: place.localId,
+            visitedAt: place.visitedAt ?? place.createdAt,
           }),
         });
         if (res.ok) {
