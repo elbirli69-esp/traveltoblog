@@ -62,6 +62,8 @@ interface PhotoUploadGridProps {
   /** Increment to open the file picker (best-effort after tab switch). */
   openPickerSignal?: number;
   highlight?: boolean;
+  /** Hide pickers; show review UI only after selecting photos (via Añadir recuerdo). */
+  addOnly?: boolean;
 }
 
 export default function PhotoUploadGrid({
@@ -77,6 +79,7 @@ export default function PhotoUploadGrid({
   onTransportPhotoMarked,
   openPickerSignal = 0,
   highlight = false,
+  addOnly = false,
 }: PhotoUploadGridProps) {
   const [photos, setPhotos] = useState<ParsedPhoto[]>([]);
   const [processing, setProcessing] = useState(false);
@@ -87,15 +90,6 @@ export default function PhotoUploadGrid({
   const inputRef = useRef<HTMLInputElement>(null);
   const explorerInputRef = useRef<HTMLInputElement>(null);
   const sectionRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!openPickerSignal) return;
-    sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    const t = window.setTimeout(() => {
-      inputRef.current?.click();
-    }, 120);
-    return () => window.clearTimeout(t);
-  }, [openPickerSignal]);
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
@@ -307,6 +301,21 @@ export default function PhotoUploadGrid({
     }
   }, [buildPhotoFromNativePick]);
 
+  useEffect(() => {
+    if (!openPickerSignal) return;
+    if (!addOnly) {
+      sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    const t = window.setTimeout(() => {
+      if (isCapacitorAndroid()) {
+        void openNativeGalleryPicker();
+      } else {
+        inputRef.current?.click();
+      }
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [openPickerSignal, addOnly, openNativeGalleryPicker]);
+
   const applyLocationToPhoto = useCallback(async (photoId: string) => {
     setLocationBusy(true);
     setError(null);
@@ -489,14 +498,58 @@ export default function PhotoUploadGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return (
-    <div
-      ref={sectionRef}
-      id="photo-upload-section"
-      className={`space-y-6 rounded-2xl transition ring-offset-2 ${
+  const showReview = photos.length > 0 || processing || uploading;
+  const showPickers = !addOnly;
+  const showPanel = showReview || (addOnly && Boolean(error));
+
+  const panelClass = addOnly
+    ? showPanel
+      ? "fixed inset-x-0 bottom-0 z-50 max-h-[90vh] overflow-y-auto rounded-t-2xl border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 pb-8 shadow-2xl space-y-6"
+      : "sr-only"
+    : `space-y-6 rounded-2xl transition ring-offset-2 ${
         highlight ? "ring-2 ring-teal-400 ring-offset-4" : ""
-      }`}
-    >
+      }`;
+
+  return (
+    <>
+      {addOnly && showPanel && (
+        <div className="fixed inset-0 z-40 bg-black/40" aria-hidden />
+      )}
+      <div ref={sectionRef} id="photo-upload-section" className={panelClass}>
+      {addOnly && showReview && (
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            Revisar fotos
+          </h2>
+          {processing && (
+            <span className="text-sm text-slate-500 dark:text-slate-400">Leyendo EXIF…</span>
+          )}
+        </div>
+      )}
+
+      {addOnly && !showPickers && (
+        <div className="hidden" aria-hidden>
+          <input
+            ref={inputRef}
+            type="file"
+            accept={PHOTO_INPUT_ACCEPT}
+            multiple
+            onChange={handleFileSelect}
+            disabled={processing}
+          />
+          <input
+            ref={explorerInputRef}
+            type="file"
+            accept="*/*"
+            multiple
+            onChange={handleExplorerSelect}
+            disabled={processing}
+          />
+        </div>
+      )}
+
+      {showPickers && (
+        <>
       {/* Header / status bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -593,6 +646,8 @@ export default function PhotoUploadGrid({
             <strong> lugar del viaje</strong> debajo de cada imagen.
           </p>
         </div>
+      )}
+        </>
       )}
 
       {/* Date range info */}
@@ -810,5 +865,6 @@ export default function PhotoUploadGrid({
       <input type="hidden" name="travelId" value={travelId} />
       <input type="hidden" name="userId" value={userId} />
     </div>
+    </>
   );
 }

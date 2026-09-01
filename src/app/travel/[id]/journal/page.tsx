@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
-import ExportHtmlPanel from "@/components/ExportHtmlPanel";
-import ExportPdfPanel from "@/components/ExportPdfPanel";
-import JournalEditor from "@/components/JournalEditor";
+import JournalWorkspace from "@/components/JournalWorkspace";
+import TravelWorkspaceNav from "@/components/TravelWorkspaceNav";
 
 export default async function JournalPage({
   params,
@@ -17,24 +16,31 @@ export default async function JournalPage({
     select: {
       id: true,
       title: true,
+      startDate: true,
+      endDate: true,
       journalMarkdown: true,
       journalGeneratedAt: true,
       photos: {
-        where: { selected: true },
-        select: { latitude: true, longitude: true },
+        select: {
+          exifDateTime: true,
+          isTransportStart: true,
+          isTransportEnd: true,
+        },
       },
-      _count: { select: { photos: { where: { selected: true } } } },
+      notes: {
+        where: { type: { in: ["DAY", "TRIP"] } },
+        select: { type: true, dayDate: true },
+      },
     },
   });
 
   if (!travel) notFound();
 
-  const hasGpsPhotos = travel.photos.some(
-    (p) => p.latitude != null && p.longitude != null
-  );
+  const dayNotes = travel.notes.filter((n) => n.type === "DAY");
+  const tripNoteCount = travel.notes.filter((n) => n.type === "TRIP").length;
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8">
+    <main className="mx-auto max-w-3xl space-y-6 px-4 py-8">
       <Link
         href={`/travel/${travel.id}`}
         className="text-sm text-teal-600 hover:underline"
@@ -42,54 +48,25 @@ export default async function JournalPage({
         ← Volver al viaje
       </Link>
 
-      <header className="my-6 border-b border-slate-200 dark:border-slate-800 pb-6">
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">{travel.title}</h1>
-        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
-          Edita la crónica antes de exportar a HTML o PDF.
-        </p>
-      </header>
+      <TravelWorkspaceNav travelId={travel.id} />
 
-      {travel.journalMarkdown ? (
-        <JournalEditor
-          travelId={travel.id}
-          initialMarkdown={travel.journalMarkdown}
-          generatedAt={travel.journalGeneratedAt?.toISOString() ?? null}
-        />
-      ) : (
-        <p className="mb-10 text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
-          Aún no se ha generado la crónica. Vuelve al viaje y pulsa &ldquo;Generar diario con IA&rdquo;.
-        </p>
-      )}
-
-      <section className="rounded-2xl border border-teal-100 bg-teal-50/40 p-6">
-        <h2 className="mb-1 text-lg font-semibold text-teal-900">
-          Exportar viaje
-        </h2>
-        <p className="mb-5 text-sm text-teal-800/80">
-          Genera un paquete HTML estático con tu crónica (tal como la hayas editado), fotos y mapa
-          interactivo del recorrido.
-        </p>
-        <ExportHtmlPanel
-          travelId={travel.id}
-          hasJournal={Boolean(travel.journalMarkdown)}
-          hasGpsPhotos={hasGpsPhotos}
-        />
-      </section>
-
-      <section className="mt-6 rounded-2xl border border-violet-100 bg-violet-50/40 p-6">
-        <h2 className="mb-1 text-lg font-semibold text-violet-900">
-          Álbum para imprenta
-        </h2>
-        <p className="mb-5 text-sm text-violet-800/80">
-          PDF maquetado con portada, doble columna (fotos + narrativa) y metadatos EXIF.
-          Listo para Saal Digital, CEWE u otra imprenta.
-        </p>
-        <ExportPdfPanel
-          travelId={travel.id}
-          hasJournal={Boolean(travel.journalMarkdown)}
-          photoCount={travel._count.photos}
-        />
-      </section>
+      <JournalWorkspace
+        travelId={travel.id}
+        title={travel.title}
+        startDate={travel.startDate?.toISOString() ?? null}
+        endDate={travel.endDate?.toISOString() ?? null}
+        journalMarkdown={travel.journalMarkdown}
+        journalGeneratedAt={travel.journalGeneratedAt?.toISOString() ?? null}
+        photos={travel.photos.map((p) => ({
+          exifDateTime: p.exifDateTime?.toISOString() ?? null,
+          isTransportStart: p.isTransportStart,
+          isTransportEnd: p.isTransportEnd,
+        }))}
+        dayNotes={dayNotes.map((n) => ({
+          dayDate: n.dayDate?.toISOString() ?? null,
+        }))}
+        tripNoteCount={tripNoteCount}
+      />
     </main>
   );
 }
