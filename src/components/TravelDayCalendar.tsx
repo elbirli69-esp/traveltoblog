@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import EditableNote from "@/components/EditableNote";
 import EmptyMemoryState from "@/components/EmptyMemoryState";
 import NoteForm from "@/components/NoteForm";
+import PhotoImage from "@/components/PhotoImage";
 import {
   addDaysToKey,
   clampDateKey,
@@ -228,10 +229,9 @@ export default function TravelDayCalendar({
                         : "border-slate-200 hover:border-teal-300"
                     }`}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={photo.url}
-                      alt=""
+                    <PhotoImage
+                      photoId={photo.id}
+                      url={photo.url}
                       className="aspect-square w-full bg-slate-100 object-cover"
                     />
                     <div className="space-y-0.5 px-1.5 py-1.5">

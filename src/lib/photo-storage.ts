@@ -24,8 +24,19 @@ export async function normalizeImageForStorage(
     });
     return { buffer: Buffer.from(converted), ext: ".jpg" };
   } catch (error) {
-    console.warn("HEIC conversion failed, storing original", error);
-    return { buffer, ext };
+    console.warn("HEIC conversion (quality 0.9) failed, retrying", error);
+  }
+
+  try {
+    const converted = await convert({
+      buffer,
+      format: "JPEG",
+      quality: 0.75,
+    });
+    return { buffer: Buffer.from(converted), ext: ".jpg" };
+  } catch (error) {
+    console.error("HEIC conversion failed, storing original", error);
+    return { buffer, ext: ext.toLowerCase() === ext ? ext : ext.toLowerCase() };
   }
 }
 

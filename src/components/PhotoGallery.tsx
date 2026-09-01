@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import EditableNote from "@/components/EditableNote";
 import EmptyMemoryState from "@/components/EmptyMemoryState";
 import NoteForm from "@/components/NoteForm";
+import PhotoImage from "@/components/PhotoImage";
 import { findNearby, formatDistanceM, NEARBY_THRESHOLD_M } from "@/lib/geo";
 import { isValidGps } from "@/lib/exif";
 
@@ -196,10 +197,9 @@ export default function PhotoGallery({
                 onClick={() => setExpandedId(isExpanded ? null : photo.id)}
                 className="block w-full text-left"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={photo.url}
-                  alt=""
+                <PhotoImage
+                  photoId={photo.id}
+                  url={photo.url}
                   className="aspect-[4/3] w-full object-cover"
                 />
                 <div className="space-y-1 px-3 py-2">
