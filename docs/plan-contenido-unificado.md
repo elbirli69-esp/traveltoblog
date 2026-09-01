@@ -2,21 +2,42 @@
 
 Plan de implementación derivado de la auditoría de flujos **Foto / Lugar / Trayecto / Día**. Objetivo: reducir fricción y silos sin reescribir el modelo de datos de golpe.
 
+## Estado del plan
+
+**Completado** — mergeado en `main` el 2026-08-31 (PRs #26–#32).
+
+| Fase | Estado | PR |
+|------|--------|-----|
+| 0 — Alineación | ✅ Completada | #26, #27–#29 (README) |
+| 1 — Tab Viaje + rename | ✅ Completada | #27, #29 |
+| 2a — UI notas de lugar | ✅ Completada | #28, #29 |
+| 2b — `NoteType.PLACE` | ✅ Completada | #30 |
+| 3 — CTA «+ Añadir recuerdo» | ✅ Completada | #29 |
+| 4 — Sinergias foto↔lugar↔día | ✅ Completada* | #31 |
+| 5 — Empty states + checklist | ✅ Completada* | #32 |
+
+\* Fase 4: implementado el núcleo (4a–4d). Opcionales no hechos: chip «también en nota del día» (4a), banners activos de asociación foto↔lugar (4c).  
+\* Fase 5: opcional de revisar duplicación `POST /api/photos` vs `/api/sync` pendiente (deuda técnica, no UX).
+
+**Post-merge en entornos con datos viejos:** `npm run db:migrate-place-notes`
+
 ## Objetivo de producto
 
 El usuario **añade un recuerdo** (foto, sitio, texto del día o del viaje). No elige un “tipo de entidad” técnica.
 
 La crónica IA y el export siguen consumiendo los mismos datos; cambia la UX de captura y, en fases posteriores, los vínculos entre entidades.
 
-## Estado actual (baseline)
+## Estado actual (baseline histórico)
 
-| Superficie UI | Entidad | Problema |
+> Documento de referencia de la auditoría inicial. El producto actual ya refleja las fases 0–5.
+
+| Superficie UI | Entidad | Problema (resuelto) |
 |---|---|---|
-| Tab Fotos | `Photo` + `Note(PHOTO)` | Ida/Vuelta solo pre-upload; poco enlace con lugares/días |
-| Tab Lugares | `Place` + `comment` | Comentario paralelo a `Note`; vuelos parecen contenido propio |
-| Bloque fuera de tabs | `Note(TRIP)` | Nombre “trayecto” confunde; fácil de no ver |
-| Tab Días | `Note(DAY)` | No enlaza lugares ni anotar fotos sin cambiar de tab |
-| Mapa | Ruta GPS / trayecto aéreo derivados | Solo lectura; misma palabra “trayecto” |
+| Tab Fotos | `Photo` + `Note(PHOTO)` | ~~Ida/Vuelta solo pre-upload; poco enlace con lugares/días~~ → galería editable + proximidad GPS |
+| Tab Lugares | `Place` + `comment` | ~~Comentario paralelo a `Note`~~ → `Note(PLACE)`; vuelos derivados con copy explícito |
+| Bloque fuera de tabs | `Note(TRIP)` | ~~Nombre “trayecto” confunde~~ → pestaña **Viaje** |
+| Tab Días | `Note(DAY)` | ~~No enlaza fotos sin cambiar de tab~~ → notas de foto in-situ |
+| Mapa | Ruta GPS / trayecto aéreo derivados | Hub de lectura con fotos GPS clicables |
 
 No crear modelo `Route`/`Trayecto` editable en este plan. La geometría sigue siendo derivada.
 
@@ -32,7 +53,9 @@ No crear modelo `Route`/`Trayecto` editable en este plan. La geometría sigue si
 
 ---
 
-## Fase 0 — Alineación y deuda menor (prerequisito)
+## Fase 0 — Alineación y deuda menor (prerequisito) ✅
+
+**Estado:** Completada (2026-08-31).
 
 **Alcance**
 
@@ -49,7 +72,9 @@ No crear modelo `Route`/`Trayecto` editable en este plan. La geometría sigue si
 
 ---
 
-## Fase 1 — Clarificar “trayecto” y meterlo en el workspace
+## Fase 1 — Clarificar “trayecto” y meterlo en el workspace ✅
+
+**Estado:** Completada (2026-08-31). Opción A (pestaña **Viaje**) implementada.
 
 **Objetivo UX:** dejar de llamar “trayecto” a una nota global; hacerla visible junto al resto del workspace.
 
@@ -87,18 +112,20 @@ No crear modelo `Route`/`Trayecto` editable en este plan. La geometría sigue si
 
 ---
 
-## Fase 2 — Unificar la escritura de texto
+## Fase 2 — Unificar la escritura de texto ✅
+
+**Estado:** Completada (2026-08-31).
 
 **Objetivo UX:** una sola experiencia “escribir / editar / borrar nota”, también en lugares.
 
-### 2a — UI compartida (sin migración de BD)
+### 2a — UI compartida (sin migración de BD) ✅
 
 - Extender `NoteForm` / `EditableNote` (o wrapper) para comentarios de lugar.
 - En `TravelPlacesPanel`, sustituir el textarea ad-hoc de `comment` por la misma UX de notas (aunque siga persistiendo en `Place.comment`).
 
 **Criterio de hecho:** crear/editar comentario de lugar se siente igual que una nota de foto/día.
 
-### 2b — Modelo unificado (migración)
+### 2b — Modelo unificado (migración) ✅
 
 **Propuesta de esquema (aditiva):**
 
@@ -147,7 +174,9 @@ model Place {
 
 ---
 
-## Fase 3 — CTA único “+ Añadir recuerdo”
+## Fase 3 — CTA único “+ Añadir recuerdo” ✅
+
+**Estado:** Completada (2026-08-31). Deep-link `?add=photo|place|day|trip` implementado. Opcional `ShareReceivePage` → `?add=photo&shared=` no implementado.
 
 **Objetivo UX:** un gesto principal; los tabs pasan a ser contexto, no la única puerta de entrada.
 
@@ -181,7 +210,9 @@ model Place {
 
 ---
 
-## Fase 4 — Sinergias Foto ↔ Lugar ↔ Día
+## Fase 4 — Sinergias Foto ↔ Lugar ↔ Día ✅
+
+**Estado:** Completada (2026-08-31). Núcleo 4a–4d implementado; opcionales 4a (chip día) y 4c (banners de asociación) pendientes.
 
 **Objetivo UX:** el contexto rellena el vínculo; el usuario confirma, no rellena formularios cruzados.
 
@@ -227,7 +258,9 @@ model Place {
 
 ---
 
-## Fase 5 — Pulido de información y vacíos
+## Fase 5 — Pulido de información y vacíos ✅
+
+**Estado:** Completada (2026-08-31). Empty states, contadores en tabs y checklist pre-crónica implementados. Revisión `POST /api/photos` vs `/api/sync` pendiente (opcional).
 
 - Empty states por tab que empujen al CTA (“Aún no hay lugares — Márcalo desde + Añadir”).
 - Contador simple en tabs: `Fotos (12) · Lugares (3) · Días · Viaje (1)`.
@@ -289,27 +322,27 @@ Cada fase = 1 PR (o 2 si 2b/4 se parten). No mezclar migración Prisma con el sh
 
 ## Validación por fase
 
-| Fase | Cómo validar |
-|---|---|
-| 0–1 | Smoke UI + generar crónica con nota del viaje |
-| 2a | Editar comentario de lugar con misma UI |
-| 2b | Migrar DB de prueba; export + journal |
-| 3 | Los 4 atajos del sheet online/offline |
-| 4 | Boundaries post-upload; matching GPS; mapa |
-| 5 | Empty states + checklist pre-crónica |
+| Fase | Cómo validar | Estado |
+|---|---|---|
+| 0–1 | Smoke UI + generar crónica con nota del viaje | ✅ |
+| 2a | Editar comentario de lugar con misma UI | ✅ |
+| 2b | Migrar DB de prueba; export + journal | ✅ |
+| 3 | Los 4 atajos del sheet online/offline | ✅ |
+| 4 | Boundaries post-upload; matching GPS; mapa | ✅ |
+| 5 | Empty states + checklist pre-crónica | ✅ |
 
 ---
 
-## Primer ticket sugerido (arranque)
+## Arranque (histórico)
 
-**Título:** Fase 1 — Renombrar nota del trayecto y moverla al workspace
+> Plan ejecutado. El primer ticket (Fase 1) se completó con la pestaña **Viaje** (Opción A).
 
-**Acceptance criteria**
+**Título original:** Fase 1 — Renombrar nota del trayecto y moverla al workspace
+
+**Acceptance criteria** (cumplidos)
 
 1. La UI dice “Nota del viaje” (no “trayecto”) en formularios de captura.
-2. Las notas `TRIP` viven en una pestaña **Viaje** (o al final de Días, según opción elegida en el PR).
+2. Las notas `TRIP` viven en una pestaña **Viaje**.
 3. Crear / editar / borrar / offline sync siguen funcionando.
 4. La crónica IA sigue usando esas notas.
-5. README actualizado en la misma PR (parte de Fase 0 mínima).
-
-**Decisión a fijar en el PR:** Opción A (tab Viaje) vs Opción B (dentro de Días). Recomendación: **Opción A** para no mezclar “día concreto” con “viaje entero”.
+5. README actualizado.
