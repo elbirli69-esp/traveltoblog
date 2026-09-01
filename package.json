@@ -37,7 +37,8 @@
     "qrcode.react": "^4.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "serwist": "^9.0.12"
+    "serwist": "^9.0.12",
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",

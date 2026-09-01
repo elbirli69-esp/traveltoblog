@@ -13,7 +13,10 @@ import type { FlightLegPhoto } from "@/lib/flights";
 import { formatFlightDate, resolveFlightLegs } from "@/lib/flights";
 import { createLocalId } from "@/lib/utils";
 import SecureLocationHint from "@/components/SecureLocationHint";
+import PhotoImage from "@/components/PhotoImage";
+import PaginationBar from "@/components/PaginationBar";
 import EmptyMemoryState from "@/components/EmptyMemoryState";
+import { pageSlice, PLACES_PAGE_SIZE, totalPages } from "@/lib/pagination";
 import NoteForm from "@/components/NoteForm";
 import EditableNote from "@/components/EditableNote";
 import MemoryDateTimeField, {
@@ -119,6 +122,7 @@ export default function TravelPlacesPanel({
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [placesPage, setPlacesPage] = useState(1);
 
   useEffect(() => {
     if (!startAddSignal) return;
@@ -140,6 +144,8 @@ export default function TravelPlacesPanel({
 
   const selectedPlace = places.find((p) => p.id === selectedPlaceId) ?? null;
   const { outbound, inbound } = resolveFlightLegs(photos);
+  const placesPageCount = totalPages(places.length, PLACES_PAGE_SIZE);
+  const visiblePlaces = pageSlice(places, placesPage, PLACES_PAGE_SIZE);
 
   const nearbyPhotosForSelected = useMemo(() => {
     if (!selectedPlace) return [];
@@ -580,8 +586,17 @@ export default function TravelPlacesPanel({
       )}
 
       {places.length > 0 && (
+        <>
+          <PaginationBar
+            page={placesPage}
+            totalPages={placesPageCount}
+            totalItems={places.length}
+            pageSize={PLACES_PAGE_SIZE}
+            onPageChange={setPlacesPage}
+            itemLabel="lugares"
+          />
         <ul className="space-y-2">
-          {places.map((place) => (
+          {visiblePlaces.map((place) => (
             <li
               key={place.id}
               className={`flex items-start justify-between gap-3 rounded-xl border px-4 py-3 ${
@@ -628,6 +643,7 @@ export default function TravelPlacesPanel({
             </li>
           ))}
         </ul>
+        </>
       )}
 
       {selectedPlace && !draft && !editForm && (
@@ -690,10 +706,9 @@ export default function TravelPlacesPanel({
                     className="group relative overflow-hidden rounded-lg ring-1 ring-slate-200"
                     title={`${formatDistanceM(photo.distanceM)}`}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={photo.url}
-                      alt=""
+                    <PhotoImage
+                      photoId={photo.id}
+                      url={photo.url}
                       className="h-14 w-14 object-cover transition group-hover:opacity-90"
                     />
                     <span className="absolute bottom-0 inset-x-0 bg-black/50 px-0.5 text-center text-[9px] text-white">
@@ -736,10 +751,9 @@ function FlightLegCard({
 
   return (
     <div className="flex gap-3 rounded-xl border border-indigo-200 bg-white px-3 py-3">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={leg.photo.url}
-        alt=""
+      <PhotoImage
+        photoId={leg.photo.id}
+        url={leg.photo.url}
         className="h-16 w-16 shrink-0 rounded-lg object-cover"
       />
       <div className="min-w-0 text-sm">

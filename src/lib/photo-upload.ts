@@ -3,6 +3,7 @@ import path from "path";
 import { extractExifFromBuffer, mergeExifMetadata } from "@/lib/exif";
 import type { ExifMetadata } from "@/types";
 import { normalizeImageForStorage } from "@/lib/photo-storage";
+import { generateThumbnail } from "@/lib/photo-thumbnail";
 
 export interface PreparedPhotoUpload {
   buffer: Buffer;
@@ -31,6 +32,12 @@ export async function preparePhotoForStorage(
   await mkdir(uploadDir, { recursive: true });
   const filepath = path.join(uploadDir, filename);
   await writeFile(filepath, buffer);
+
+  try {
+    await generateThumbnail(buffer, travelId, filename);
+  } catch (thumbError) {
+    console.warn("Thumbnail generation failed", thumbError);
+  }
 
   return { buffer, ext, exif, filename, filepath };
 }

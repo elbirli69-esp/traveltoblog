@@ -1,6 +1,7 @@
 import { unlink } from "fs/promises";
 import path from "path";
 import convert from "heic-convert";
+import { deleteThumbnailFile } from "@/lib/photo-thumbnail";
 
 const HEIC_EXT = /\.(heic|heif)$/i;
 
@@ -24,8 +25,19 @@ export async function normalizeImageForStorage(
     });
     return { buffer: Buffer.from(converted), ext: ".jpg" };
   } catch (error) {
-    console.warn("HEIC conversion failed, storing original", error);
-    return { buffer, ext };
+    console.warn("HEIC conversion (quality 0.9) failed, retrying", error);
+  }
+
+  try {
+    const converted = await convert({
+      buffer,
+      format: "JPEG",
+      quality: 0.75,
+    });
+    return { buffer: Buffer.from(converted), ext: ".jpg" };
+  } catch (error) {
+    console.error("HEIC conversion failed, storing original", error);
+    return { buffer, ext: ext.toLowerCase() === ext ? ext : ext.toLowerCase() };
   }
 }
 
@@ -39,4 +51,5 @@ export async function deleteStoredPhotoFile(travelId: string, filename: string):
   } catch {
     // File may already be missing.
   }
+  await deleteThumbnailFile(travelId, filename);
 }

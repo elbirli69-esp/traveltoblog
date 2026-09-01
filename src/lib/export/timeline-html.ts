@@ -1,15 +1,18 @@
 import type { TimelineEvent } from "@/lib/timeline";
 import type { TypologyProfile } from "@/lib/export/typologies/registry";
+import {
+  buildVisualStoryTimelineHtml,
+  buildStoryTimelineSyncScript,
+  storyTimelineStyles,
+  type StoryTimelineOptions,
+} from "@/lib/export/story-timeline-html";
 
-const KIND_ICONS: Record<string, string> = {
-  photo: "📷",
-  place: "📍",
-  note: "📝",
-  "flight-out": "✈️",
-  "flight-in": "🛬",
-  "journal-chunk": "📖",
-  "gps-segment": "🛤️",
-};
+export {
+  buildVisualStoryTimelineHtml,
+  buildStoryTimelineSyncScript,
+  storyTimelineStyles,
+  prepareStoryEvents,
+} from "@/lib/export/story-timeline-html";
 
 function escapeHtml(text: string): string {
   return text
@@ -19,96 +22,20 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function formatTime(iso: string): string {
-  return new Intl.DateTimeFormat("es-ES", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(iso));
-}
-
-export function buildTimelineSectionHtml(events: TimelineEvent[]): string {
-  const content = events
-    .map((ev) => {
-      if (ev.kind === "day-boundary") {
-        return `<div class="tl-day" data-day="${escapeHtml(ev.dayKey)}" id="day-${escapeHtml(ev.dayKey)}">
-  <h3 class="tl-day-title">${escapeHtml(ev.title)}</h3>
-</div>`;
-      }
-      const icon = KIND_ICONS[ev.kind] ?? "•";
-      const hasGps = ev.lat != null && ev.lng != null;
-      const media = ev.mediaUrl
-        ? `<img class="tl-thumb" src="${escapeHtml(ev.mediaUrl)}" alt="" loading="lazy">`
-        : "";
-      const body = ev.body ? `<p class="tl-body">${escapeHtml(ev.body)}</p>` : "";
-      const author = ev.author ? `<span class="tl-author">${escapeHtml(ev.author)}</span>` : "";
-      return `<article class="tl-event" data-event-id="${escapeHtml(ev.id)}" data-day="${escapeHtml(ev.dayKey)}"${hasGps ? ` data-lat="${ev.lat}" data-lng="${ev.lng}"` : ""}>
-  <button type="button" class="tl-event-btn" aria-label="${escapeHtml(ev.title)}">
-    <span class="tl-icon">${icon}</span>
-    <div class="tl-content">
-      <div class="tl-head"><strong>${escapeHtml(ev.title)}</strong> <time>${formatTime(ev.at)}</time></div>
-      ${body}
-      ${author}
-    </div>
-    ${media}
-  </button>
-</article>`;
-    })
-    .join("\n");
-
-  return `<section id="cronologia" class="export-timeline reveal">
-  <h2 class="section-title">Cronología del viaje</h2>
-  <div class="tl-list" role="list">${content}</div>
-</section>`;
+/** Cronología visual unificada (fotos, lugares, notas, vuelos). */
+export function buildTimelineSectionHtml(
+  events: TimelineEvent[],
+  options?: StoryTimelineOptions
+): string {
+  return buildVisualStoryTimelineHtml(events, options);
 }
 
 export function timelineExportStyles(): string {
-  return `
-.export-timeline { margin: 2rem 0; }
-.tl-list { display: flex; flex-direction: column; gap: .5rem; }
-.tl-day { margin-top: 1.25rem; padding-top: .75rem; border-top: 1px solid rgba(255,255,255,.12); }
-.tl-day-title { font-size: 1rem; font-weight: 700; color: var(--accent, #2dd4bf); margin: 0; }
-.tl-event { margin: 0; }
-.tl-event-btn {
-  display: flex; align-items: flex-start; gap: .75rem; width: 100%;
-  text-align: left; padding: .65rem .75rem; border-radius: 12px;
-  border: 1px solid transparent; background: rgba(255,255,255,.04);
-  color: inherit; cursor: pointer; transition: border-color .15s, background .15s;
-}
-.tl-event-btn:hover, .tl-event.active .tl-event-btn {
-  border-color: var(--accent, #2dd4bf); background: rgba(45,212,191,.08);
-}
-.tl-icon { font-size: 1.25rem; line-height: 1; flex-shrink: 0; }
-.tl-content { flex: 1; min-width: 0; }
-.tl-head { display: flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; font-size: .9rem; }
-.tl-head time { opacity: .65; font-size: .8rem; }
-.tl-body { margin: .25rem 0 0; font-size: .85rem; opacity: .85; }
-.tl-author { font-size: .75rem; opacity: .6; }
-.tl-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
-`;
+  return storyTimelineStyles();
 }
 
 export function buildTimelineSyncScript(): string {
-  return `
-(function () {
-  var list = document.querySelector(".tl-list");
-  if (!list) return;
-  list.addEventListener("click", function (e) {
-    var btn = e.target.closest(".tl-event-btn");
-    if (!btn) return;
-    var article = btn.closest(".tl-event");
-    if (!article) return;
-    document.querySelectorAll(".tl-event.active").forEach(function (el) { el.classList.remove("active"); });
-    article.classList.add("active");
-    var lat = article.getAttribute("data-lat");
-    var lng = article.getAttribute("data-lng");
-    if (lat && lng && window.__travelMap) {
-      window.__travelMap.flyTo([parseFloat(lat), parseFloat(lng)], 14, { duration: 1 });
-    }
-    var id = article.getAttribute("data-event-id");
-    if (id) window.__travelPlay && window.__travelPlay.goToEvent(id);
-  });
-})();
-`;
+  return buildStoryTimelineSyncScript();
 }
 
 export function buildStatsSectionHtml(stats: {
@@ -206,7 +133,7 @@ export function buildPlayModeScript(
   }
 
   function highlight() {
-    document.querySelectorAll(".tl-event.active").forEach(function (el) { el.classList.remove("active"); });
+    document.querySelectorAll(".story-card.active, .tl-event.active").forEach(function (el) { el.classList.remove("active"); });
     var targetId = unit === "day" ? null : events[idx] && events[idx].id;
     var dayKey = unit === "day" ? days[idx] : events[idx] && events[idx].dayKey;
     if (targetId) {

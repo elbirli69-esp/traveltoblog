@@ -20,9 +20,21 @@ import {
   playModeStyles,
   timelineExportStyles,
 } from "@/lib/export/timeline-html";
+import {
+  buildClosingSectionHtml,
+  buildHeadMeta,
+  buildMagazineHero,
+  buildMagazineInteractiveScript,
+  buildMagazineNav,
+  buildPlaceCalloutsHtml,
+  buildTocHtml,
+  extractDeck,
+  findTripNote,
+  magazineStyles,
+} from "@/lib/export/magazine-html";
 
 export type ExportTypologyId = TravelType | "auto";
-export type ExportTemplateId = "visual-journey" | "editorial-clean" | "dark-photo-journey";
+export type ExportTemplateId = "magazine" | "visual-journey" | "editorial-clean" | "dark-photo-journey";
 export type ExportFormat = "html" | "zip";
 
 export interface MapPoint {
@@ -72,6 +84,7 @@ export interface ExportContext {
 }
 
 const TEMPLATE_LABELS: Record<ExportTemplateId, string> = {
+  magazine: "Magazine",
   "visual-journey": "Visual Journey",
   "editorial-clean": "Editorial Clean",
   "dark-photo-journey": "Dark Photo Journey",
@@ -333,25 +346,41 @@ function buildInteractiveScripts(template: ExportTemplateId): string {
 }
 
 function buildGallerySection(photos: ExportPhoto[]): string {
-  const galleryPhotos = photos.filter((p) => !p.isTransportStart && !p.isTransportEnd);
+  const galleryPhotos = photos
+    .filter((p) => !p.isTransportStart && !p.isTransportEnd)
+    .sort(
+      (a, b) =>
+        new Date(a.exifDateTime ?? 0).getTime() - new Date(b.exifDateTime ?? 0).getTime()
+    );
   if (galleryPhotos.length === 0) return "";
 
   const tiles = galleryPhotos
-    .map(
-      (p, i) =>
-        `<figure class="gallery-tile reveal" style="animation-delay:${Math.min(i * 40, 400)}ms"><img src="${escapeHtml(p.localPath)}" alt="Foto de ${escapeHtml(p.alias)}" loading="lazy"><figcaption>${escapeHtml(p.alias)}</figcaption></figure>`
-    )
+    .map((p, i) => {
+      const when = p.exifDateTime
+        ? new Intl.DateTimeFormat("es-ES", {
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+          }).format(p.exifDateTime)
+        : "";
+      const caption = when ? `${p.alias} · ${when}` : p.alias;
+      return `<figure class="gallery-tile reveal" style="animation-delay:${Math.min(i * 40, 400)}ms"><img src="${escapeHtml(p.localPath)}" alt="Foto de ${escapeHtml(p.alias)}" loading="lazy"><figcaption>${escapeHtml(caption)}</figcaption></figure>`;
+    })
     .join("\n");
 
   return `
 <section id="galeria" class="gallery-section reveal">
-  <h2 class="section-title">Galería del viaje</h2>
-  <p class="gallery-lead">${galleryPhotos.length} momentos capturados</p>
+  <h2 class="section-title">Galería completa</h2>
+  <p class="gallery-lead">${galleryPhotos.length} momentos en orden cronológico</p>
   <div class="gallery-grid">${tiles}</div>
 </section>`;
 }
 
 function templateStyles(template: ExportTemplateId): string {
+  if (template === "magazine") {
+    return magazineStyles();
+  }
   if (template === "visual-journey") {
     return `
 :root {
@@ -1243,16 +1272,38 @@ export function buildExportHtml(ctx: ExportContext): string {
     template === "editorial-clean" ? rawHtml : enhanceArticleHtml(rawHtml);
   const dateRange = formatDateRange(travel.startDate, travel.endDate);
   const hasMap = mapPoints.length > 0;
+  const isMagazine = template === "magazine";
   const isVisual = template === "visual-journey" || template === "dark-photo-journey";
   const isInteractive = template !== "editorial-clean";
   const coverPhoto = pickCoverPhoto(photos);
+  const notes = ctx.notes ?? [];
+  const tripNote = findTripNote(notes);
+  const deck = extractDeck(travel.journalMarkdown, tripNote);
+  const hasJournalArticle = Boolean(travel.journalMarkdown?.trim());
+  const storyTimelineOptions = { excludeJournalChunks: hasJournalArticle };
+  const dayCount = timelineEvents.filter((e) => e.kind === "day-boundary").length;
+  const distanceKm = estimateRouteKm(photos);
+  const travelers = users.map((u) => u.alias).join(", ");
 
   const heroStyle = coverPhoto
-    ? `background-image: linear-gradient(to top, rgba(12,10,9,.88), rgba(12,10,9,.25)), url('${coverPhoto.localPath}');`
+    ? isMagazine
+      ? `background-image: linear-gradient(to top, rgba(250,249,247,.92), rgba(250,249,247,.4)), url('${coverPhoto.localPath}');`
+      : `background-image: linear-gradient(to top, rgba(12,10,9,.88), rgba(12,10,9,.25)), url('${coverPhoto.localPath}');`
     : "";
 
-  const headerBlock = isVisual
-    ? `<header class="hero" style="${heroStyle}">
+  const headerBlock = isMagazine
+    ? `${buildMagazineHero({
+        title: travel.title,
+        deck,
+        dateRange,
+        travelers,
+        typologyLabel: profile.label,
+        heroStyle,
+      })}
+${buildTocHtml(timelineEvents)}
+${buildMagazineNav(hasMap, hasJournalArticle)}`
+    : isVisual
+      ? `<header class="hero" style="${heroStyle}">
       <div class="hero-content reveal">
         <span class="hero-badge">${escapeHtml(profile.label)} · ${escapeHtml(getTemplateLabel(template))}</span>
         <h1>${escapeHtml(travel.title)}</h1>
@@ -1266,35 +1317,57 @@ export function buildExportHtml(ctx: ExportContext): string {
     </header>
     <nav class="section-nav">
       ${hasMap ? '<a href="#mapa">Mapa</a>' : ""}
-      <a href="#cronologia">Cronología</a>
-      <a href="#historia">Historia</a>
+      <a href="#cronologia">Recorrido</a>
+      ${hasJournalArticle ? '<a href="#historia">Crónica</a>' : ""}
       <a href="#galeria">Galería</a>
       ${profile.playProfile.showScrubber ? '<a href="#reproducir">Reproducir</a>' : ""}
     </nav>`
-    : `<header>
+      : `<header>
       <h1>${escapeHtml(travel.title)}</h1>
       <p class="meta">${escapeHtml(dateRange)} · ${users.map((u) => escapeHtml(u.alias)).join(", ")} · ${escapeHtml(profile.label)}</p>
     </header>`;
 
   const mapDayGroups = hasMap ? buildMapDayGroups(mapPoints) : [];
   const mapBlock = hasMap
-    ? isVisual
+    ? isVisual || isMagazine
       ? buildFullscreenMapSection(mapDayGroups, mapLead)
       : buildCompactMapSection(mapLead)
     : "";
 
-  const galleryBlock = isVisual ? buildGallerySection(photos) : "";
-  const storyAnchor = isVisual ? ' id="historia"' : "";
-  const timelineBlock = buildTimelineSectionHtml(timelineEvents);
-  const flightsBlock = buildFlightsSectionHtml(timelineEvents);
+  const galleryBlock = isVisual || isMagazine ? buildGallerySection(photos) : "";
+  const storyAnchor = isVisual || isMagazine ? ' id="historia"' : "";
+  const timelineBlock = buildTimelineSectionHtml(timelineEvents, storyTimelineOptions);
+  const hasFlightsInTimeline = timelineEvents.some(
+    (e) => e.kind === "flight-out" || e.kind === "flight-in"
+  );
+  const flightsBlock =
+    hasFlightsInTimeline ? "" : buildFlightsSectionHtml(timelineEvents);
   const statsBlock = buildStatsSectionHtml({
     photoCount: photos.length,
     placeCount: places.length,
-    dayCount: timelineEvents.filter((e) => e.kind === "day-boundary").length,
-    distanceKm: estimateRouteKm(photos),
+    dayCount,
+    distanceKm,
     profile,
   });
-  const playBlock = profile.playProfile.showScrubber ? buildPlayModeSectionHtml() : "";
+  const calloutsBlock = isMagazine ? buildPlaceCalloutsHtml(places) : "";
+  const closingBlock = isMagazine
+    ? buildClosingSectionHtml(tripNote, {
+        photoCount: photos.length,
+        placeCount: places.length,
+        dayCount,
+        distanceKm,
+        travelers: users.map((u) => u.alias),
+      })
+    : "";
+  const playBlock = profile.playProfile.showScrubber && !isMagazine ? buildPlayModeSectionHtml() : "";
+
+  const magazineSectionOrder: typeof profile.sectionOrder = [
+    "stats",
+    "map",
+    "timeline",
+    "journal",
+    "gallery",
+  ];
 
   const sectionBlocks: Record<string, string> = {
     hero: "",
@@ -1303,14 +1376,24 @@ export function buildExportHtml(ctx: ExportContext): string {
     map: mapBlock,
     timeline: timelineBlock,
     gallery: galleryBlock,
-    journal: `<article${storyAnchor}>${contentHtml}</article>`,
+    journal: hasJournalArticle
+      ? `<section class="journal-section reveal"><h2 class="section-title">Crónica del viaje</h2><article${storyAnchor}>${contentHtml}</article></section>`
+      : "",
     play: playBlock,
   };
 
-  const orderedMiddle = profile.sectionOrder
-    .filter((id) => id !== "hero" && sectionBlocks[id])
-    .filter((id) => !(isVisual && hasMap && id === "map"))
-    .map((id) => sectionBlocks[id])
+  const sectionOrder = isMagazine ? magazineSectionOrder : profile.sectionOrder;
+  const showMapOuter = (isVisual || isMagazine) && hasMap;
+
+  const orderedMiddle = [
+    ...sectionOrder
+      .filter((id) => id !== "hero" && sectionBlocks[id])
+      .filter((id) => !(showMapOuter && id === "map"))
+      .map((id) => sectionBlocks[id]),
+    calloutsBlock,
+    closingBlock,
+  ]
+    .filter(Boolean)
     .join("\n");
 
   const lightboxBlock = isInteractive
@@ -1318,16 +1401,26 @@ export function buildExportHtml(ctx: ExportContext): string {
     : "";
 
   const timelineJson = JSON.stringify(timelineEvents).replace(/</g, "\\u003c");
-  const extraStyles = timelineExportStyles() + playModeStyles();
-  const interactiveScript = isInteractive ? `<script>${buildInteractiveScripts(template)}</script>` : "";
+  const extraStyles = (isMagazine || isVisual ? timelineExportStyles() : "") + playModeStyles();
+  const interactiveScript = isInteractive
+    ? `<script>${buildInteractiveScripts(template)}${isMagazine ? buildMagazineInteractiveScript() : ""}</script>`
+    : "";
   const timelineScript = `<script>window.__TRAVEL_TIMELINE__=${timelineJson};</script><script>${buildTimelineSyncScript()}</script>`;
   const playScript =
-    profile.playProfile.showScrubber && isInteractive
+    profile.playProfile.showScrubber && isInteractive && !isMagazine
       ? `<script>${buildPlayModeScript(timelineEvents, profile)}</script>`
       : "";
 
-  const mapOuter = isVisual && hasMap ? mapBlock : "";
-  const mapInner = !isVisual || !hasMap ? mapBlock : "";
+  const mapOuter = showMapOuter ? mapBlock : "";
+  const mapInner = !showMapOuter ? mapBlock : "";
+  const headMeta = isMagazine
+    ? buildHeadMeta({
+        title: travel.title,
+        deck,
+        dateRange,
+        coverImagePath: coverPhoto?.localPath ?? null,
+      })
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -1335,6 +1428,7 @@ export function buildExportHtml(ctx: ExportContext): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(travel.title)} — TravelToBlog</title>
+  ${headMeta}
   ${hasMap ? '<link rel="stylesheet" href="assets/leaflet.css">' : ""}
   <style>${templateStyles(template)}${extraStyles}</style>
 </head>
@@ -1394,6 +1488,7 @@ function escapeHtml(text: string): string {
 export async function loadPhotoFiles(
   photos: (Photo & { user: User })[]
 ): Promise<ExportPhoto[]> {
+  // Export HTML/PDF: siempre archivos originales en disco (no miniaturas).
   const selected = photos.filter((p) => p.selected);
   return Promise.all(
     selected.map(async (photo, index) => {

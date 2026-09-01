@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { TravelType } from "@prisma/client";
 
-export type ExportTemplateId = "visual-journey" | "editorial-clean" | "dark-photo-journey";
+export type ExportTemplateId = "magazine" | "visual-journey" | "editorial-clean" | "dark-photo-journey";
 export type ExportFormat = "zip" | "html";
 export type ExportTypologyId = TravelType | "auto";
 
@@ -14,10 +14,17 @@ const TEMPLATES: {
   preview: string;
 }[] = [
   {
+    id: "magazine",
+    name: "Magazine",
+    description:
+      "Estilo blog experto: hero con subtítulo, recorrido cronológico, guía práctica, TOC y meta para compartir.",
+    preview: "bg-gradient-to-br from-teal-50 to-amber-50 text-teal-900 border-teal-200",
+  },
+  {
     id: "visual-journey",
     name: "Visual Journey",
     description:
-      "Hero con foto de portada, galería tipo mosaico, lightbox, animaciones y navegación sticky.",
+      "Hero con foto de portada, recorrido cronológico visual, galería, lightbox y animaciones.",
     preview: "bg-gradient-to-br from-teal-900 to-stone-900 text-teal-200 border-teal-700",
   },
   {
@@ -51,7 +58,7 @@ export default function ExportHtmlPanel({
   hasJournal = false,
   hasGpsPhotos = false,
 }: ExportHtmlPanelProps) {
-  const [template, setTemplate] = useState<ExportTemplateId>("visual-journey");
+  const [template, setTemplate] = useState<ExportTemplateId>("magazine");
   const [typology, setTypology] = useState<ExportTypologyId>("auto");
   const [typologies, setTypologies] = useState<TypologyOption[]>([]);
   const [suggestion, setSuggestion] = useState<{ type: TravelType; reason: string } | null>(
