@@ -43,7 +43,7 @@ import java.util.TimeZone;
 )
 public class PhotoExifPlugin extends Plugin {
 
-    private static final int MAX_BASE64_BYTES = 4 * 1024 * 1024;
+    private static final int MAX_READ_BYTES = 25 * 1024 * 1024;
 
     @PluginMethod
     public void pickImages(PluginCall call) {
@@ -51,6 +51,40 @@ public class PhotoExifPlugin extends Plugin {
             return;
         }
         launchPicker(call);
+    }
+
+    @PluginMethod
+    public void readPhotoFile(PluginCall call) {
+        String path = call.getString("path");
+        if (path == null || path.isEmpty()) {
+            call.reject("Ruta de archivo requerida");
+            return;
+        }
+
+        try {
+            File file = new File(path);
+            File cacheDir = getContext().getCacheDir().getCanonicalFile();
+            if (!file.getCanonicalFile().getPath().startsWith(cacheDir.getPath())) {
+                call.reject("Ruta de archivo no permitida");
+                return;
+            }
+            if (!file.exists() || !file.isFile()) {
+                call.reject("Archivo no encontrado");
+                return;
+            }
+            if (file.length() > MAX_READ_BYTES) {
+                call.reject("La foto es demasiado grande (máx. 25 MB)");
+                return;
+            }
+
+            String mimeType = guessMimeType(file.getName());
+            JSObject ret = new JSObject();
+            ret.put("base64", readFileBase64(file));
+            ret.put("mimeType", mimeType);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("No se pudo leer la foto", e);
+        }
     }
 
     @PermissionCallback
@@ -208,11 +242,6 @@ public class PhotoExifPlugin extends Plugin {
             }
             obj.put("gpsStripped", gpsStripped);
 
-            long fileSize = cacheFile.length();
-            if (fileSize > 0 && fileSize <= MAX_BASE64_BYTES) {
-                obj.put("base64", readFileBase64(cacheFile));
-            }
-
             return obj;
         } catch (Exception e) {
             if (cacheFile != null && cacheFile.exists()) {
@@ -294,5 +323,14 @@ public class PhotoExifPlugin extends Plugin {
 
     private String sanitize(String name) {
         return name.replaceAll("[^a-zA-Z0-9._-]", "_");
+    }
+
+    private String guessMimeType(String name) {
+        String lower = name.toLowerCase(Locale.US);
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".heic")) return "image/heic";
+        if (lower.endsWith(".heif")) return "image/heif";
+        return "image/jpeg";
     }
 }

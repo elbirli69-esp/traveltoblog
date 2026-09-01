@@ -27,6 +27,14 @@ import type { ParsedPhoto, TravelDateRange } from "@/types";
 const PHOTO_INPUT_ACCEPT =
   ".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif,text/plain,application/octet-stream";
 
+function normalizeNativePickedPhotos(
+  photos: NativePickedPhoto[] | Record<string, NativePickedPhoto> | undefined
+): NativePickedPhoto[] {
+  if (!photos) return [];
+  if (Array.isArray(photos)) return photos;
+  return Object.values(photos);
+}
+
 export interface UploadPlaceOption {
   id: string;
   name: string;
@@ -257,7 +265,8 @@ export default function PhotoUploadGrid({
     setProcessing(true);
     setError(null);
     try {
-      const { photos: picked } = await PhotoExif.pickImages({ limit: 20 });
+      const result = await PhotoExif.pickImages({ limit: 20 });
+      const picked = normalizeNativePickedPhotos(result.photos);
       if (!picked.length) {
         setError("No se seleccionaron imágenes o el sistema no permitió leerlas.");
         return;
@@ -271,7 +280,7 @@ export default function PhotoUploadGrid({
 
       if (newPhotos.length === 0) {
         setError(
-          "No se pudieron procesar las imágenes. Prueba de nuevo o actualiza la app desde /download/android."
+          "No se pudieron procesar las imágenes. Actualiza la app en /download/android (v1.0.2+)."
         );
       } else {
         setPhotos((prev) => [...prev, ...newPhotos]);
@@ -512,7 +521,7 @@ export default function PhotoUploadGrid({
               {processing ? "Leyendo EXIF…" : "Galería nativa (GPS)"}
             </span>
             <span className="mt-1 text-[11px] text-slate-600">
-              Lee ubicación embebida con permisos de la app Android
+              Lee ubicación embebida con permisos de la app Android (v1.0.2+)
             </span>
           </button>
         ) : (
