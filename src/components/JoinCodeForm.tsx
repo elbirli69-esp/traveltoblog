@@ -17,14 +17,14 @@ export default function JoinCodeForm() {
 
   return (
     <main className="mx-auto min-h-dvh max-w-lg px-4 py-10">
-      <h1 className="mb-2 text-2xl font-bold text-slate-900 dark:text-slate-100">Unirse a un viaje</h1>
-      <p className="mb-6 text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+      <h1 className="mb-2 text-2xl font-bold text-fg">Unirse a un viaje</h1>
+      <p className="mb-6 text-fg-secondary">
         Pega el código que te compartió el organizador (está en «Invitar al grupo» en el móvil).
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <label className="block text-sm">
-          <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Código del viaje</span>
+          <span className="mb-1 block font-medium text-fg-secondary">Código del viaje</span>
           <input
             type="text"
             value={code}
@@ -35,7 +35,7 @@ export default function JoinCodeForm() {
             spellCheck={false}
             autoComplete="off"
             inputMode="text"
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-4 py-3 font-mono text-lg tracking-wider text-slate-900 dark:text-slate-100 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-4 py-3 font-mono text-lg tracking-wider text-fg focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
             required
           />
         </label>
@@ -48,13 +48,13 @@ export default function JoinCodeForm() {
         </button>
       </form>
 
-      <p className="mt-4 text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+      <p className="mt-4 text-xs text-slate-400 dark:text-fg-secondary dark:text-slate-500">
         También puedes abrir directamente el enlace de invitación del móvil.
       </p>
 
       <Link
         href="/"
-        className="mt-6 inline-block text-sm font-medium text-teal-600 hover:underline"
+        className="mt-6 inline-block text-sm link-accent"
       >
         ← Volver al inicio
       </Link>

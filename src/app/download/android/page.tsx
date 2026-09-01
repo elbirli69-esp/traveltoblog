@@ -14,13 +14,13 @@ export default function AndroidDownloadPage() {
         <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-600 text-3xl text-white shadow-lg">
           📱
         </div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">App Android</h1>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+        <h1 className="text-2xl font-bold text-fg">App Android</h1>
+        <p className="mt-2 text-sm text-fg-secondary">
           Lee el GPS de las fotos que la PWA en Android no puede recuperar.
         </p>
       </header>
 
-      <section className="space-y-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
+      <section className="space-y-4 surface p-6">
         <a
           href={APK_PATH}
           download="traveltoblog-latest.apk"
@@ -28,9 +28,9 @@ export default function AndroidDownloadPage() {
         >
           Descargar APK
         </a>
-        <p className="text-center text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500 break-all">{APK_PATH}</p>
+        <p className="text-center text-xs text-fg-secondary break-all">{APK_PATH}</p>
 
-        <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700 dark:text-slate-300">
+        <ol className="list-decimal space-y-2 pl-5 text-sm text-fg-secondary">
           <li>Pulsa «Descargar APK» y espera a que termine.</li>
           <li>Abre el archivo descargado (notificación o carpeta Descargas).</li>
           <li>
@@ -43,7 +43,7 @@ export default function AndroidDownloadPage() {
           </li>
         </ol>
 
-        <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        <div className="callout callout-warning text-sm">
           <p className="font-medium">iPhone</p>
           <p className="mt-1 text-xs">
             En iPhone sigue siendo mejor la PWA (Añadir a pantalla de inicio). Esta APK
@@ -52,8 +52,8 @@ export default function AndroidDownloadPage() {
         </div>
       </section>
 
-      <p className="mt-8 text-center text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
-        <Link href="/" className="font-medium text-teal-600 hover:underline">
+      <p className="mt-8 text-center text-sm text-fg-secondary">
+        <Link href="/" className="link-accent">
           ← Volver al inicio
         </Link>
       </p>

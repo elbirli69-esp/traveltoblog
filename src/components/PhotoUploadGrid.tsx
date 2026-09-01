@@ -518,11 +518,11 @@ export default function PhotoUploadGrid({
       <div ref={sectionRef} id="photo-upload-section" className={panelClass}>
       {addOnly && showReview && (
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+          <h2 className="text-lg font-semibold text-fg">
             Revisar fotos
           </h2>
           {processing && (
-            <span className="text-sm text-slate-500 dark:text-slate-400">Leyendo EXIF…</span>
+            <span className="text-sm text-fg-secondary">Leyendo EXIF…</span>
           )}
         </div>
       )}
@@ -553,24 +553,14 @@ export default function PhotoUploadGrid({
       {/* Header / status bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Fotos del viaje</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
-            Subiendo como <span className="font-medium text-teal-700">{userAlias}</span>
+          <h2 className="text-lg font-semibold text-fg">Fotos del viaje</h2>
+          <p className="text-sm text-fg-secondary">
+            Subiendo como <span className="font-medium text-accent-mint">{userAlias}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
-              isOnline
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-amber-50 text-amber-700"
-            }`}
-          >
-            <span
-              className={`h-2 w-2 rounded-full ${
-                isOnline ? "bg-emerald-500" : "bg-amber-500"
-              }`}
-            />
+          <span className={isOnline ? "badge-online" : "badge-offline"}>
+            <span className={isOnline ? "badge-dot-online" : "badge-dot-offline"} />
             {isOnline ? "En línea" : "Sin conexión — modo offline"}
           </span>
         </div>
@@ -583,18 +573,18 @@ export default function PhotoUploadGrid({
             type="button"
             onClick={() => void openNativeGalleryPicker()}
             disabled={processing}
-            className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/70 px-4 py-8 text-center transition hover:border-emerald-500 hover:bg-emerald-50 disabled:opacity-50"
+            className="picker-zone picker-zone-mint disabled:opacity-50"
           >
-            <span className="text-sm font-medium text-emerald-900">
+            <span className="text-sm font-medium text-accent-mint">
               {processing ? "Leyendo EXIF…" : "Galería nativa (GPS)"}
             </span>
-            <span className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">
+            <span className="mt-1 text-[11px] text-fg-secondary">
               Lee ubicación embebida con permisos de la app Android (v1.0.4+)
             </span>
           </button>
         ) : (
           <>
-        <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-teal-200 bg-teal-50/50 px-4 py-8 transition hover:border-teal-400 hover:bg-teal-50">
+        <label className="picker-zone picker-zone-mint cursor-pointer">
           <input
             ref={inputRef}
             type="file"
@@ -604,10 +594,10 @@ export default function PhotoUploadGrid({
             onChange={handleFileSelect}
             disabled={processing}
           />
-          <span className="text-sm font-medium text-teal-800">
+          <span className="text-sm font-medium text-accent-mint">
             {processing ? "Leyendo EXIF…" : "Galería / selector rápido"}
           </span>
-          <span className="mt-1 text-center text-[11px] text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          <span className="mt-1 text-center text-[11px] text-fg-secondary">
             En Android puede quitar el GPS. Si aparece el toggle «Incluir ubicación», actívalo.
           </span>
         </label>
@@ -616,7 +606,7 @@ export default function PhotoUploadGrid({
           type="button"
           onClick={() => void openExplorerPicker()}
           disabled={processing}
-          className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-8 text-center transition hover:border-indigo-400 hover:bg-indigo-50 disabled:opacity-50"
+          className="picker-zone picker-zone-cyan disabled:opacity-50"
         >
           <input
             ref={explorerInputRef}
@@ -627,8 +617,8 @@ export default function PhotoUploadGrid({
             onChange={handleExplorerSelect}
             disabled={processing}
           />
-          <span className="text-sm font-medium text-indigo-900">Explorador de archivos</span>
-          <span className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          <span className="text-sm font-medium text-accent-cyan">Explorador de archivos</span>
+          <span className="mt-1 text-[11px] text-fg-secondary">
             Alternativa al selector; en muchos Android el GPS sigue sin llegar
           </span>
         </button>
@@ -637,9 +627,9 @@ export default function PhotoUploadGrid({
       </div>
 
       {isAndroidDevice() && !isCapacitorAndroid() && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        <div className="callout callout-warning text-sm">
           <p className="font-medium">En Android la web no puede leer el GPS de las fotos</p>
-          <p className="mt-1 text-xs leading-relaxed text-amber-900/90">
+          <p className="mt-1 text-xs leading-relaxed opacity-90">
             El sistema envía una copia sin coordenadas (aunque la galería sí las muestre). No es
             un fallo de esta app: las webs no tienen permiso para leer la ubicación embebida. Usa
             <strong> «Usar mi ubicación»</strong> si estás en el sitio de la foto, o asigna un
@@ -652,7 +642,7 @@ export default function PhotoUploadGrid({
 
       {/* Date range info */}
       {(dateRange.start || dateRange.end) && (
-        <div className="rounded-xl bg-slate-50 dark:bg-slate-950/60 px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-950/60 px-4 py-3 text-sm text-fg-secondary">
           <span className="font-medium">Rango del viaje: </span>
           {dateRange.start
             ? formatExifDate(dateRange.start)
@@ -668,7 +658,7 @@ export default function PhotoUploadGrid({
       )}
 
       {strippedGpsCount > 0 && (
-        <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-950">
+        <div className="callout callout-warning text-sm">
           <p className="font-medium">
             {strippedGpsCount} foto{strippedGpsCount === 1 ? "" : "s"} sin GPS en el archivo recibido
           </p>
@@ -719,7 +709,7 @@ export default function PhotoUploadGrid({
                     className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
                       photo.selected
                         ? "bg-teal-500 text-white"
-                        : "bg-white dark:bg-slate-900/80 text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500"
+                        : "bg-white dark:bg-slate-900/80 text-slate-400 dark:text-fg-secondary dark:text-slate-500"
                     }`}
                   >
                     {photo.selected ? "✓" : ""}
@@ -757,7 +747,7 @@ export default function PhotoUploadGrid({
                     className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
                       photo.isTransportStart
                         ? "bg-blue-500 text-white"
-                        : "bg-white dark:bg-slate-900/80 text-slate-600 dark:text-slate-300 opacity-0 group-hover:opacity-100"
+                        : "bg-white dark:bg-slate-900/80 text-fg-secondary opacity-0 group-hover:opacity-100"
                     }`}
                   >
                     Ida
@@ -769,7 +759,7 @@ export default function PhotoUploadGrid({
                     className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
                       photo.isTransportEnd
                         ? "bg-purple-500 text-white"
-                        : "bg-white dark:bg-slate-900/80 text-slate-600 dark:text-slate-300 opacity-0 group-hover:opacity-100"
+                        : "bg-white dark:bg-slate-900/80 text-fg-secondary opacity-0 group-hover:opacity-100"
                     }`}
                   >
                     Vuelta
@@ -833,7 +823,7 @@ export default function PhotoUploadGrid({
 
           {/* Actions */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+            <p className="text-sm text-fg-secondary">
               {selectedCount} de {photos.length} seleccionadas
               {missingGpsCount > 0 && ` · ${missingGpsCount} sin GPS`}
             </p>
@@ -843,7 +833,7 @@ export default function PhotoUploadGrid({
                   type="button"
                   onClick={() => void applyLocationToSelected()}
                   disabled={locationBusy || uploading}
-                  className="rounded-xl border border-indigo-200 bg-white dark:bg-slate-900 px-4 py-2.5 text-sm font-semibold text-indigo-800 hover:bg-indigo-50 disabled:opacity-50"
+                  className="btn-secondary px-4 py-2.5 text-sm disabled:opacity-50"
                 >
                   {locationBusy ? "Obteniendo GPS…" : "Usar mi ubicación"}
                 </button>
@@ -852,7 +842,7 @@ export default function PhotoUploadGrid({
                 type="button"
                 onClick={handleConfirm}
                 disabled={uploading || selectedCount === 0 || locationBusy}
-                className="rounded-xl bg-teal-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="btn-primary px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {uploading ? "Guardando…" : isOnline ? "Confirmar fotos" : "Guardar offline"}
               </button>

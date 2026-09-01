@@ -115,8 +115,8 @@ export default function GpsTrailRecorder({
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-4">
-      <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Grabar recorrido GPS</h3>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+      <h3 className="text-sm font-semibold text-fg">Grabar recorrido GPS</h3>
+      <p className="mt-1 text-xs text-fg-secondary">
         Opt-in: ~1 punto/min mientras grabas. Consume batería. En iOS el GPS en segundo plano
         puede ser limitado.
       </p>
@@ -145,7 +145,7 @@ export default function GpsTrailRecorder({
             Grabando… {pointCount} puntos
           </span>
         )}
-        {saving && <span className="text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">Guardando…</span>}
+        {saving && <span className="text-sm text-fg-secondary">Guardando…</span>}
       </div>
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
     </div>

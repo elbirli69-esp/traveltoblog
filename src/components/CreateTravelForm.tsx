@@ -94,7 +94,7 @@ export default function CreateTravelForm() {
   if (step === 0) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-slate-600 dark:text-slate-300">
+        <p className="text-sm text-fg-secondary">
           ¿Cómo quieres documentar este viaje?
         </p>
         <button
@@ -102,8 +102,8 @@ export default function CreateTravelForm() {
           onClick={() => pickMode("live")}
           className="w-full rounded-xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-left transition hover:border-teal-400 hover:shadow-sm dark:shadow-black/20"
         >
-          <p className="font-semibold text-slate-900 dark:text-slate-100">Estoy de viaje ahora</p>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          <p className="font-semibold text-fg">Estoy de viaje ahora</p>
+          <p className="mt-1 text-sm text-fg-secondary">
             Fotos y notas en tiempo real. Las fechas se infieren del EXIF y del calendario.
           </p>
         </button>
@@ -131,7 +131,7 @@ export default function CreateTravelForm() {
           setMode(null);
           setError(null);
         }}
-        className="text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-200"
+        className="text-xs font-medium text-slate-500 hover:text-fg"
       >
         ← Cambiar tipo de viaje
       </button>
@@ -144,7 +144,7 @@ export default function CreateTravelForm() {
       )}
 
       <div>
-        <label htmlFor="title" className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+        <label htmlFor="title" className="mb-1 block text-sm font-medium text-fg-secondary">
           Nombre del viaje
         </label>
         <input
@@ -180,7 +180,7 @@ export default function CreateTravelForm() {
       )}
 
       <div>
-        <label htmlFor="alias" className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+        <label htmlFor="alias" className="mb-1 block text-sm font-medium text-fg-secondary">
           Tu alias
         </label>
         <input

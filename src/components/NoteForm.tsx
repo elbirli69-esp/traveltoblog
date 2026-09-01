@@ -128,7 +128,7 @@ export default function NoteForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2">
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{resolvedLabel}</label>
+      <label className="text-sm font-medium text-fg-secondary">{resolvedLabel}</label>
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}

@@ -244,7 +244,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   if (!travelId || !travel) {
     return (
       <main className="mx-auto max-w-3xl px-4 py-10">
-        <p className="text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">Cargando viaje…</p>
+        <p className="text-fg-secondary">Cargando viaje…</p>
       </main>
     );
   }
@@ -252,7 +252,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   if (!session || session.travelId !== travelId) {
     return (
       <main className="mx-auto max-w-lg px-4 py-10 text-center">
-        <p className="mb-4 text-slate-600 dark:text-slate-300">
+        <p className="mb-4 text-fg-secondary">
           Necesitas unirte a este viaje con tu alias primero.
         </p>
         <Link
@@ -303,11 +303,11 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   return (
     <main className="relative mx-auto max-w-3xl space-y-8 px-4 py-8 pb-28">
       <header>
-        <Link href="/" className="text-sm text-teal-600 hover:underline">
+        <Link href="/" className="text-sm link-accent">
           ← Inicio
         </Link>
-        <h1 className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100">{travel.title}</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+        <h1 className="mt-2 text-2xl font-bold text-fg">{travel.title}</h1>
+        <p className="text-sm text-fg-secondary">
           {travel.users.length} participante{travel.users.length !== 1 ? "s" : ""}:{" "}
           {travel.users.map((u) => u.alias).join(", ")}
         </p>
@@ -320,7 +320,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
       />
 
       {sharedNotice && (
-        <div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900">
+        <div className="callout callout-success text-sm">
           {sharedNotice}
         </div>
       )}
@@ -398,7 +398,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
         onTabChange={setActiveTab}
         tabCounts={tabCounts}
         photosContent={
-          <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
+          <section className="surface p-6">
             <PhotoGallery
               travelId={travelId}
               userId={session.userId}
@@ -416,7 +416,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
           </section>
         }
         daysContent={
-          <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
+          <section className="surface p-6">
             <TravelDayCalendar
               travelId={travelId}
               userId={session.userId}
@@ -432,7 +432,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
           </section>
         }
         placesContent={
-          <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
+          <section className="surface p-6">
             <TravelPlacesPanel
               travelId={travelId}
               userId={session.userId}
@@ -452,10 +452,10 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
           </section>
         }
         timelineContent={
-          <section className="space-y-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
+          <section className="space-y-6 surface p-6">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Cronología unificada</h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+              <h2 className="text-lg font-semibold text-fg">Cronología unificada</h2>
+              <p className="mt-1 text-sm text-fg-secondary">
                 Fotos, lugares, notas y vuelos en un solo hilo temporal — la misma base que el export HTML.
               </p>
             </div>
@@ -472,11 +472,11 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
           </section>
         }
         tripContent={
-          <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-black/20">
-            <h2 className="mb-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
+          <section className="surface p-6">
+            <h2 className="mb-1 text-lg font-semibold text-fg">
               {tripNotes.length > 0 ? "Notas del viaje" : "Nota del viaje"}
             </h2>
-            <p className="mb-4 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+            <p className="mb-4 text-sm text-fg-secondary">
               Anécdotas y comentarios sobre el viaje completo — no ligados a un día o una foto.
               La crónica las usa sobre todo en la introducción y la conclusión.
             </p>
@@ -523,7 +523,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
       <button
         type="button"
         onClick={() => setAddSheetOpen(true)}
-        className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-teal-600 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-teal-600/30 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 sm:bottom-8 sm:right-8"
+        className="fab-add fixed bottom-5 right-5 z-40 focus:outline-none focus:ring-2 focus:ring-[var(--accent-cyan)] focus:ring-offset-2 focus:ring-offset-[var(--background)] sm:bottom-8 sm:right-8"
       >
         <span className="text-lg leading-none" aria-hidden>
           +

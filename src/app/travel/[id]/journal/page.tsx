@@ -43,7 +43,7 @@ export default async function JournalPage({
     <main className="mx-auto max-w-3xl space-y-6 px-4 py-8">
       <Link
         href={`/travel/${travel.id}`}
-        className="text-sm text-teal-600 hover:underline"
+        className="text-sm link-accent"
       >
         ← Volver al viaje
       </Link>

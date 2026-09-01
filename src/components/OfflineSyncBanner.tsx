@@ -184,7 +184,7 @@ export default function OfflineSyncBanner({
   if (counts.places) parts.push(`${counts.places} lugar${counts.places > 1 ? "es" : ""}`);
 
   return (
-    <div className="flex items-center justify-between rounded-xl bg-amber-50 dark:bg-amber-950/35 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+    <div className="callout callout-warning flex items-center justify-between">
       <span>
         Pendiente: {parts.join(", ")}
         {!isOnline && " — esperando conexión"}
@@ -193,7 +193,7 @@ export default function OfflineSyncBanner({
         type="button"
         onClick={syncAll}
         disabled={syncing || !isOnline}
-        className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+        className="btn-primary px-3 py-1 text-xs disabled:opacity-50"
       >
         {syncing ? "Sincronizando…" : "Sincronizar ahora"}
       </button>

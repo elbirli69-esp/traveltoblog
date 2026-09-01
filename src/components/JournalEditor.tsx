@@ -67,11 +67,11 @@ export default function JournalEditor({
     <div className="mb-10">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          <p className="text-sm text-fg-secondary">
             Revisa y edita el texto antes de exportar a HTML o PDF.
           </p>
           {generatedAt && (
-            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+            <p className="mt-0.5 text-xs text-slate-400 dark:text-fg-secondary dark:text-slate-500">
               Generado el{" "}
               {new Intl.DateTimeFormat("es-ES", {
                 dateStyle: "long",
@@ -102,7 +102,7 @@ export default function JournalEditor({
               type="button"
               onClick={cancel}
               disabled={saving}
-              className="rounded-xl bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60"
+              className="rounded-xl bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-fg-secondary ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60"
             >
               Cancelar
             </button>
@@ -119,7 +119,7 @@ export default function JournalEditor({
 
       {editing ? (
         <div className="space-y-3">
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+          <label className="block text-sm font-medium text-fg-secondary">
             Markdown de la crónica
           </label>
           <textarea
@@ -127,9 +127,9 @@ export default function JournalEditor({
             onChange={(e) => setDraft(e.target.value)}
             rows={28}
             spellCheck
-            className="w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 font-mono text-sm leading-relaxed text-slate-800 dark:text-slate-200 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+            className="w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 font-mono text-sm leading-relaxed text-fg focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
           />
-          <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          <p className="text-xs text-slate-400 dark:text-fg-secondary dark:text-slate-500">
             Puedes usar Markdown: # títulos, **negrita**, ![alt](ruta) para fotos, etc.
           </p>
         </div>

@@ -15,8 +15,8 @@ export default function EmptyMemoryState({
 }: EmptyMemoryStateProps) {
   return (
     <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60/80 px-4 py-8 text-center">
-      <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{title}</p>
-      <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">{description}</p>
+      <p className="text-sm font-semibold text-fg">{title}</p>
+      <p className="mx-auto mt-2 max-w-sm text-sm text-fg-secondary">{description}</p>
       {onAction && (
         <button
           type="button"

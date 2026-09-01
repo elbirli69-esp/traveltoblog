@@ -50,7 +50,7 @@ export default function JoinTravelForm({ shareCode }: { shareCode: string }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="alias" className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+        <label htmlFor="alias" className="mb-1 block text-sm font-medium text-fg-secondary">
           Tu alias en este viaje
         </label>
         <input

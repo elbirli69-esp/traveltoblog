@@ -131,8 +131,8 @@ export default function TravelDayCalendar({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Calendario del viaje</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          <h2 className="text-lg font-semibold text-fg">Calendario del viaje</h2>
+          <p className="text-sm text-fg-secondary">
             {range.dayKeys.length} día{range.dayKeys.length !== 1 ? "s" : ""} ·{" "}
             {formatDateKey(range.startKey, "short")} — {formatDateKey(range.endKey, "short")}
           </p>
@@ -144,7 +144,7 @@ export default function TravelDayCalendar({
             onClick={() => changeDate(-1)}
             disabled={atStart}
             aria-label="Día anterior"
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-lg text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60 disabled:opacity-40"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-lg text-fg-secondary hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60 disabled:opacity-40"
           >
             ◀
           </button>
@@ -161,7 +161,7 @@ export default function TravelDayCalendar({
             onClick={() => changeDate(1)}
             disabled={atEnd}
             aria-label="Día siguiente"
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-lg text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60 disabled:opacity-40"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-lg text-fg-secondary hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60 disabled:opacity-40"
           >
             ▶
           </button>
@@ -184,7 +184,7 @@ export default function TravelDayCalendar({
                     ? "bg-teal-600 text-white"
                     : hasContent
                       ? "bg-teal-50 text-teal-800 hover:bg-teal-100"
-                      : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                      : "bg-slate-100 dark:bg-slate-800/80 text-fg-secondary hover:bg-slate-200"
                 }`}
                 title={formatDateKey(key, "long")}
               >
@@ -198,18 +198,18 @@ export default function TravelDayCalendar({
         </div>
       )}
 
-      <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm dark:shadow-black/20">
-        <h3 className="mb-1 text-base font-semibold text-slate-800 dark:text-slate-200">
+      <section className="surface p-5">
+        <h3 className="mb-1 text-base font-semibold text-fg">
           Resumen del día
         </h3>
-        <p className="mb-4 text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+        <p className="mb-4 text-xs text-fg-secondary">
           {photosForDay.length} foto{photosForDay.length !== 1 ? "s" : ""} ·{" "}
           {notesForDay.length} nota{notesForDay.length !== 1 ? "s" : ""}
         </p>
 
         {photosForDay.length > 0 && (
           <div className="mb-5">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-fg-secondary">
               Fotos del día
             </p>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -236,7 +236,7 @@ export default function TravelDayCalendar({
                       className="aspect-square w-full bg-slate-100 dark:bg-slate-800/80 object-cover"
                     />
                     <div className="space-y-0.5 px-1.5 py-1.5">
-                      <p className="truncate text-[10px] font-medium text-slate-600 dark:text-slate-300">
+                      <p className="truncate text-[10px] font-medium text-fg-secondary">
                         {photo.user.alias}
                         {photoNotes.length > 0
                           ? ` · ${photoNotes.length} nota${photoNotes.length !== 1 ? "s" : ""}`
@@ -251,7 +251,7 @@ export default function TravelDayCalendar({
               })}
             </div>
             {photosForDay.length > DAY_PHOTOS_PREVIEW && (
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+              <p className="mt-2 text-xs text-fg-secondary">
                 +{photosForDay.length - DAY_PHOTOS_PREVIEW} fotos más este día (ver en
                 pestaña Fotos)
               </p>
@@ -272,7 +272,7 @@ export default function TravelDayCalendar({
                       <button
                         type="button"
                         onClick={() => setPhotoNoteId(null)}
-                        className="text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-200"
+                        className="text-xs font-medium text-slate-500 hover:text-fg"
                       >
                         Cerrar
                       </button>

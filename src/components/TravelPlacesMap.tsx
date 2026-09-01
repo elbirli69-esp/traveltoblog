@@ -441,11 +441,11 @@ export default function TravelPlacesMap({
         }`}
       />
       {!mapReady && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-950/60/80 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-950/60/80 text-sm text-fg-secondary">
           Cargando mapa Mapbox…
         </div>
       )}
-      <div className="pointer-events-none absolute left-3 top-3 space-y-1 rounded-lg bg-white dark:bg-slate-900/90 px-2.5 py-2 text-[10px] font-medium text-slate-600 dark:text-slate-300 shadow-sm dark:shadow-black/20 backdrop-blur-sm">
+      <div className="pointer-events-none absolute left-3 top-3 space-y-1 rounded-lg bg-white dark:bg-slate-900/90 px-2.5 py-2 text-[10px] font-medium text-fg-secondary shadow-sm dark:shadow-black/20 backdrop-blur-sm">
         {outbound && (
           <span className="flex items-center gap-1">
             {FLIGHT_OUT_EMOJI} Ida{outbound.hasGps ? "" : " (sin GPS)"}
@@ -473,7 +473,7 @@ export default function TravelPlacesMap({
         type="button"
         onClick={locateUser}
         disabled={locating || !mapReady}
-        className="absolute bottom-3 left-3 z-10 flex items-center gap-1.5 rounded-full bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-md ring-1 ring-slate-200 dark:ring-slate-700 transition hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60 disabled:opacity-60"
+        className="absolute bottom-3 left-3 z-10 flex items-center gap-1.5 rounded-full bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-fg-secondary shadow-md ring-1 ring-slate-200 dark:ring-slate-700 transition hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60 disabled:opacity-60"
         aria-label="Centrar mapa en mi ubicación"
       >
         {locating ? (

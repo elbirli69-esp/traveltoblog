@@ -110,12 +110,12 @@ export default function PastTripGuide({
                 }`}
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  <p className="text-sm font-semibold text-fg">
                     <span className="mr-2 text-violet-500">{index + 1}.</span>
                     {done ? "✓ " : ""}
                     {step.title}
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">{step.description}</p>
+                  <p className="mt-0.5 text-xs text-fg-secondary">{step.description}</p>
                 </div>
                 {!done && (
                   <button

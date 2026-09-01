@@ -8,35 +8,42 @@ interface AddMemorySheetProps {
   onSelect: (kind: AddMemoryKind) => void;
 }
 
+const OPTION_CLASS: Record<AddMemoryKind, string> = {
+  photo: "memory-option memory-option-photo",
+  place: "memory-option memory-option-place",
+  day: "memory-option memory-option-day",
+  trip: "memory-option memory-option-trip",
+};
+
 const OPTIONS: {
   id: AddMemoryKind;
   title: string;
   description: string;
-  accent: string;
+  titleClass: string;
 }[] = [
   {
     id: "photo",
     title: "Una foto",
     description: "Sube o elige fotos de la galería",
-    accent: "bg-sky-50 text-sky-900 ring-sky-200",
+    titleClass: "text-accent-mint",
   },
   {
     id: "place",
     title: "Estoy aquí",
     description: "Marca un lugar con GPS o en el mapa",
-    accent: "bg-emerald-50 text-emerald-900 ring-emerald-200",
+    titleClass: "text-accent-cyan",
   },
   {
     id: "day",
     title: "Cómo fue el día",
     description: "Escribe una nota para la fecha de hoy",
-    accent: "bg-amber-50 text-amber-900 ring-amber-200",
+    titleClass: "text-accent-blue",
   },
   {
     id: "trip",
     title: "Sobre el viaje",
     description: "Anécdota o resumen del viaje completo",
-    accent: "bg-violet-50 text-violet-900 ring-violet-200",
+    titleClass: "text-accent-blue",
   },
 ];
 
@@ -52,32 +59,25 @@ export default function AddMemorySheet({
       <button
         type="button"
         aria-label="Cerrar"
-        className="absolute inset-0 bg-slate-900/40"
+        className="absolute inset-0 bg-[var(--overlay)]"
         onClick={onClose}
       />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-memory-title"
-        className="relative z-10 w-full max-w-md rounded-t-3xl bg-white dark:bg-slate-900 p-5 shadow-xl sm:rounded-3xl sm:p-6"
+        className="surface-elevated relative z-10 w-full max-w-md rounded-t-3xl p-5 sm:rounded-3xl sm:p-6"
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2
-              id="add-memory-title"
-              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
-            >
+            <h2 id="add-memory-title" className="heading-section">
               Añadir recuerdo
             </h2>
-            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+            <p className="mt-0.5 text-sm text-fg-secondary">
               ¿Qué tienes a mano? No hace falta elegir el tipo técnico.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg px-2 py-1 text-sm font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 dark:bg-slate-800/80 hover:text-slate-800 dark:text-slate-200"
-          >
+          <button type="button" onClick={onClose} className="btn-secondary px-2 py-1 text-sm">
             Cerrar
           </button>
         </div>
@@ -88,12 +88,12 @@ export default function AddMemorySheet({
               <button
                 type="button"
                 onClick={() => onSelect(option.id)}
-                className={`flex w-full flex-col rounded-2xl px-4 py-3 text-left ring-1 transition hover:brightness-[0.98] ${option.accent}`}
+                className={`flex w-full flex-col ${OPTION_CLASS[option.id]}`}
               >
-                <span className="text-sm font-semibold">{option.title}</span>
-                <span className="mt-0.5 text-xs opacity-80">
-                  {option.description}
+                <span className={`text-sm font-semibold ${option.titleClass}`}>
+                  {option.title}
                 </span>
+                <span className="mt-0.5 text-xs text-fg-secondary">{option.description}</span>
               </button>
             </li>
           ))}
