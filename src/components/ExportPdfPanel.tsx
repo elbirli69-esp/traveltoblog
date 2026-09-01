@@ -69,7 +69,7 @@ export default function ExportPdfPanel({
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-300">Formato de página</h3>
+        <h3 className="mb-2 text-sm font-semibold text-fg-secondary">Formato de página</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           {FORMATS.map((f) => (
             <button
@@ -78,31 +78,31 @@ export default function ExportPdfPanel({
               onClick={() => setFormat(f.id)}
               className={`rounded-xl border-2 p-4 text-left transition ${
                 format === f.id
-                  ? "border-violet-500 ring-2 ring-violet-500/20"
-                  : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:border-slate-700"
+                  ? "select-card-violet-active"
+                  : "border-[var(--border)] hover:border-[var(--border-strong)]"
               }`}
             >
-              <p className="font-medium text-slate-800 dark:text-slate-200">{f.name}</p>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{f.description}</p>
+              <p className="font-medium text-fg">{f.name}</p>
+              <p className="mt-1 text-sm text-fg-secondary">{f.description}</p>
             </button>
           ))}
         </div>
       </div>
 
-      <ul className="space-y-1 text-sm text-slate-600 dark:text-slate-300">
+      <ul className="space-y-1 text-sm text-fg-secondary">
         <li>📖 Portada oscura con título y fechas</li>
         <li>📷 Páginas a dos columnas: fotos + EXIF | narrativa IA + citas</li>
         <li>🖨️ PDF optimizado para imprenta (WeasyPrint, 300 DPI)</li>
       </ul>
 
       {!hasJournal && (
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <p className="callout callout-warning text-sm">
           Sin crónica IA: el álbum usará texto mínimo y las fotos del viaje.
         </p>
       )}
 
       {photoCount === 0 && (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p className="callout callout-error text-sm">
           Necesitas al menos una foto seleccionada para generar el álbum.
         </p>
       )}
@@ -111,12 +111,12 @@ export default function ExportPdfPanel({
         type="button"
         onClick={handleExport}
         disabled={loading || photoCount === 0}
-        className="w-full rounded-xl bg-violet-700 py-3 text-sm font-semibold text-white hover:bg-violet-800 disabled:opacity-50"
+        className="btn-pdf disabled:opacity-50"
       >
         {loading ? "Generando PDF para imprenta…" : "🖨️ Descargar Álbum para Imprenta (PDF)"}
       </button>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );
 }

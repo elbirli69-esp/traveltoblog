@@ -14,14 +14,14 @@ export default function EmptyMemoryState({
   onAction,
 }: EmptyMemoryStateProps) {
   return (
-    <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60/80 px-4 py-8 text-center">
-      <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{title}</p>
-      <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">{description}</p>
+    <div className="empty-state">
+      <p className="text-sm font-semibold text-fg">{title}</p>
+      <p className="mx-auto mt-2 max-w-sm text-sm text-fg-secondary">{description}</p>
       {onAction && (
         <button
           type="button"
           onClick={onAction}
-          className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+          className="btn-primary mt-4 inline-flex items-center gap-1.5"
         >
           <span aria-hidden>+</span>
           {actionLabel}

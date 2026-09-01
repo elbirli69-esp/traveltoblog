@@ -36,18 +36,18 @@ export default function ShareReceivePage() {
 
   return (
     <main className="mx-auto min-h-dvh max-w-lg px-4 py-10">
-      <h1 className="mb-2 text-2xl font-bold text-slate-900 dark:text-slate-100">Compartir a TravelToBlog</h1>
-      <p className="mb-6 text-sm text-slate-600 dark:text-slate-300">{message}</p>
+      <h1 className="mb-2 text-2xl font-bold text-fg">Compartir a TravelToBlog</h1>
+      <p className="mb-6 text-sm text-fg-secondary">{message}</p>
       <div className="space-y-3">
         <Link
           href="/"
-          className="block rounded-xl bg-teal-600 px-4 py-3 text-center text-sm font-semibold text-white"
+          className="btn-primary block w-full py-3 text-center text-sm"
         >
           Ir al inicio
         </Link>
         <Link
           href="/join"
-          className="block rounded-xl border border-slate-200 dark:border-slate-800 px-4 py-3 text-center text-sm font-medium text-slate-700 dark:text-slate-300"
+          className="btn-secondary block w-full py-3 text-center text-sm"
         >
           Unirme a un viaje
         </Link>

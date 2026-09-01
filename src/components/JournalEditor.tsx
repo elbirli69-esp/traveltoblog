@@ -67,11 +67,11 @@ export default function JournalEditor({
     <div className="mb-10">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          <p className="text-sm text-fg-secondary">
             Revisa y edita el texto antes de exportar a HTML o PDF.
           </p>
           {generatedAt && (
-            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+            <p className="mt-0.5 text-xs text-fg-tertiary">
               Generado el{" "}
               {new Intl.DateTimeFormat("es-ES", {
                 dateStyle: "long",
@@ -84,7 +84,7 @@ export default function JournalEditor({
           <button
             type="button"
             onClick={startEdit}
-            className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900"
+            className="btn-primary px-4 py-2 text-sm"
           >
             Editar crónica
           </button>
@@ -94,7 +94,7 @@ export default function JournalEditor({
               type="button"
               onClick={save}
               disabled={saving}
-              className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+              className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
             >
               {saving ? "Guardando…" : "Guardar cambios"}
             </button>
@@ -102,7 +102,7 @@ export default function JournalEditor({
               type="button"
               onClick={cancel}
               disabled={saving}
-              className="rounded-xl bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60"
+              className="btn-secondary px-4 py-2 text-sm"
             >
               Cancelar
             </button>
@@ -111,15 +111,15 @@ export default function JournalEditor({
       </div>
 
       {savedFlash && (
-        <p className="mb-3 rounded-lg bg-teal-50 px-3 py-2 text-sm font-medium text-teal-800">
+        <p className="callout callout-success mb-3 text-sm font-medium">
           Crónica guardada. Los exports usarán este texto.
         </p>
       )}
-      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="mb-3 text-sm text-danger">{error}</p>}
 
       {editing ? (
         <div className="space-y-3">
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+          <label className="block text-sm font-medium text-fg-secondary">
             Markdown de la crónica
           </label>
           <textarea
@@ -127,9 +127,9 @@ export default function JournalEditor({
             onChange={(e) => setDraft(e.target.value)}
             rows={28}
             spellCheck
-            className="w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 font-mono text-sm leading-relaxed text-slate-800 dark:text-slate-200 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+            className="form-input input-focus rounded-2xl px-4 py-3 font-mono leading-relaxed"
           />
-          <p className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          <p className="text-xs text-fg-tertiary">
             Puedes usar Markdown: # títulos, **negrita**, ![alt](ruta) para fotos, etc.
           </p>
         </div>

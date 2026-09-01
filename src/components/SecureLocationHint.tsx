@@ -22,9 +22,9 @@ export default function SecureLocationHint({ compact = false }: { compact?: bool
 
   if (compact) {
     return (
-      <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      <p className="callout callout-warning text-xs">
         GPS bloqueado en HTTP. Abre{" "}
-        <a href={HTTPS_APP_URL} className="font-semibold underline">
+        <a href={HTTPS_APP_URL} className="link-accent">
           {HTTPS_APP_URL.replace(/^https:\/\//, "")}
         </a>{" "}
         o usa «Elegir en mapa».
@@ -33,41 +33,35 @@ export default function SecureLocationHint({ compact = false }: { compact?: bool
   }
 
   return (
-    <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-950">
+    <div className="callout callout-warning text-sm">
       <p className="font-semibold">El GPS necesita HTTPS</p>
-      <p className="mt-1 text-xs leading-relaxed text-amber-900/90">
+      <p className="mt-1 text-xs leading-relaxed opacity-90">
         En el móvil, el navegador bloquea la ubicación en direcciones{" "}
-        <code className="rounded bg-amber-100 px-1">http://100.…</code>. DogTrainer
-        funciona porque usa HTTPS; TravelToBlog debe abrirse por la URL segura de
-        Tailscale.
+        <code className="rounded bg-[var(--card-elevated)] px-1">http://100.…</code>. Abre
+        TravelToBlog por la URL segura de Tailscale.
       </p>
-      <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs text-amber-900/90">
+      <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs opacity-90">
         <li>
           Activa Serve (un clic, con la cuenta Tailscale):{" "}
-          <a
-            href={SERVE_ENABLE_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="font-semibold underline"
-          >
+          <a href={SERVE_ENABLE_URL} target="_blank" rel="noreferrer" className="link-accent">
             Activar HTTPS / Serve
           </a>
         </li>
         <li>
           En el NAS:{" "}
-          <code className="rounded bg-amber-100 px-1">
+          <code className="rounded bg-[var(--card-elevated)] px-1">
             sudo /var/packages/Tailscale/target/bin/tailscale serve --bg 3000
           </code>
         </li>
         <li>
           Abre{" "}
-          <a href={HTTPS_APP_URL} className="font-semibold underline">
+          <a href={HTTPS_APP_URL} className="link-accent">
             {HTTPS_APP_URL}
           </a>{" "}
           e instala de nuevo la PWA desde ahí.
         </li>
       </ol>
-      <p className="mt-2 text-xs text-amber-800">
+      <p className="mt-2 text-xs opacity-80">
         Mientras tanto puedes marcar el lugar con «Elegir en mapa».
       </p>
     </div>

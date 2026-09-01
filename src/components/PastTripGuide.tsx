@@ -14,7 +14,6 @@ import {
 interface PastTripGuideProps {
   travelId: string;
   input: PastTripGuideInput;
-  /** Open on first landing after creating a past trip */
   forceOpen?: boolean;
   onAction: (kind: AddMemoryKind, dayDate?: string) => void;
   onEditDates?: () => void;
@@ -61,16 +60,14 @@ export default function PastTripGuide({
   };
 
   return (
-    <section className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-5 shadow-sm dark:shadow-black/20">
+    <section className="guide-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-violet-600">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-accent-cyan">
             Guía · viaje pasado
           </p>
-          <h2 className="mt-1 text-lg font-semibold text-violet-950">
-            Reconstruye tu memoria paso a paso
-          </h2>
-          <p className="mt-1 text-sm text-violet-900/80">
+          <h2 className="heading-section mt-1">Reconstruye tu memoria paso a paso</h2>
+          <p className="mt-1 text-sm text-fg-secondary">
             {progress.complete
               ? "¡Listo! Ya tienes lo esencial para la crónica y el blog."
               : `${progress.done} de ${progress.total} pasos completados`}
@@ -80,16 +77,12 @@ export default function PastTripGuide({
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
-            className="rounded-lg border border-violet-200 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-violet-800 hover:bg-violet-50"
+            className="btn-secondary px-3 py-1.5 text-xs"
           >
             {collapsed ? "Expandir" : "Minimizar"}
           </button>
           {progress.complete && (
-            <button
-              type="button"
-              onClick={dismiss}
-              className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700"
-            >
+            <button type="button" onClick={dismiss} className="btn-primary px-3 py-1.5 text-xs">
               Cerrar guía
             </button>
           )}
@@ -103,27 +96,21 @@ export default function PastTripGuide({
             return (
               <li
                 key={step.id}
-                className={`flex flex-col gap-2 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${
-                  done
-                    ? "border-emerald-200 bg-emerald-50/60"
-                    : "border-violet-100 bg-white dark:bg-slate-900/80"
-                }`}
+                className={`guide-step ${done ? "guide-step-done" : ""}`}
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                    <span className="mr-2 text-violet-500">{index + 1}.</span>
+                  <p className="text-sm font-semibold text-fg">
+                    <span className="mr-2 text-accent-blue">{index + 1}.</span>
                     {done ? "✓ " : ""}
                     {step.title}
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">{step.description}</p>
+                  <p className="mt-0.5 text-xs text-fg-secondary">{step.description}</p>
                 </div>
                 {!done && (
                   <button
                     type="button"
-                    onClick={() =>
-                      handleStep(step.id, step.actionKind, step.dayDate)
-                    }
-                    className="shrink-0 self-start rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-700 sm:self-auto"
+                    onClick={() => handleStep(step.id, step.actionKind, step.dayDate)}
+                    className="btn-primary shrink-0 self-start px-3 py-2 text-xs sm:self-auto"
                   >
                     {step.actionLabel}
                   </button>
@@ -138,7 +125,7 @@ export default function PastTripGuide({
         <button
           type="button"
           onClick={dismiss}
-          className="mt-3 text-xs text-violet-700/70 underline-offset-2 hover:underline"
+          className="mt-3 text-xs text-fg-tertiary underline-offset-2 hover:text-accent-cyan hover:underline"
         >
           Ocultar guía (puedes seguir añadiendo recuerdos)
         </button>

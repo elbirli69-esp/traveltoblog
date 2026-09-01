@@ -51,12 +51,12 @@ export default function TravelTimeline({
   }, [load]);
 
   if (loading) {
-    return <p className="text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">Cargando cronología…</p>;
+    return <p className="text-sm text-fg-secondary">Cargando cronología…</p>;
   }
 
   if (error) {
     return (
-      <p className="text-sm text-red-600">
+      <p className="text-sm text-danger">
         {error}{" "}
         <button type="button" onClick={() => void load()} className="underline">
           Reintentar
@@ -67,7 +67,7 @@ export default function TravelTimeline({
 
   if (events.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/60 px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+      <p className="empty-state text-sm text-fg-secondary">
         Aún no hay eventos en la cronología. Añade fotos, lugares o notas.
       </p>
     );
@@ -75,7 +75,7 @@ export default function TravelTimeline({
 
   return (
     <div className="space-y-1">
-      <div className="mb-3 flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+      <div className="mb-3 flex flex-wrap gap-2 text-xs text-fg-secondary">
         <span>{days.length} día{days.length !== 1 ? "s" : ""}</span>
         <span>·</span>
         <span>{events.filter((e) => e.kind !== "day-boundary").length} eventos</span>
@@ -87,7 +87,7 @@ export default function TravelTimeline({
               <div
                 key={ev.id}
                 id={`tl-day-${ev.dayKey}`}
-                className="sticky top-0 z-10 bg-white dark:bg-slate-900/95 py-2 text-sm font-bold text-teal-800 backdrop-blur"
+                className="sticky top-0 z-10 bg-[var(--card)]/95 py-2 text-sm font-bold text-accent-cyan backdrop-blur"
               >
                 {formatDateKey(ev.dayKey)}
               </div>
@@ -109,21 +109,21 @@ export default function TravelTimeline({
               onClick={() => onEventSelect?.(ev)}
               className={`flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
                 isActive
-                  ? "border-teal-400 bg-teal-50 ring-1 ring-teal-400/30"
-                  : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60"
+                  ? "timeline-active"
+                  : "surface-inset hover:border-[var(--border-strong)]"
               }`}
             >
               <span className="text-lg leading-none">{icon}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-2">
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">{ev.title}</span>
-                  <span className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">{time}</span>
+                  <span className="font-semibold text-fg">{ev.title}</span>
+                  <span className="text-xs text-fg-tertiary">{time}</span>
                 </div>
                 {ev.body && (
-                  <p className="mt-0.5 line-clamp-2 text-xs text-slate-600 dark:text-slate-300">{ev.body}</p>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-fg-secondary">{ev.body}</p>
                 )}
                 {ev.author && (
-                  <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">{ev.author}</p>
+                  <p className="mt-0.5 text-xs text-fg-tertiary">{ev.author}</p>
                 )}
               </div>
               {ev.mediaUrl && (

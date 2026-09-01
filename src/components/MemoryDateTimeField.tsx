@@ -51,26 +51,26 @@ export default function MemoryDateTimeField({
 
   return (
     <div className={`space-y-2 ${className}`}>
-      <p className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</p>
+      <p className="text-sm font-medium text-fg-secondary">{label}</p>
       <div className={`grid gap-2 ${withTime ? "sm:grid-cols-2" : ""}`}>
         <input
           type="date"
           value={date}
           onChange={(e) => onDateChange(e.target.value)}
-          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+          className="form-input input-focus"
         />
         {withTime && onTimeChange && (
           <input
             type="time"
             value={time}
             onChange={(e) => onTimeChange(e.target.value)}
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+            className="form-input input-focus"
           />
         )}
       </div>
-      {hint && <p className="text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">{hint}</p>}
+      {hint && <p className="text-xs text-fg-secondary">{hint}</p>}
       {date && (
-        <p className="text-xs text-teal-700">
+        <p className="text-xs text-accent-mint">
           {formatDateKey(date)}
           {withTime && time ? ` · ${time}` : ""}
         </p>

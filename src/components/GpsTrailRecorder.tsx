@@ -114,9 +114,9 @@ export default function GpsTrailRecorder({
   }, [stopWatch, travelId, userId, onSaved]);
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-4">
-      <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Grabar recorrido GPS</h3>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+    <div className="surface-inset p-4">
+      <h3 className="text-sm font-semibold text-fg">Grabar recorrido GPS</h3>
+      <p className="mt-1 text-xs text-fg-secondary">
         Opt-in: ~1 punto/min mientras grabas. Consume batería. En iOS el GPS en segundo plano
         puede ser limitado.
       </p>
@@ -126,7 +126,7 @@ export default function GpsTrailRecorder({
             type="button"
             onClick={startRecording}
             disabled={saving}
-            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+            className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
           >
             ● Grabar
           </button>
@@ -135,19 +135,19 @@ export default function GpsTrailRecorder({
             type="button"
             onClick={() => void stopRecording()}
             disabled={saving}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+            className="callout callout-error px-4 py-2 text-sm font-semibold disabled:opacity-50"
           >
             ■ Parar y guardar
           </button>
         )}
         {recording && (
-          <span className="text-sm text-red-600 animate-pulse">
+          <span className="text-sm text-accent-cyan animate-pulse">
             Grabando… {pointCount} puntos
           </span>
         )}
-        {saving && <span className="text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">Guardando…</span>}
+        {saving && <span className="text-sm text-fg-secondary">Guardando…</span>}
       </div>
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
     </div>
   );
 }

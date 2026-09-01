@@ -7,37 +7,39 @@ export type ExportTemplateId = "magazine" | "visual-journey" | "editorial-clean"
 export type ExportFormat = "zip" | "html";
 export type ExportTypologyId = TravelType | "auto";
 
+const TEMPLATE_PREVIEW: Record<ExportTemplateId, string> = {
+  magazine: "template-preview template-preview-magazine",
+  "visual-journey": "template-preview template-preview-visual-journey",
+  "editorial-clean": "template-preview template-preview-editorial-clean",
+  "dark-photo-journey": "template-preview template-preview-dark-photo",
+};
+
 const TEMPLATES: {
   id: ExportTemplateId;
   name: string;
   description: string;
-  preview: string;
 }[] = [
   {
     id: "magazine",
     name: "Magazine",
     description:
       "Estilo blog experto: hero con subtítulo, recorrido cronológico, guía práctica, TOC y meta para compartir.",
-    preview: "bg-gradient-to-br from-teal-50 to-amber-50 text-teal-900 border-teal-200",
   },
   {
     id: "visual-journey",
     name: "Visual Journey",
     description:
       "Hero con foto de portada, recorrido cronológico visual, galería, lightbox y animaciones.",
-    preview: "bg-gradient-to-br from-teal-900 to-stone-900 text-teal-200 border-teal-700",
   },
   {
     id: "editorial-clean",
     name: "Editorial Clean",
     description: "Estilo revista clásica: fondo claro, tipografía serif y acentos teal.",
-    preview: "bg-stone-50 text-stone-800 border-stone-200",
   },
   {
     id: "dark-photo-journey",
     name: "Dark Photo Journey",
     description: "Tema oscuro cinematográfico con fotos destacadas.",
-    preview: "bg-slate-900 text-amber-300 border-slate-700",
   },
 ];
 
@@ -136,12 +138,12 @@ export default function ExportHtmlPanel({
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-300">Tipología de viaje</h3>
-        <p className="mb-2 text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+        <h3 className="mb-3 text-sm font-semibold text-fg-secondary">Tipología de viaje</h3>
+        <p className="mb-2 text-xs text-fg-secondary">
           Define la estructura del HTML (cronología, mapa, reproducción). La plantilla visual es independiente.
         </p>
         {suggestion && typology === "auto" && (
-          <p className="mb-2 rounded-lg bg-teal-50 px-3 py-2 text-xs text-teal-800">
+          <p className="callout callout-success mb-2 text-xs">
             Sugerencia: <strong>{suggestion.type.replace(/_/g, " ").toLowerCase()}</strong> — {suggestion.reason}
           </p>
         )}
@@ -151,56 +153,44 @@ export default function ExportHtmlPanel({
               key={t.id}
               type="button"
               onClick={() => setTypology(t.id)}
-              className={`rounded-xl border-2 p-3 text-left transition ${
-                typology === t.id
-                  ? "border-teal-500 ring-2 ring-teal-500/20"
-                  : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:border-slate-700"
-              }`}
+              className={`select-card ${typology === t.id ? "select-card-active" : ""}`}
             >
-              <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{t.label}</p>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">{t.description}</p>
+              <p className="text-sm font-semibold text-fg">{t.label}</p>
+              <p className="mt-0.5 text-xs text-fg-secondary">{t.description}</p>
             </button>
           ))}
         </div>
       </div>
 
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-300">Plantilla visual</h3>
+        <h3 className="mb-3 text-sm font-semibold text-fg-secondary">Plantilla visual</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           {TEMPLATES.map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => setTemplate(t.id)}
-              className={`rounded-xl border-2 p-4 text-left transition ${
-                template === t.id
-                  ? "border-teal-500 ring-2 ring-teal-500/20"
-                  : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:border-slate-700"
-              }`}
+              className={`select-card p-4 ${template === t.id ? "select-card-active" : ""}`}
             >
-              <div
-                className={`mb-3 rounded-lg border px-3 py-2 text-xs font-medium ${t.preview}`}
-              >
-                {t.name}
-              </div>
-              <p className="text-sm text-slate-600 dark:text-slate-300">{t.description}</p>
+              <div className={`mb-3 ${TEMPLATE_PREVIEW[t.id]}`}>{t.name}</div>
+              <p className="text-sm text-fg-secondary">{t.description}</p>
             </button>
           ))}
         </div>
       </div>
 
-      <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-secondary">
         <input
           type="checkbox"
           checked={includeGpsTrail}
           onChange={(e) => setIncludeGpsTrail(e.target.checked)}
-          className="accent-teal-600"
+          className="accent-theme"
         />
         Incluir recorridos GPS grabados en el export
       </label>
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-300">Formato</h3>
+        <h3 className="mb-2 text-sm font-semibold text-fg-secondary">Formato</h3>
         <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
           <label className="flex cursor-pointer items-center gap-2 text-sm">
             <input
@@ -208,7 +198,7 @@ export default function ExportHtmlPanel({
               name="format"
               checked={format === "zip"}
               onChange={() => setFormat("zip")}
-              className="accent-teal-600"
+              className="accent-theme"
             />
             ZIP (recomendado — fotos + mapa offline)
           </label>
@@ -218,7 +208,7 @@ export default function ExportHtmlPanel({
               name="format"
               checked={format === "html"}
               onChange={() => setFormat("html")}
-              className="accent-teal-600"
+              className="accent-theme"
             />
             HTML único (todo embebido)
           </label>
@@ -226,17 +216,17 @@ export default function ExportHtmlPanel({
       </div>
 
       {!hasJournal && (
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <p className="callout callout-warning text-sm">
           Sin crónica IA: se exportará cronología unificada y galería con las fotos seleccionadas.
         </p>
       )}
 
       {hasGpsPhotos ? (
-        <p className="rounded-lg bg-teal-50 px-3 py-2 text-sm text-teal-800">
+        <p className="callout callout-success text-sm">
           🗺️ Incluye cronología interactiva, mapa sincronizado y modo reproducir por días.
         </p>
       ) : (
-        <p className="rounded-lg bg-slate-50 dark:bg-slate-950/60 px-3 py-2 text-sm text-slate-600 dark:text-slate-300">
+        <p className="surface-inset text-sm text-fg-secondary">
           Sin GPS: cronología textual unificada (fotos, lugares, notas). Añade GPS para mapa completo.
         </p>
       )}
@@ -245,12 +235,12 @@ export default function ExportHtmlPanel({
         type="button"
         onClick={handleExport}
         disabled={loading}
-        className="w-full rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+        className="btn-primary w-full py-3 text-sm disabled:opacity-50"
       >
         {loading ? "Generando exportación…" : "📦 Exportar diario interactivo (HTML)"}
       </button>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );
 }

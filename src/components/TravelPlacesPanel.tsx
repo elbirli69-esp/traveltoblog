@@ -29,7 +29,7 @@ import { formatDateKey, isoToDateKey, todayKey } from "@/lib/travel-dates";
 const TravelPlacesMap = dynamic(() => import("@/components/TravelPlacesMap"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[420px] items-center justify-center rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+    <div className="flex h-[420px] items-center justify-center surface-inset text-sm text-fg-secondary">
       Cargando mapa…
     </div>
   ),
@@ -337,8 +337,8 @@ export default function TravelPlacesPanel({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Lugares del viaje</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          <h2 className="text-lg font-semibold text-fg">Lugares del viaje</h2>
+          <p className="text-sm text-fg-secondary">
             Marca hoteles, restaurantes, miradores… Igual que en DogTrainer: usa tu GPS o elige en el mapa Mapbox.
           </p>
         </div>
@@ -352,9 +352,7 @@ export default function TravelPlacesPanel({
             setPickOnMap(true);
           }}
           className={`rounded-xl px-4 py-2 text-sm font-semibold ${
-            addMode
-              ? "bg-slate-800 text-white"
-              : "bg-teal-600 text-white hover:bg-teal-700"
+            addMode ? "btn-secondary" : "btn-primary"
           }`}
         >
           {addMode ? "Cancelar marcado" : "+ Marcar lugar"}
@@ -364,10 +362,8 @@ export default function TravelPlacesPanel({
       <SecureLocationHint />
 
       {addMode && (
-        <div className="rounded-2xl border border-teal-200 bg-teal-50/50 p-4 space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-teal-800">
-            Ubicación
-          </p>
+        <div className="form-panel space-y-2">
+          <p className="form-panel-kicker">Ubicación</p>
           <div className="flex gap-2">
             <button
               type="button"
@@ -375,47 +371,39 @@ export default function TravelPlacesPanel({
                 setPickOnMap(false);
                 setLocateSignal((n) => n + 1);
               }}
-              className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold ${
-                !pickOnMap
-                  ? "bg-teal-600 text-white"
-                  : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700"
-              }`}
+              className={`toggle-segment flex-1 ${!pickOnMap ? "toggle-segment-active" : "toggle-segment-inactive"}`}
             >
               📍 Mi ubicación
             </button>
             <button
               type="button"
               onClick={() => setPickOnMap(true)}
-              className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold ${
-                pickOnMap
-                  ? "bg-teal-600 text-white"
-                  : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700"
-              }`}
+              className={`toggle-segment flex-1 ${pickOnMap ? "toggle-segment-active" : "toggle-segment-inactive"}`}
             >
               Elegir en mapa
             </button>
           </div>
           {pickOnMap && !draft && (
-            <p className="text-xs font-medium text-teal-800 animate-pulse">
+            <p className="text-xs font-medium text-accent-cyan animate-pulse">
               Haz clic en el mapa para seleccionar la ubicación
             </p>
           )}
           {!pickOnMap && !draft && (
-            <p className="text-xs text-slate-600 dark:text-slate-300">
+            <p className="text-xs text-fg-secondary">
               Pulsando «Mi ubicación» se centra el mapa y coloca el pin en tu GPS
             </p>
           )}
           {draft && (
-            <p className="text-xs text-teal-700">
+            <p className="text-xs text-accent-mint">
               ✓ Ubicación seleccionada ({draft.lat.toFixed(4)}, {draft.lng.toFixed(4)})
             </p>
           )}
         </div>
       )}
 
-      <section className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
-        <h3 className="text-sm font-semibold text-indigo-900">Vuelos ida / vuelta</h3>
-        <p className="mt-1 text-xs text-indigo-700/80">
+      <section className="form-panel">
+        <h3 className="text-sm font-semibold text-accent-blue">Vuelos ida / vuelta</h3>
+        <p className="mt-1 text-xs text-fg-secondary">
           Derivado de fotos marcadas como Ida o Vuelta en la pestaña Fotos (no se crean aquí).
           Si tienen GPS de aeropuerto, aparecen en el mapa con línea discontinua.
         </p>
@@ -423,7 +411,7 @@ export default function TravelPlacesPanel({
           <button
             type="button"
             onClick={onOpenFotosTab}
-            className="mt-2 text-xs font-semibold text-indigo-700 underline-offset-2 hover:underline"
+            className="mt-2 text-link-subtle"
           >
             Ir a Fotos para marcar Ida/Vuelta →
           </button>
@@ -456,26 +444,26 @@ export default function TravelPlacesPanel({
       />
 
       {draft && (
-        <div className="rounded-2xl border border-teal-200 bg-teal-50/60 p-4 space-y-3">
-          <p className="text-sm font-medium text-teal-900">Nuevo lugar</p>
+        <div className="form-panel space-y-3">
+          <p className="form-panel-title">Nuevo lugar</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Nombre</span>
+              <span className="mb-1 block font-medium text-fg-secondary">Nombre</span>
               <input
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                 placeholder="Ej. Hotel Central"
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                className="form-input input-focus"
               />
             </label>
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Tipo</span>
+              <span className="mb-1 block font-medium text-fg-secondary">Tipo</span>
               <select
                 value={draft.type}
                 onChange={(e) =>
                   setDraft({ ...draft, type: e.target.value as PlaceType })
                 }
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                className="form-input input-focus"
               >
                 {PLACE_TYPES.map((t) => (
                   <option key={t} value={t}>
@@ -494,7 +482,7 @@ export default function TravelPlacesPanel({
             hint="Importante para viajes pasados: ordena el recorrido en la crónica y el blog."
           />
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            <label className="text-sm font-medium text-fg-secondary">
               Nota del lugar (opcional)
             </label>
             <textarea
@@ -502,18 +490,18 @@ export default function TravelPlacesPanel({
               onChange={(e) => setDraft({ ...draft, comment: e.target.value })}
               rows={3}
               placeholder="Escribe tu anécdota, impresión o detalle…"
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+              className="form-input input-focus"
             />
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          <p className="text-xs text-fg-secondary">
             Coordenadas: {draft.lat.toFixed(5)}, {draft.lng.toFixed(5)}
           </p>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
           <button
             type="button"
             onClick={savePlace}
             disabled={saving}
-            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+            className="btn-primary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
           >
             {saving ? "Guardando…" : "Guardar lugar"}
           </button>
@@ -521,25 +509,25 @@ export default function TravelPlacesPanel({
       )}
 
       {editForm && !draft && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
-          <p className="text-sm font-medium text-amber-900">Editar lugar</p>
+        <div className="form-panel space-y-3">
+          <p className="form-panel-title-warn">Editar lugar</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Nombre</span>
+              <span className="mb-1 block font-medium text-fg-secondary">Nombre</span>
               <input
                 value={editForm.name}
                 onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                className="form-input input-focus"
               />
             </label>
             <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Tipo</span>
+              <span className="mb-1 block font-medium text-fg-secondary">Tipo</span>
               <select
                 value={editForm.type}
                 onChange={(e) =>
                   setEditForm({ ...editForm, type: e.target.value as PlaceType })
                 }
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                className="form-input input-focus"
               >
                 {PLACE_TYPES.map((t) => (
                   <option key={t} value={t}>
@@ -556,17 +544,17 @@ export default function TravelPlacesPanel({
             onDateChange={(d) => setEditForm({ ...editForm, visitedAtDate: d })}
             onTimeChange={(t) => setEditForm({ ...editForm, visitedAtTime: t })}
           />
-          <p className="text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          <p className="text-xs text-fg-secondary">
             Nombre y tipo. La nota se escribe debajo al seleccionar el lugar, con la misma UI que
             foto, día o viaje.
           </p>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={saveEditedPlace}
               disabled={saving}
-              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+              className="btn-primary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
             >
               {saving ? "Guardando…" : "Guardar cambios"}
             </button>
@@ -577,7 +565,7 @@ export default function TravelPlacesPanel({
                 setError(null);
               }}
               disabled={saving}
-              className="rounded-lg bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60"
+              className="btn-secondary rounded-lg px-4 py-2 text-sm"
             >
               Cancelar
             </button>
@@ -601,8 +589,8 @@ export default function TravelPlacesPanel({
               key={place.id}
               className={`flex items-start justify-between gap-3 rounded-xl border px-4 py-3 ${
                 selectedPlaceId === place.id
-                  ? "border-teal-300 bg-teal-50"
-                  : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
+                  ? "place-row-active"
+                  : "place-row"
               }`}
             >
               <button
@@ -614,9 +602,9 @@ export default function TravelPlacesPanel({
                 className="min-w-0 flex-1 text-left"
               >
                 <span className="mr-2 text-lg">{placeEmoji(place.type)}</span>
-                <span className="font-medium text-slate-800 dark:text-slate-200">{place.name}</span>
-                <span className="ml-2 text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">{placeLabel(place.type)}</span>
-                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+                <span className="font-medium text-fg">{place.name}</span>
+                <span className="ml-2 text-xs text-fg-tertiary">{placeLabel(place.type)}</span>
+                <p className="mt-0.5 text-xs text-fg-secondary">
                   {place.user.alias}
                   {formatVisitedAt(place.visitedAt)
                     ? ` · ${formatVisitedAt(place.visitedAt)}`
@@ -628,14 +616,14 @@ export default function TravelPlacesPanel({
                 <button
                   type="button"
                   onClick={() => startEditPlace(place)}
-                  className="text-xs font-medium text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500 hover:text-teal-700"
+                  className="text-xs font-medium text-fg-secondary hover:text-accent-mint"
                 >
                   Editar
                 </button>
                 <button
                   type="button"
                   onClick={() => deletePlace(place.id)}
-                  className="text-xs font-medium text-red-600 hover:text-red-800"
+                  className="text-xs font-medium text-danger"
                 >
                   Eliminar
                 </button>
@@ -647,12 +635,12 @@ export default function TravelPlacesPanel({
       )}
 
       {selectedPlace && !draft && !editForm && (
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3">
+        <div className="surface p-4 space-y-3">
           <div>
-            <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+            <p className="text-sm font-semibold text-fg">
               {placeEmoji(selectedPlace.type)} {selectedPlace.name}
             </p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+            <p className="text-xs text-fg-secondary">
               Notas del lugar · {selectedPlace.user.alias}
               {formatVisitedAt(selectedPlace.visitedAt)
                 ? ` · ${formatVisitedAt(selectedPlace.visitedAt)}`
@@ -665,13 +653,13 @@ export default function TravelPlacesPanel({
                 note.id.startsWith("legacy-") ? (
                   <li
                     key={note.id}
-                    className="rounded-xl bg-slate-50 dark:bg-slate-950/60 px-3 py-2 text-sm text-slate-700 dark:text-slate-300"
+                    className="surface-inset px-3 py-2 text-sm text-fg-secondary"
                   >
-                    <span className="font-medium text-teal-700">
+                    <span className="text-alias">
                       {note.user.alias}
                     </span>
                     <p className="mt-0.5 whitespace-pre-wrap">{note.text}</p>
-                    <p className="mt-1 text-[10px] text-amber-700">
+                    <p className="mt-1 text-[10px] text-fg-tertiary">
                       Nota antigua — se migrará al sincronizar el esquema.
                     </p>
                   </li>
@@ -693,8 +681,8 @@ export default function TravelPlacesPanel({
             onCreated={onChanged}
           />
           {nearbyPhotosForSelected.length > 0 && (
-            <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+            <div className="border-t border-divider pt-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-secondary">
                 Fotos cerca ({NEARBY_THRESHOLD_M} m)
               </p>
               <div className="flex flex-wrap gap-2">
@@ -703,7 +691,7 @@ export default function TravelPlacesPanel({
                     key={photo.id}
                     type="button"
                     onClick={() => onOpenPhoto?.(photo.id)}
-                    className="group relative overflow-hidden rounded-lg ring-1 ring-slate-200 dark:ring-slate-700"
+                    className="group relative ring-photo"
                     title={`${formatDistanceM(photo.distanceM)}`}
                   >
                     <PhotoImage
@@ -743,27 +731,27 @@ function FlightLegCard({
 }) {
   if (!leg) {
     return (
-      <div className="rounded-xl border border-dashed border-indigo-200 bg-white dark:bg-slate-900/60 px-3 py-4 text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+      <div className="empty-state text-xs text-fg-secondary">
         {emptyLabel}
       </div>
     );
   }
 
   return (
-    <div className="flex gap-3 rounded-xl border border-indigo-200 bg-white dark:bg-slate-900 px-3 py-3">
+    <div className="surface-inset flex gap-3 px-3 py-3">
       <PhotoImage
         photoId={leg.photo.id}
         url={leg.photo.url}
         className="h-16 w-16 shrink-0 rounded-lg object-cover"
       />
       <div className="min-w-0 text-sm">
-        <p className="font-semibold text-slate-800 dark:text-slate-200">
+        <p className="font-semibold text-fg">
           {leg.emoji} {leg.label}
         </p>
-        <p className="text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">{leg.photo.user.alias}</p>
-        <p className="text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">{formatFlightDate(leg.photo.exifDateTime)}</p>
+        <p className="text-xs text-fg-secondary">{leg.photo.user.alias}</p>
+        <p className="text-xs text-fg-secondary">{formatFlightDate(leg.photo.exifDateTime)}</p>
         <p
-          className={`mt-1 text-xs font-medium ${leg.hasGps ? "text-teal-700" : "text-amber-700"}`}
+          className={`mt-1 text-xs font-medium ${leg.hasGps ? "text-accent-mint" : "text-fg-tertiary"}`}
         >
           {leg.hasGps
             ? "Visible en el mapa"

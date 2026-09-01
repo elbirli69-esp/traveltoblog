@@ -98,7 +98,7 @@ function PhotoDateEditor({
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60/80 p-3 space-y-2">
+    <div className="surface-inset p-3 space-y-2">
       <MemoryDateTimeField
         label="Fecha y hora de la foto"
         date={date}
@@ -111,12 +111,12 @@ function PhotoDateEditor({
             : "Sin EXIF: indica cuándo se tomó para ordenar el recorrido."
         }
       />
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
       <button
         type="button"
         onClick={save}
         disabled={saving}
-        className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
+        className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50"
       >
         {saving ? "Guardando…" : "Guardar fecha"}
       </button>
@@ -260,17 +260,17 @@ export default function PhotoGallery({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+        <h2 className="text-lg font-semibold text-fg">
           Galería {total > 0 ? `(${total})` : ""}
         </h2>
-        <p className="text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+        <p className="text-xs text-fg-secondary">
           Miniaturas en la app · resolución completa al exportar
         </p>
       </div>
 
-      {loadError && <p className="text-sm text-red-600">{loadError}</p>}
-      {transportError && <p className="text-sm text-red-600">{transportError}</p>}
-      {deleteError && <p className="text-sm text-red-600">{deleteError}</p>}
+      {loadError && <p className="text-sm text-danger">{loadError}</p>}
+      {transportError && <p className="text-sm text-danger">{transportError}</p>}
+      {deleteError && <p className="text-sm text-danger">{deleteError}</p>}
 
       <PaginationBar
         page={page}
@@ -285,7 +285,7 @@ export default function PhotoGallery({
       />
 
       {loading ? (
-        <p className="py-12 text-center text-sm text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">Cargando fotos…</p>
+        <p className="py-12 text-center text-sm text-fg-secondary">Cargando fotos…</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {photos.map((photo) => {
@@ -309,10 +309,10 @@ export default function PhotoGallery({
               <article
                 key={photo.id}
                 id={`gallery-photo-${photo.id}`}
-                className={`overflow-hidden rounded-2xl border bg-white dark:bg-slate-900 shadow-sm dark:shadow-black/20 transition-shadow ${
+                className={`surface overflow-hidden shadow-sm transition-shadow ${
                   isExpanded
-                    ? "border-teal-300 ring-2 ring-teal-500/20"
-                    : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:border-slate-700"
+                    ? "photo-tile-active"
+                    : "border-[var(--border)] hover:border-[var(--border-strong)]"
                 }`}
               >
                 <button
@@ -329,7 +329,7 @@ export default function PhotoGallery({
                   />
                   <div className="space-y-1 px-3 py-2">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                      <span className="text-xs font-medium text-fg-secondary">
                         {photo.user.alias}
                       </span>
                       {badges.map((badge) => (
@@ -337,27 +337,27 @@ export default function PhotoGallery({
                           key={badge}
                           className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
                             badge === "Ida" || badge === "Vuelta"
-                              ? "bg-indigo-50 text-indigo-700"
-                              : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300"
+                              ? "tag-cyan"
+                              : "surface-inset px-2 py-0.5 text-fg-secondary"
                           }`}
                         >
                           {badge}
                         </span>
                       ))}
                       {photoNotes.length > 0 && (
-                        <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-semibold text-teal-700">
+                        <span className="tag-mint">
                           {photoNotes.length} nota{photoNotes.length !== 1 ? "s" : ""}
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+                    <p className="text-[11px] text-fg-secondary">
                       {formatPhotoDate(photo.exifDateTime)}
                     </p>
                   </div>
                 </button>
 
                 {isExpanded && (
-                  <div className="space-y-4 border-t border-slate-100 dark:border-slate-800/80 px-4 py-4">
+                  <div className="space-y-4 border-t border-divider px-4 py-4">
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -367,8 +367,8 @@ export default function PhotoGallery({
                         }
                         className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
                           photo.isTransportStart
-                            ? "bg-indigo-600 text-white"
-                            : "bg-white dark:bg-slate-900 text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50"
+                            ? "btn-primary px-3 py-1.5"
+                            : "btn-secondary px-3 py-1.5"
                         }`}
                       >
                         {photo.isTransportStart ? "Quitar Ida" : "Marcar Ida"}
@@ -383,8 +383,8 @@ export default function PhotoGallery({
                         }
                         className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
                           photo.isTransportEnd
-                            ? "bg-indigo-600 text-white"
-                            : "bg-white dark:bg-slate-900 text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50"
+                            ? "btn-primary px-3 py-1.5"
+                            : "btn-secondary px-3 py-1.5"
                         }`}
                       >
                         {photo.isTransportEnd ? "Quitar Vuelta" : "Marcar Vuelta"}
@@ -395,14 +395,14 @@ export default function PhotoGallery({
                           deleteBusy === photo.id || transportBusy === photo.id
                         }
                         onClick={() => deletePhoto(photo)}
-                        className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100 disabled:opacity-50"
+                        className="callout callout-error px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
                       >
                         {deleteBusy === photo.id ? "Eliminando…" : "Eliminar foto"}
                       </button>
                     </div>
 
                     {nearby.length > 0 && onOpenPlace && (
-                      <div className="rounded-xl bg-emerald-50/80 px-3 py-2 text-xs text-emerald-900">
+                      <div className="callout callout-success text-xs">
                         <p className="mb-1.5 font-semibold">Cerca de un lugar marcado</p>
                         <ul className="space-y-1">
                           {nearby.slice(0, 3).map((place) => (
@@ -410,7 +410,7 @@ export default function PhotoGallery({
                               <button
                                 type="button"
                                 onClick={() => onOpenPlace(place.id)}
-                                className="font-medium text-emerald-800 underline-offset-2 hover:underline"
+                                className="font-medium text-accent-mint underline-offset-2 hover:underline"
                               >
                                 {place.name} ({formatDistanceM(place.distanceM)})
                               </button>

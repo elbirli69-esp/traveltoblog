@@ -65,27 +65,27 @@ export default function TravelDatesPanel({
   return (
     <section
       id={id}
-      className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm dark:shadow-black/20"
+      className="surface p-4"
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Fechas del viaje</h2>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+          <h2 className="text-sm font-semibold text-fg">Fechas del viaje</h2>
+          <p className="mt-0.5 text-xs text-fg-secondary">
             Útil para viajes pasados: define el calendario aunque subas fotos hoy.
           </p>
-          {!open && <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{rangeLabel}</p>}
+          {!open && <p className="mt-2 text-sm text-fg-secondary">{rangeLabel}</p>}
         </div>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60 dark:bg-slate-950/60"
+          className="btn-secondary px-3 py-1.5 text-xs"
         >
           {open ? "Cerrar" : "Editar fechas"}
         </button>
       </div>
 
       {open && (
-        <div className="mt-4 space-y-4 border-t border-slate-100 dark:border-slate-800/80 pt-4">
+        <div className="mt-4 space-y-4 border-t border-divider pt-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <MemoryDateTimeField
               label="Inicio del viaje"
@@ -102,12 +102,12 @@ export default function TravelDatesPanel({
               hint="Último día del viaje"
             />
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
           <button
             type="button"
             onClick={save}
             disabled={saving}
-            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+            className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
           >
             {saving ? "Guardando…" : "Guardar fechas"}
           </button>

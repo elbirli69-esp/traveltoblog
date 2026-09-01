@@ -36,31 +36,27 @@ export default function JournalReadinessChecklist({
 
   if (items.length === 0) {
     return (
-      <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900">
+      <div className="callout callout-success mb-4 text-sm">
         Listo para generar: fotos, notas y fechas cubren lo esencial.
       </div>
     );
   }
 
   return (
-    <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3">
-      <p className="text-sm font-semibold text-amber-950">
-        Antes de la crónica (opcional)
-      </p>
-      <p className="mt-1 text-xs text-amber-900/80">
-        Puedes generar ya; estos puntos mejoran el resultado.
-      </p>
+    <div className="callout callout-warning mb-4">
+      <p className="text-sm font-semibold">Antes de la crónica (opcional)</p>
+      <p className="mt-1 text-xs opacity-90">Puedes generar ya; estos puntos mejoran el resultado.</p>
       <ul className="mt-3 space-y-2">
         {items.map((item) => (
           <li
             key={item.id}
             className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
           >
-            <span className="text-sm text-amber-950/90">{item.message}</span>
+            <span className="text-sm opacity-95">{item.message}</span>
             <button
               type="button"
               onClick={() => onFix(item.actionKind, item.dayDate)}
-              className="shrink-0 self-start rounded-lg border border-amber-300 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-50 sm:self-auto"
+              className="btn-secondary shrink-0 self-start px-3 py-1.5 text-xs sm:self-auto"
             >
               {item.actionLabel}
             </button>

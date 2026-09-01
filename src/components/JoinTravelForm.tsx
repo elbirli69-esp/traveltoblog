@@ -50,7 +50,7 @@ export default function JoinTravelForm({ shareCode }: { shareCode: string }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="alias" className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+        <label htmlFor="alias" className="mb-1 block text-sm font-medium text-fg-secondary">
           Tu alias en este viaje
         </label>
         <input
@@ -60,14 +60,14 @@ export default function JoinTravelForm({ shareCode }: { shareCode: string }) {
           value={alias}
           onChange={(e) => setAlias(e.target.value)}
           placeholder="Ej: Carlos"
-          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-4 py-2.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+          className="form-input form-input-lg input-focus"
         />
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
       <button
         type="submit"
         disabled={loading}
-        className="w-full rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+        className="btn-primary w-full py-3 text-sm disabled:opacity-50"
       >
         {loading ? "Uniéndose…" : "Unirme al viaje"}
       </button>

@@ -41,9 +41,9 @@ export default function RecentTravels() {
   };
 
   return (
-    <section className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/80 p-6 shadow-sm dark:shadow-black/20">
-      <h2 className="mb-1 text-lg font-semibold text-amber-950">Tus viajes en este dispositivo</h2>
-      <p className="mb-4 text-sm text-amber-900/80">
+    <section className="surface mb-6 p-6">
+      <h2 className="heading-section mb-1 text-accent-cyan">Tus viajes en este dispositivo</h2>
+      <p className="mb-4 text-sm text-fg-secondary">
         Cada viaje tiene su propia sala. Si creas otro con el mismo nombre, no recupera el anterior.
       </p>
       <ul className="space-y-2">
@@ -52,11 +52,11 @@ export default function RecentTravels() {
           return (
             <li
               key={entry.travelId}
-              className="flex flex-col gap-2 rounded-xl border border-amber-200/80 bg-white dark:bg-slate-900 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              className="surface-inset flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="min-w-0">
-                <p className="truncate font-medium text-slate-900 dark:text-slate-100">{entry.title}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500 dark:text-slate-400 dark:text-slate-500">
+                <p className="truncate font-medium text-fg">{entry.title}</p>
+                <p className="text-xs text-fg-secondary">
                   {entry.alias} · código {entry.shareCode} · {formatWhen(entry.lastVisited)}
                 </p>
               </div>
@@ -65,19 +65,14 @@ export default function RecentTravels() {
                   <button
                     type="button"
                     onClick={() => resume(entry)}
-                    className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-50"
+                    className="btn-secondary px-3 py-1.5 text-xs"
                   >
                     Activar sesión
                   </button>
                 ) : (
-                  <span className="rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-900">
-                    Sesión activa
-                  </span>
+                  <span className="tag-mint px-3 py-1.5 text-xs">Sesión activa</span>
                 )}
-                <Link
-                  href={`/travel/${entry.travelId}`}
-                  className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700"
-                >
+                <Link href={`/travel/${entry.travelId}`} className="btn-primary px-3 py-1.5 text-xs">
                   Abrir
                 </Link>
               </div>

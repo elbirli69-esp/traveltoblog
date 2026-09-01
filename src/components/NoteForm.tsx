@@ -128,13 +128,13 @@ export default function NoteForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2">
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{resolvedLabel}</label>
+      <label className="text-sm font-medium text-fg-secondary">{resolvedLabel}</label>
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={rows}
         placeholder={placeholder}
-        className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+        className="form-input input-focus"
       />
       {type === "TRIP" && (
         <MemoryDateTimeField
@@ -145,11 +145,11 @@ export default function NoteForm({
           hint="Si no indicas fecha, se usará el inicio del viaje en la cronología."
         />
       )}
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
       <button
         type="submit"
         disabled={loading || !text.trim()}
-        className="rounded-lg bg-slate-800 px-4 py-1.5 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
+        className="btn-primary px-4 py-1.5 text-xs disabled:opacity-50"
       >
         {loading ? "Guardando…" : submitLabel}
       </button>
