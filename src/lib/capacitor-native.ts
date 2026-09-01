@@ -12,6 +12,7 @@ export interface NativePickedPhoto {
 }
 
 export interface PhotoExifPlugin {
+  ping(): Promise<{ ok: boolean }>;
   pickImages(options?: { limit?: number }): Promise<{ photos: NativePickedPhoto[] }>;
   readPhotoFile(options: { path: string }): Promise<{ base64: string; mimeType: string }>;
 }
@@ -24,6 +25,18 @@ export function isCapacitorAndroid(): boolean {
 
 export function isCapacitorNative(): boolean {
   return Capacitor.isNativePlatform();
+}
+
+export function isPhotoExifPluginAvailable(): boolean {
+  return Capacitor.isPluginAvailable("PhotoExif");
+}
+
+export function formatCapacitorError(error: unknown): string {
+  if (error && typeof error === "object" && "message" in error) {
+    const msg = String((error as { message?: string }).message ?? "");
+    if (msg) return msg;
+  }
+  return String(error);
 }
 
 async function base64ToFile(base64: string, name: string, mimeType: string): Promise<File> {

@@ -13,7 +13,9 @@ import {
 } from "@/lib/exif";
 import { applyCurrentLocationToPhotos, applyPlaceToPhoto, isAndroidDevice } from "@/lib/geolocation-photo";
 import {
+  formatCapacitorError,
   isCapacitorAndroid,
+  isPhotoExifPluginAvailable,
   nativePhotoToFile,
   PhotoExif,
   type NativePickedPhoto,
@@ -262,6 +264,12 @@ export default function PhotoUploadGrid({
 
   const openNativeGalleryPicker = useCallback(async () => {
     if (!isCapacitorAndroid()) return;
+    if (!isPhotoExifPluginAvailable()) {
+      setError(
+        "Galería nativa no disponible. Reinstala el APK desde /download/android (v1.0.4+)."
+      );
+      return;
+    }
     setProcessing(true);
     setError(null);
     try {
@@ -280,13 +288,20 @@ export default function PhotoUploadGrid({
 
       if (newPhotos.length === 0) {
         setError(
-          "No se pudieron procesar las imágenes. Actualiza la app en /download/android (v1.0.2+)."
+          "No se pudieron procesar las imágenes. Actualiza la app en /download/android (v1.0.4+)."
         );
       } else {
         setPhotos((prev) => [...prev, ...newPhotos]);
       }
-    } catch {
-      setError("No se pudo abrir la galería nativa.");
+    } catch (error) {
+      const msg = formatCapacitorError(error);
+      if (/denegad/i.test(msg) || /permission/i.test(msg)) {
+        setError(
+          "Permiso de fotos denegado. Ve a Ajustes → Apps → TravelToBlog → Permisos y activa Fotos y Ubicación en medios."
+        );
+      } else {
+        setError(`No se pudo abrir la galería nativa: ${msg}`);
+      }
     } finally {
       setProcessing(false);
     }
@@ -521,7 +536,7 @@ export default function PhotoUploadGrid({
               {processing ? "Leyendo EXIF…" : "Galería nativa (GPS)"}
             </span>
             <span className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">
-              Lee ubicación embebida con permisos de la app Android (v1.0.2+)
+              Lee ubicación embebida con permisos de la app Android (v1.0.4+)
             </span>
           </button>
         ) : (
