@@ -12,14 +12,14 @@ import {
 } from "@/lib/export-html";
 import { TYPOLOGY_LIST } from "@/lib/export/typologies/registry";
 
-const TEMPLATES: ExportTemplateId[] = ["visual-journey", "editorial-clean", "dark-photo-journey"];
+const TEMPLATES: ExportTemplateId[] = ["magazine", "visual-journey", "editorial-clean", "dark-photo-journey"];
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
       travelId,
-      template = "visual-journey",
+      template = "magazine",
       typology = "auto",
       format = "zip",
       includeGpsTrail = false,
@@ -184,9 +184,14 @@ export async function GET() {
   return NextResponse.json({
     templates: [
       {
+        id: "magazine",
+        name: "Magazine",
+        description: "Blog editorial: recorrido, guía práctica, TOC y Open Graph",
+      },
+      {
         id: "visual-journey",
         name: "Visual Journey",
-        description: "Hero a pantalla, galería, lightbox y animaciones al scroll",
+        description: "Hero a pantalla, recorrido visual, galería, lightbox y animaciones",
       },
       { id: "editorial-clean", name: "Editorial Clean", description: "Tipografía editorial clara, fondo claro" },
       {
