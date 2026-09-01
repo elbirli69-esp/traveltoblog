@@ -5,6 +5,7 @@ import EditableNote from "@/components/EditableNote";
 import EmptyMemoryState from "@/components/EmptyMemoryState";
 import NoteForm from "@/components/NoteForm";
 import PhotoImage from "@/components/PhotoImage";
+import { DAY_PHOTOS_PREVIEW } from "@/lib/pagination";
 import {
   addDaysToKey,
   clampDateKey,
@@ -212,7 +213,7 @@ export default function TravelDayCalendar({
               Fotos del día
             </p>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {photosForDay.map((photo) => {
+              {photosForDay.slice(0, DAY_PHOTOS_PREVIEW).map((photo) => {
                 const isOpen = photoNoteId === photo.id;
                 const photoNotes =
                   photo.notes?.filter((n) => n.type === "PHOTO") ?? [];
@@ -249,6 +250,12 @@ export default function TravelDayCalendar({
                 );
               })}
             </div>
+            {photosForDay.length > DAY_PHOTOS_PREVIEW && (
+              <p className="mt-2 text-xs text-slate-500">
+                +{photosForDay.length - DAY_PHOTOS_PREVIEW} fotos más este día (ver en
+                pestaña Fotos)
+              </p>
+            )}
 
             {photoNoteId &&
               (() => {

@@ -14,7 +14,9 @@ import { formatFlightDate, resolveFlightLegs } from "@/lib/flights";
 import { createLocalId } from "@/lib/utils";
 import SecureLocationHint from "@/components/SecureLocationHint";
 import PhotoImage from "@/components/PhotoImage";
+import PaginationBar from "@/components/PaginationBar";
 import EmptyMemoryState from "@/components/EmptyMemoryState";
+import { pageSlice, PLACES_PAGE_SIZE, totalPages } from "@/lib/pagination";
 import NoteForm from "@/components/NoteForm";
 import EditableNote from "@/components/EditableNote";
 import { findNearby, formatDistanceM, NEARBY_THRESHOLD_M } from "@/lib/geo";
@@ -92,6 +94,7 @@ export default function TravelPlacesPanel({
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [placesPage, setPlacesPage] = useState(1);
 
   useEffect(() => {
     if (!startAddSignal) return;
@@ -113,6 +116,8 @@ export default function TravelPlacesPanel({
 
   const selectedPlace = places.find((p) => p.id === selectedPlaceId) ?? null;
   const { outbound, inbound } = resolveFlightLegs(photos);
+  const placesPageCount = totalPages(places.length, PLACES_PAGE_SIZE);
+  const visiblePlaces = pageSlice(places, placesPage, PLACES_PAGE_SIZE);
 
   const nearbyPhotosForSelected = useMemo(() => {
     if (!selectedPlace) return [];
@@ -518,8 +523,17 @@ export default function TravelPlacesPanel({
       )}
 
       {places.length > 0 && (
+        <>
+          <PaginationBar
+            page={placesPage}
+            totalPages={placesPageCount}
+            totalItems={places.length}
+            pageSize={PLACES_PAGE_SIZE}
+            onPageChange={setPlacesPage}
+            itemLabel="lugares"
+          />
         <ul className="space-y-2">
-          {places.map((place) => (
+          {visiblePlaces.map((place) => (
             <li
               key={place.id}
               className={`flex items-start justify-between gap-3 rounded-xl border px-4 py-3 ${
@@ -563,6 +577,7 @@ export default function TravelPlacesPanel({
             </li>
           ))}
         </ul>
+        </>
       )}
 
       {selectedPlace && !draft && !editForm && (

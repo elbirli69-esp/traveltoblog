@@ -364,11 +364,11 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
 
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <PhotoGallery
-                photos={travel.photos}
                 travelId={travelId}
                 userId={session.userId}
                 places={travel.places}
                 focusPhotoId={focusPhotoId}
+                refreshSignal={refreshKey}
                 onOpenPlace={(placeId) => {
                   setFocusPlaceId(placeId);
                   setActiveTab("places");

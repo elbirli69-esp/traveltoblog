@@ -1,6 +1,7 @@
 import { unlink } from "fs/promises";
 import path from "path";
 import convert from "heic-convert";
+import { deleteThumbnailFile } from "@/lib/photo-thumbnail";
 
 const HEIC_EXT = /\.(heic|heif)$/i;
 
@@ -50,4 +51,5 @@ export async function deleteStoredPhotoFile(travelId: string, filename: string):
   } catch {
     // File may already be missing.
   }
+  await deleteThumbnailFile(travelId, filename);
 }
