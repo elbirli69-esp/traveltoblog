@@ -1488,6 +1488,7 @@ function escapeHtml(text: string): string {
 export async function loadPhotoFiles(
   photos: (Photo & { user: User })[]
 ): Promise<ExportPhoto[]> {
+  // Export HTML/PDF: siempre archivos originales en disco (no miniaturas).
   const selected = photos.filter((p) => p.selected);
   return Promise.all(
     selected.map(async (photo, index) => {
