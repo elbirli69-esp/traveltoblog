@@ -5,11 +5,31 @@ import { generateShareCode } from "@/lib/utils";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { title, alias } = body as { title?: string; alias?: string };
+    const { title, alias, startDate, endDate, mode } = body as {
+      title?: string;
+      alias?: string;
+      startDate?: string | null;
+      endDate?: string | null;
+      mode?: "live" | "past";
+    };
 
     if (!title?.trim() || !alias?.trim()) {
       return NextResponse.json(
         { error: "Título y alias son obligatorios" },
+        { status: 400 }
+      );
+    }
+
+    if (mode === "past" && (!startDate || !endDate)) {
+      return NextResponse.json(
+        { error: "Las fechas del viaje son obligatorias para un viaje pasado" },
+        { status: 400 }
+      );
+    }
+
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      return NextResponse.json(
+        { error: "La fecha de fin debe ser posterior al inicio" },
         { status: 400 }
       );
     }
@@ -20,6 +40,8 @@ export async function POST(request: NextRequest) {
       data: {
         title: title.trim(),
         shareCode,
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
         users: {
           create: { alias: alias.trim() },
         },

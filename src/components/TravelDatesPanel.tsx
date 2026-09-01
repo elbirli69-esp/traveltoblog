@@ -9,6 +9,9 @@ interface TravelDatesPanelProps {
   startDate: string | null;
   endDate: string | null;
   onSaved?: () => void;
+  /** When false, panel starts collapsed if dates exist */
+  defaultOpen?: boolean;
+  id?: string;
 }
 
 export default function TravelDatesPanel({
@@ -16,6 +19,8 @@ export default function TravelDatesPanel({
   startDate,
   endDate,
   onSaved,
+  defaultOpen,
+  id = "travel-dates-panel",
 }: TravelDatesPanelProps) {
   const start = isoToDateAndTime(startDate);
   const end = isoToDateAndTime(endDate);
@@ -24,7 +29,9 @@ export default function TravelDatesPanel({
   const [endKey, setEndKey] = useState(end.date);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState(!startDate && !endDate);
+  const [open, setOpen] = useState(
+    defaultOpen ?? (!startDate && !endDate)
+  );
 
   const save = async () => {
     setSaving(true);
@@ -56,7 +63,10 @@ export default function TravelDatesPanel({
         : "Sin fechas definidas";
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section
+      id={id}
+      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+    >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Fechas del viaje</h2>

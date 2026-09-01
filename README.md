@@ -64,18 +64,19 @@ docker compose up -d --build
 
 ## Flujo de uso
 
-1. **Crear viaje** — El organizador define título y alias; se genera código QR/enlace.
+1. **Crear viaje** — El organizador define título y alias; se genera código QR/enlace. Puedes elegir **viaje en curso** o **viaje pasado** (con fechas de inicio y fin).
 2. **Unirse** — Los demás entran con su alias (sin registro complejo).
-3. **Fotos** — Selección masiva; EXIF (fecha, GPS) se lee en el dispositivo. Ida/Vuelta marcan el inicio y fin del viaje.
-4. **Lugares** — Pins en el mapa (hotel, restaurante, mirador…). El recorrido GPS y el “trayecto aéreo” del mapa son derivados, no se editan a mano.
-5. **Días** — Notas por fecha del calendario del viaje.
-6. **Viaje** — Notas globales (anécdotas del viaje completo) para intro/conclusión de la crónica.
-7. **+ Añadir recuerdo** — CTA flotante con atajos (foto, estoy aquí, cómo fue el día, sobre el viaje). También `?add=photo|place|day|trip`.
-8. **Notas de lugar** — `Note(type=PLACE)` ligadas al pin (migración desde `Place.comment` con `npm run db:migrate-place-notes`).
-9. **Sinergias** — Notas de foto desde Días; Ida/Vuelta editable en galería; sugerencias foto↔lugar por GPS (~120 m); mapa con fotos clicables.
-10. **Estados vacíos y checklist** — Cada pestaña invita a «+ Añadir recuerdo»; contadores en tabs; checklist opcional antes de generar la crónica.
-11. **Offline** — Sin conexión, fotos/notas/lugares van a IndexedDB y sincronizan al volver online.
-12. **Generar crónica** — La IA redacta un artículo Markdown con fotos, notas, lugares y vuelos del grupo.
+3. **Guía viaje pasado** — Tras crear un viaje pasado, aparece un panel guiado (fechas → fotos → lugares → días → nota del viaje) con accesos directos a cada sección.
+4. **Fotos** — Selección masiva; EXIF (fecha, GPS) se lee en el dispositivo. Ida/Vuelta marcan el inicio y fin del viaje. Fecha editable si el EXIF no coincide.
+5. **Lugares** — Pins en el mapa (hotel, restaurante, mirador…). Fecha de visita opcional para ordenar el recorrido. El recorrido GPS y el “trayecto aéreo” del mapa son derivados, no se editan a mano.
+6. **Días** — Notas por fecha del calendario del viaje.
+7. **Viaje** — Notas globales (anécdotas del viaje completo) para intro/conclusión de la crónica.
+8. **+ Añadir recuerdo** — CTA flotante con atajos (foto, estoy aquí, cómo fue el día, sobre el viaje). También `?add=photo|place|day|trip`.
+9. **Notas de lugar** — `Note(type=PLACE)` ligadas al pin (migración desde `Place.comment` con `npm run db:migrate-place-notes`).
+10. **Sinergias** — Notas de foto desde Días; Ida/Vuelta editable en galería; sugerencias foto↔lugar por GPS (~120 m); mapa con fotos clicables.
+11. **Estados vacíos y checklist** — Cada pestaña invita a «+ Añadir recuerdo»; contadores en tabs; checklist opcional antes de generar la crónica.
+12. **Offline** — Sin conexión, fotos/notas/lugares van a IndexedDB y sincronizan al volver online.
+13. **Generar crónica** — La IA redacta un artículo Markdown con fotos, notas, lugares y vuelos del grupo.
 
 ## Estructura del proyecto
 
