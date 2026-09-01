@@ -28,6 +28,8 @@
             android:name=".ShareReceiveAlias"
             android:targetActivity=".MainActivity"
             android:label="@string/share_target_label"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
             android:exported="true"
             android:enabled="true">
 
