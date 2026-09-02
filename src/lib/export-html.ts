@@ -33,6 +33,7 @@ import {
   magazineStyles,
 } from "@/lib/export/magazine-html";
 import { buildGallerySection, galleryExportStyles } from "@/lib/export/gallery-html";
+import { buildMapTileLayerScript } from "@/lib/export/map-tiles";
 import { exportPhotoPaths, EXPORT_IMAGE_MIME } from "@/lib/export-images";
 import { getOrCreateExportImageSet } from "@/lib/export-image-cache";
 import {
@@ -999,12 +1000,12 @@ function buildCompactMapSection(mapLead: string): string {
 function buildMapScript(
   points: MapPoint[],
   dayGroups: ExportMapDayGroup[],
-  assetPrefix = "assets/images"
+  assetPrefix = "assets/images",
+  template: ExportTemplateId = "magazine"
 ): string {
   const data = JSON.stringify(points);
   const groupsData = JSON.stringify(dayGroups);
-  const tileUrl = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
-  const tileAttr = "&copy; OpenStreetMap &copy; CARTO";
+  const tileLayerScript = buildMapTileLayerScript(template);
   const dayColors = ["#2dd4bf", "#f59e0b", "#818cf8", "#f472b6", "#34d399", "#fb7185"];
 
   return `
@@ -1031,11 +1032,7 @@ function buildMapScript(
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden) refreshMap();
   });
-  L.tileLayer("${tileUrl}", {
-    attribution: "${tileAttr}",
-    subdomains: "abcd",
-    maxZoom: 20
-  }).addTo(map);
+  ${tileLayerScript}
 
   var flightOut = points.find(function (p) { return p.kind === "flight-out"; });
   var flightIn = points.find(function (p) { return p.kind === "flight-in"; });
@@ -1442,7 +1439,7 @@ ${buildMagazineNav(hasMap, hasJournalArticle)}`
   </div>
   ${lightboxBlock}
   ${timelineScript}
-  ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, "assets/images")}</script>` : ""}
+  ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, "assets/images", template)}</script>` : ""}
   ${playScript}
   ${interactiveScript}
   ${exportBootScript}
@@ -1667,7 +1664,7 @@ L.Icon.Default.mergeOptions({
 });`;
 
   const mapDayGroups = buildMapDayGroups(mapPoints);
-  const mapScriptBody = buildMapScript(mapPoints, mapDayGroups, "assets/images").replace(
+  const mapScriptBody = buildMapScript(mapPoints, mapDayGroups, "assets/images", ctx.template).replace(
     /delete L\.Icon\.Default\.prototype\._getIconUrl;[\s\S]*?}\);/,
     iconScript
   );
