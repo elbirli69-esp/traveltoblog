@@ -20,6 +20,7 @@ import {
   playModeStyles,
   timelineExportStyles,
 } from "@/lib/export/timeline-html";
+import type { ExportProgressCallback } from "@/lib/export-pipeline";
 import {
   buildClosingSectionHtml,
   buildHeadMeta,
@@ -1621,10 +1622,17 @@ function patchLeafletCss(css: string): string {
   });
 }
 
-export async function buildExportZip(ctx: ExportContext): Promise<Buffer> {
+export async function buildExportZip(
+  ctx: ExportContext,
+  onProgress?: ExportProgressCallback
+): Promise<Buffer> {
+  const emit = (event: Parameters<ExportProgressCallback>[0]) => onProgress?.(event);
+
+  emit({ step: "html", status: "running", message: "Generando HTML del diario…" });
   const zip = new JSZip();
   const html = buildExportHtml(ctx);
   zip.file("index.html", html);
+  emit({ step: "html", status: "done" });
 
   const explicitType =
     ctx.typology && ctx.typology !== "auto" ? ctx.typology : ctx.travel.travelType ?? "GENERIC";
@@ -1637,24 +1645,40 @@ export async function buildExportZip(ctx: ExportContext): Promise<Buffer> {
   zip.file("assets/timeline.json", JSON.stringify(timelineEvents, null, 2));
 
   if (exportHasMap(ctx)) {
+    emit({ step: "map", status: "running", message: "Preparando mapa interactivo…" });
     const leaflet = await getLeafletAssets();
     zip.file("assets/leaflet.css", patchLeafletCss(leaflet["leaflet.css"].toString("utf-8")));
     zip.file("assets/leaflet.js", leaflet["leaflet.js"]);
     zip.folder("assets/images")?.file("marker-icon.png", leaflet["images/marker-icon.png"]);
     zip.folder("assets/images")?.file("marker-icon-2x.png", leaflet["images/marker-icon-2x.png"]);
     zip.folder("assets/images")?.file("marker-shadow.png", leaflet["images/marker-shadow.png"]);
+    emit({ step: "map", status: "done" });
   }
 
+  emit({
+    step: "pack",
+    status: "running",
+    message: `Empaquetando ${ctx.photos.length} foto${ctx.photos.length !== 1 ? "s" : ""}…`,
+  });
   for (const photo of ctx.photos) {
     const buf = await readPhotoBuffer(photo.url);
     if (buf) zip.file(photo.localPath, buf);
   }
 
-  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+  emit({ step: "pack", status: "running", message: "Comprimiendo ZIP…" });
+  const buffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+  emit({ step: "pack", status: "done" });
+  return buffer;
 }
 
-export async function buildSingleFileHtml(ctx: ExportContext): Promise<Buffer> {
-  const zipBuffer = await buildExportZip(ctx);
+export async function buildSingleFileHtml(
+  ctx: ExportContext,
+  onProgress?: ExportProgressCallback
+): Promise<Buffer> {
+  const emit = (event: Parameters<ExportProgressCallback>[0]) => onProgress?.(event);
+
+  const zipBuffer = await buildExportZip(ctx, onProgress);
+  emit({ step: "embed", status: "running", message: "Incrustando fotos en un solo HTML…" });
   const zip = await JSZip.loadAsync(zipBuffer);
   let html = await zip.file("index.html")!.async("string");
 
@@ -1713,5 +1737,6 @@ L.Icon.Default.mergeOptions({
     );
   }
 
+  emit({ step: "embed", status: "done" });
   return Buffer.from(html, "utf-8");
 }

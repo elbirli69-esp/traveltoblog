@@ -1,11 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { TravelType } from "@prisma/client";
+import type { ExportPipelineEvent, ExportPipelineStep } from "@/lib/export-pipeline";
 
 export type ExportTemplateId = "magazine" | "visual-journey" | "editorial-clean" | "dark-photo-journey";
 export type ExportFormat = "zip" | "html";
 export type ExportTypologyId = TravelType | "auto";
+
+const STEP_LABELS: Record<ExportPipelineStep, string> = {
+  load: "Cargando viaje",
+  exif: "Ubicación de fotos",
+  photos: "Preparando fotos",
+  html: "Generando HTML",
+  map: "Mapa interactivo",
+  pack: "Empaquetando ZIP",
+  embed: "HTML único embebido",
+  complete: "Listo",
+};
+
+const ZIP_STEPS: ExportPipelineStep[] = ["load", "exif", "photos", "html", "map", "pack"];
+const HTML_STEPS: ExportPipelineStep[] = [...ZIP_STEPS, "embed"];
 
 const TEMPLATE_PREVIEW: Record<ExportTemplateId, string> = {
   magazine: "template-preview template-preview-magazine",
@@ -70,6 +85,14 @@ export default function ExportHtmlPanel({
   const [format, setFormat] = useState<ExportFormat>("zip");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState<ExportPipelineStep | null>(null);
+  const [stepMessage, setStepMessage] = useState<string | null>(null);
+  const [completedSteps, setCompletedSteps] = useState<ExportPipelineStep[]>([]);
+
+  const progressSteps = useMemo(
+    () => (format === "html" ? HTML_STEPS : ZIP_STEPS),
+    [format]
+  );
 
   useEffect(() => {
     void fetch(`/api/travels/${travelId}/suggest-type`)
@@ -95,6 +118,9 @@ export default function ExportHtmlPanel({
   const handleExport = async () => {
     setLoading(true);
     setError(null);
+    setCurrentStep(null);
+    setStepMessage(null);
+    setCompletedSteps([]);
 
     try {
       if (typology !== "auto") {
@@ -108,7 +134,14 @@ export default function ExportHtmlPanel({
       const res = await fetch("/api/export-html", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ travelId, template, typology, format, includeGpsTrail }),
+        body: JSON.stringify({
+          travelId,
+          template,
+          typology,
+          format,
+          includeGpsTrail,
+          stream: true,
+        }),
       });
 
       if (!res.ok) {
@@ -116,22 +149,73 @@ export default function ExportHtmlPanel({
         throw new Error(data.error ?? "Error al exportar");
       }
 
-      const blob = await res.blob();
-      const disposition = res.headers.get("Content-Disposition") ?? "";
-      const match = disposition.match(/filename="([^"]+)"/);
-      const filename =
-        match?.[1] ?? (format === "zip" ? "viaje-export.zip" : "viaje.html");
+      if (!res.body) throw new Error("Sin respuesta del servidor");
 
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let downloaded = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const event = JSON.parse(line) as ExportPipelineEvent;
+
+          if (event.step === "error") {
+            throw new Error(event.message ?? "Error al exportar");
+          }
+
+          if (event.status === "running" && event.step !== "complete") {
+            setCurrentStep(event.step as ExportPipelineStep);
+            setStepMessage(event.message ?? null);
+          }
+
+          if (event.status === "done" && event.step !== "complete") {
+            setCompletedSteps((prev) => {
+              const step = event.step as ExportPipelineStep;
+              return prev.includes(step) ? prev : [...prev, step];
+            });
+          }
+
+          if (event.step === "complete" && event.status === "done" && event.blobBase64) {
+            const binary = atob(event.blobBase64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+              bytes[i] = binary.charCodeAt(i);
+            }
+            const blob = new Blob([bytes], {
+              type: event.contentType ?? "application/octet-stream",
+            });
+            const filename =
+              event.filename ?? (format === "zip" ? "viaje-export.zip" : "viaje.html");
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            downloaded = true;
+            setCompletedSteps(progressSteps);
+          }
+        }
+      }
+
+      if (!downloaded) {
+        throw new Error("La exportación no devolvió un archivo");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al exportar");
     } finally {
       setLoading(false);
+      setCurrentStep(null);
+      setStepMessage(null);
     }
   };
 
@@ -239,6 +323,33 @@ export default function ExportHtmlPanel({
       >
         {loading ? "Generando exportación…" : "📦 Exportar diario interactivo (HTML)"}
       </button>
+
+      {loading && (
+        <ul className="progress-panel space-y-1.5">
+          {progressSteps.map((key) => {
+            const done = completedSteps.includes(key);
+            const active = currentStep === key;
+            return (
+              <li
+                key={key}
+                className={`flex items-center gap-2 ${
+                  done
+                    ? "progress-step-done"
+                    : active
+                      ? "progress-step-active"
+                      : "progress-step-pending"
+                }`}
+              >
+                <span>{done ? "✓" : active ? "…" : "○"}</span>
+                {STEP_LABELS[key]}
+              </li>
+            );
+          })}
+          {stepMessage && (
+            <li className="progress-step-active font-medium">{stepMessage}</li>
+          )}
+        </ul>
+      )}
 
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
