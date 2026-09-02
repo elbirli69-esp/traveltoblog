@@ -497,14 +497,27 @@ export default function TravelPlacesPanel({
             Coordenadas: {draft.lat.toFixed(5)}, {draft.lng.toFixed(5)}
           </p>
           {error && <p className="text-sm text-danger">{error}</p>}
-          <button
-            type="button"
-            onClick={savePlace}
-            disabled={saving}
-            className="btn-primary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
-          >
-            {saving ? "Guardando…" : "Guardar lugar"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={savePlace}
+              disabled={saving}
+              className="btn-primary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {saving ? "Guardando…" : "Guardar lugar"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(null);
+                setError(null);
+              }}
+              disabled={saving}
+              className="btn-secondary rounded-lg px-4 py-2 text-sm"
+            >
+              Cancelar
+            </button>
+          </div>
         </div>
       )}
 

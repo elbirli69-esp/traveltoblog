@@ -23,6 +23,7 @@ import {
 import { pickImagesFromFileExplorer } from "@/lib/photo-picker";
 import { createPhotoPreviewUrl } from "@/lib/photo-preview";
 import { createLocalId } from "@/lib/utils";
+import { useEscapeKey } from "@/lib/use-escape-key";
 import type { ParsedPhoto, TravelDateRange } from "@/types";
 
 /** Android photo picker strips GPS when accept="image/*". text/plain opens file explorer. */
@@ -571,16 +572,11 @@ export default function PhotoUploadGrid({
   const showPickers = !addOnly;
   const showPanel = showReview || (addOnly && Boolean(error));
 
-  useEffect(() => {
-    if (!addOnly || !showPanel) return;
+  useEscapeKey(() => {
+    if (!uploading) clearReview();
+  }, addOnly && showPanel);
 
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !uploading) clearReview();
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [addOnly, showPanel, uploading, clearReview]);
+  useEscapeKey(() => setShowPhotoSourceSheet(false), showPhotoSourceSheet && !processing);
 
   const panelClass = addOnly
     ? showPanel
@@ -673,10 +669,10 @@ export default function PhotoUploadGrid({
         />
       )}
       <div ref={sectionRef} id="photo-upload-section" className={panelClass}>
-      {addOnly && showReview && (
+      {addOnly && showPanel && (
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-fg">
-            Revisar fotos
+            {showReview ? "Revisar fotos" : "Error al subir fotos"}
           </h2>
           <div className="flex items-center gap-2">
             {processing && (
@@ -688,7 +684,7 @@ export default function PhotoUploadGrid({
               disabled={uploading}
               className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-50"
             >
-              Cancelar
+              Cerrar
             </button>
           </div>
         </div>

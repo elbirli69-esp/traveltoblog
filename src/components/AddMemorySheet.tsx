@@ -1,5 +1,7 @@
 "use client";
 
+import { useEscapeKey } from "@/lib/use-escape-key";
+
 export type AddMemoryKind = "photo" | "place" | "day" | "trip";
 
 interface AddMemorySheetProps {
@@ -52,6 +54,8 @@ export default function AddMemorySheet({
   onClose,
   onSelect,
 }: AddMemorySheetProps) {
+  useEscapeKey(onClose, open);
+
   if (!open) return null;
 
   return (
