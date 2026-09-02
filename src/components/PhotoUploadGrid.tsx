@@ -23,6 +23,7 @@ import {
 import { pickImagesFromFileExplorer } from "@/lib/photo-picker";
 import { createPhotoPreviewUrl } from "@/lib/photo-preview";
 import { createLocalId } from "@/lib/utils";
+import { useEscapeKey } from "@/lib/use-escape-key";
 import type { ParsedPhoto, TravelDateRange } from "@/types";
 
 /** Android photo picker strips GPS when accept="image/*". text/plain opens file explorer. */
@@ -35,6 +36,10 @@ function normalizeNativePickedPhotos(
   if (!photos) return [];
   if (Array.isArray(photos)) return photos;
   return Object.values(photos);
+}
+
+function formatTravelRangeDate(date: Date): string {
+  return new Intl.DateTimeFormat("es-ES", { dateStyle: "medium" }).format(date);
 }
 
 export interface UploadPlaceOption {
@@ -111,6 +116,11 @@ export default function PhotoUploadGrid({
   );
 
   const selectedCount = useMemo(
+    () => photos.filter((p) => p.selected).length,
+    [photos]
+  );
+
+  const selectedInRangeCount = useMemo(
     () => photos.filter((p) => p.selected && !p.outOfRange).length,
     [photos]
   );
@@ -157,7 +167,7 @@ export default function PhotoUploadGrid({
                 previewUrl,
                 exif,
                 gpsStripped,
-                selected: !outOfRange,
+                selected: true,
                 outOfRange,
                 isTransportStart: false,
                 isTransportEnd: false,
@@ -246,7 +256,7 @@ export default function PhotoUploadGrid({
           previewUrl,
           exif,
           gpsStripped: item.gpsStripped,
-          selected: !outOfRange,
+          selected: true,
           outOfRange,
           isTransportStart: false,
           isTransportEnd: false,
@@ -477,11 +487,29 @@ export default function PhotoUploadGrid({
     });
   }, []);
 
+  const clearReview = useCallback(() => {
+    setPhotos((prev) => {
+      prev.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+      return [];
+    });
+    setError(null);
+    setProcessing(false);
+    setUploading(false);
+  }, []);
+
   const handleConfirm = async () => {
     let toUpload = photos.filter((p) => p.selected);
     if (!toUpload.length) {
       setError("Selecciona al menos una foto.");
       return;
+    }
+
+    const outOfRangeSelected = toUpload.filter((p) => p.outOfRange);
+    if (outOfRangeSelected.length > 0) {
+      const proceed = window.confirm(
+        `${outOfRangeSelected.length} foto${outOfRangeSelected.length === 1 ? "" : "s"} tienen fecha fuera del rango del viaje. ¿Subirlas igualmente?`
+      );
+      if (!proceed) return;
     }
 
     const missingGps = toUpload.some(
@@ -543,6 +571,12 @@ export default function PhotoUploadGrid({
   const showReview = photos.length > 0 || processing || uploading;
   const showPickers = !addOnly;
   const showPanel = showReview || (addOnly && Boolean(error));
+
+  useEscapeKey(() => {
+    if (!uploading) clearReview();
+  }, addOnly && showPanel);
+
+  useEscapeKey(() => setShowPhotoSourceSheet(false), showPhotoSourceSheet && !processing);
 
   const panelClass = addOnly
     ? showPanel
@@ -625,17 +659,34 @@ export default function PhotoUploadGrid({
       )}
 
       {addOnly && showPanel && (
-        <div className="fixed inset-0 z-40 bg-black/40" aria-hidden />
+        <button
+          type="button"
+          aria-label="Cerrar revisión de fotos"
+          className="fixed inset-0 z-40 bg-black/40"
+          onClick={() => {
+            if (!uploading) clearReview();
+          }}
+        />
       )}
       <div ref={sectionRef} id="photo-upload-section" className={panelClass}>
-      {addOnly && showReview && (
+      {addOnly && showPanel && (
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-fg">
-            Revisar fotos
+            {showReview ? "Revisar fotos" : "Error al subir fotos"}
           </h2>
-          {processing && (
-            <span className="text-sm text-fg-secondary">Leyendo EXIF…</span>
-          )}
+          <div className="flex items-center gap-2">
+            {processing && (
+              <span className="text-sm text-fg-secondary">Leyendo EXIF…</span>
+            )}
+            <button
+              type="button"
+              onClick={clearReview}
+              disabled={uploading}
+              className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-50"
+            >
+              Cerrar
+            </button>
+          </div>
         </div>
       )}
 
@@ -772,13 +823,13 @@ export default function PhotoUploadGrid({
         <div className="surface-inset px-4 py-3 text-sm text-fg-secondary">
           <span className="font-medium">Rango del viaje: </span>
           {dateRange.start
-            ? formatExifDate(dateRange.start)
+            ? formatTravelRangeDate(dateRange.start)
             : "Inicio pendiente"}
           {" → "}
-          {dateRange.end ? formatExifDate(dateRange.end) : "Fin pendiente"}
+          {dateRange.end ? formatTravelRangeDate(dateRange.end) : "Fin pendiente"}
           {outOfRangeCount > 0 && (
             <span className="ml-2 text-warning-inline">
-              ({outOfRangeCount} fuera de rango)
+              ({outOfRangeCount} fuera de rango — puedes seleccionarlas y subirlas igual)
             </span>
           )}
         </div>
@@ -950,6 +1001,8 @@ export default function PhotoUploadGrid({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-fg-secondary">
               {selectedCount} de {photos.length} seleccionadas
+              {selectedInRangeCount < selectedCount &&
+                ` · ${selectedCount - selectedInRangeCount} fuera de rango`}
               {missingGpsCount > 0 && ` · ${missingGpsCount} sin GPS`}
             </p>
             <div className="flex flex-wrap gap-2">
