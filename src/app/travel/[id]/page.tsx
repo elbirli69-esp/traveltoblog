@@ -18,6 +18,7 @@ import TravelPlacesPanel from "@/components/TravelPlacesPanel";
 import TravelCollaborationBar from "@/components/TravelCollaborationBar";
 import PastTripGuide from "@/components/PastTripGuide";
 import TravelDatesPanel from "@/components/TravelDatesPanel";
+import DeleteTravelPanel from "@/components/DeleteTravelPanel";
 import AddMemorySheet, {
   type AddMemoryKind,
 } from "@/components/AddMemorySheet";
@@ -40,6 +41,7 @@ interface TravelData {
   id: string;
   title: string;
   shareCode: string;
+  creatorId: string | null;
   startDate: string | null;
   endDate: string | null;
   users: { id: string; alias: string }[];
@@ -361,6 +363,16 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
       />
 
       <SharePanel shareCode={travel.shareCode} title={travel.title} />
+
+      <DeleteTravelPanel
+        travelId={travelId}
+        title={travel.title}
+        userId={session.userId}
+        creatorId={travel.creatorId}
+        photoCount={travel.photos.length}
+        placeCount={travel.places.length}
+        participantCount={travel.users.length}
+      />
 
       <TravelWorkspaceNav travelId={travelId} />
 

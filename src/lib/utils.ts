@@ -87,3 +87,17 @@ export function touchTravelHistory(travelId: string): void {
   history.unshift(entry);
   localStorage.setItem(TRAVEL_HISTORY_KEY, JSON.stringify(history));
 }
+
+export function removeTravelFromHistory(travelId: string): void {
+  if (typeof window === "undefined") return;
+  const history = getTravelHistory().filter((item) => item.travelId !== travelId);
+  localStorage.setItem(TRAVEL_HISTORY_KEY, JSON.stringify(history));
+}
+
+export function clearSessionIfTravel(travelId: string): void {
+  if (typeof window === "undefined") return;
+  const session = getSessionFromStorage();
+  if (session?.travelId === travelId) {
+    localStorage.removeItem(SESSION_KEY);
+  }
+}

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { resolveTravelCreatorId } from "@/lib/travel-creator";
+import { deleteTravelStorage } from "@/lib/travel-storage";
 
 export async function GET(
   request: NextRequest,
@@ -21,7 +23,7 @@ export async function GET(
   const travel = await prisma.travel.findUnique({
     where: { id },
     include: {
-      users: true,
+      users: { orderBy: { createdAt: "asc" } },
       photos: {
         include: {
           user: true,
@@ -53,7 +55,14 @@ export async function GET(
     return NextResponse.json({ error: "Viaje no encontrado" }, { status: 404 });
   }
 
-  return NextResponse.json({ travel });
+  const creatorId = await resolveTravelCreatorId(travel);
+
+  return NextResponse.json({
+    travel: {
+      ...travel,
+      creatorId,
+    },
+  });
 }
 
 export async function PATCH(
@@ -89,5 +98,58 @@ export async function PATCH(
   } catch (error) {
     console.error("PATCH /api/travels/[id]", error);
     return NextResponse.json({ error: "Error al actualizar viaje" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = await request.json();
+    const { userId, confirmTitle } = body as {
+      userId?: string;
+      confirmTitle?: string;
+    };
+
+    if (!userId?.trim() || !confirmTitle?.trim()) {
+      return NextResponse.json(
+        { error: "userId y confirmTitle son obligatorios" },
+        { status: 400 }
+      );
+    }
+
+    const travel = await prisma.travel.findUnique({
+      where: { id },
+      include: { users: { orderBy: { createdAt: "asc" } } },
+    });
+
+    if (!travel) {
+      return NextResponse.json({ error: "Viaje no encontrado" }, { status: 404 });
+    }
+
+    const creatorId = await resolveTravelCreatorId(travel);
+    if (!creatorId || creatorId !== userId) {
+      return NextResponse.json(
+        { error: "Solo quien creó el viaje puede eliminarlo" },
+        { status: 403 }
+      );
+    }
+
+    if (confirmTitle.trim() !== travel.title.trim()) {
+      return NextResponse.json(
+        { error: "El título no coincide. Escribe el nombre exacto del viaje." },
+        { status: 400 }
+      );
+    }
+
+    await deleteTravelStorage(id);
+    await prisma.travel.delete({ where: { id } });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("DELETE /api/travels/[id]", error);
+    return NextResponse.json({ error: "Error al eliminar el viaje" }, { status: 500 });
   }
 }
