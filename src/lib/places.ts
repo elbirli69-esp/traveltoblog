@@ -121,3 +121,61 @@ export function computeMapCenter(
   const lng = coords.reduce((sum, c) => sum + c[1], 0) / coords.length;
   return [lat, lng];
 }
+
+export type TravelRoutePointKind = "photo" | "place";
+
+export interface TravelRoutePoint {
+  id: string;
+  kind: TravelRoutePointKind;
+  latitude: number;
+  longitude: number;
+  sortAt: number;
+}
+
+/** Chronological route: photo GPS + manually marked places (sorted by EXIF / visitedAt). */
+export function buildTravelRoutePoints(
+  photos: {
+    id: string;
+    latitude: number | null;
+    longitude: number | null;
+    exifDateTime: string | null;
+    isTransportStart?: boolean;
+    isTransportEnd?: boolean;
+  }[],
+  places: {
+    id: string;
+    latitude: number;
+    longitude: number;
+    visitedAt?: string | null;
+  }[]
+): TravelRoutePoint[] {
+  const photoPoints: TravelRoutePoint[] = photos
+    .filter(
+      (p) =>
+        p.latitude != null &&
+        p.longitude != null &&
+        !p.isTransportStart &&
+        !p.isTransportEnd
+    )
+    .map((p) => ({
+      id: p.id,
+      kind: "photo" as const,
+      latitude: p.latitude!,
+      longitude: p.longitude!,
+      sortAt: p.exifDateTime ? new Date(p.exifDateTime).getTime() : 0,
+    }));
+
+  const placePoints: TravelRoutePoint[] = places.map((p) => ({
+    id: p.id,
+    kind: "place" as const,
+    latitude: p.latitude,
+    longitude: p.longitude,
+    sortAt: p.visitedAt ? new Date(p.visitedAt).getTime() : Number.POSITIVE_INFINITY,
+  }));
+
+  return [...photoPoints, ...placePoints].sort((a, b) => {
+    if (a.sortAt !== b.sortAt) return a.sortAt - b.sortAt;
+    if (a.kind !== b.kind) return a.kind === "photo" ? -1 : 1;
+    return a.id.localeCompare(b.id);
+  });
+}

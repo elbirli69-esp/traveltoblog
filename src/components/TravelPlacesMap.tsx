@@ -10,7 +10,7 @@ import {
   photoGpsPoints,
   resolveFlightLegs,
 } from "@/lib/flights";
-import { computeMapCenter, placeEmoji, isGeolocationSecureContext } from "@/lib/places";
+import { computeMapCenter, placeEmoji, isGeolocationSecureContext, buildTravelRoutePoints } from "@/lib/places";
 import {
   createEmojiMarkerElement,
   loadMapbox,
@@ -26,6 +26,7 @@ export interface MapPlace {
   type: PlaceType;
   latitude: number;
   longitude: number;
+  visitedAt?: string | null;
   comment?: string | null;
   notes?: { text: string }[];
 }
@@ -87,6 +88,7 @@ export default function TravelPlacesMap({
 
   const { outbound, inbound } = resolveFlightLegs(photos);
   const routePhotos = photoGpsPoints(photos);
+  const routePoints = buildTravelRoutePoints(photos, places);
 
   useEffect(() => {
     if (places.length !== placesCountRef.current) {
@@ -223,8 +225,8 @@ export default function TravelPlacesMap({
 
       const bounds: [number, number][] = [];
 
-      const routeCoords = routePhotos.map(
-        (p) => [p.longitude!, p.latitude!] as [number, number]
+      const routeCoords = routePoints.map(
+        (p) => [p.longitude, p.latitude] as [number, number]
       );
       if (map.getSource("photo-route")) {
         (map.getSource("photo-route") as GeoJSONSource).setData({
@@ -466,6 +468,12 @@ export default function TravelPlacesMap({
           <span className="flex items-center gap-1 text-accent-cyan">
             <span className="inline-block h-0.5 w-4 border-t-2 border-dashed border-[var(--accent-blue)]" />
             Trayecto aéreo
+          </span>
+        )}
+        {routePoints.length > 0 && (
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-0.5 w-4 border-t-2 border-[var(--accent-mint)]" />
+            Recorrido (fotos y lugares)
           </span>
         )}
         {routePhotos.length > 0 && (
