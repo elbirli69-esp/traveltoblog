@@ -32,7 +32,8 @@ import {
   findTripNote,
   magazineStyles,
 } from "@/lib/export/magazine-html";
-import { createExportImageSet } from "@/lib/export-images";
+import { exportPhotoPaths, EXPORT_IMAGE_MIME } from "@/lib/export-images";
+import { getOrCreateExportImageSet } from "@/lib/export-image-cache";
 import {
   buildExportPhotoBootScript,
   buildExportPhotoRegistryScript,
@@ -1548,9 +1549,7 @@ export async function loadPhotoFiles(
   const selected = photos.filter((p) => p.selected);
   return Promise.all(
     selected.map(async (photo, index) => {
-      const base = `photos/${String(index + 1).padStart(3, "0")}`;
-      const localPath = `${base}.jpg`;
-      const thumbPath = `${base}-thumb.jpg`;
+      const { localPath, thumbPath } = exportPhotoPaths(index);
       const resolved = await resolvePhotoExifFromFile({
         url: photo.url,
         exifDateTime: photo.exifDateTime,
@@ -1638,6 +1637,7 @@ async function runWithConcurrency<T>(
 }
 
 async function prepareExportPhotoBuffers(
+  travelId: string,
   photos: ExportPhoto[],
   onPhotoProgress?: (current: number, total: number) => void
 ): Promise<Map<string, Buffer>> {
@@ -1646,12 +1646,10 @@ async function prepareExportPhotoBuffers(
   let completed = 0;
 
   await runWithConcurrency(photos, EXPORT_PHOTO_CONCURRENCY, async (photo) => {
-    const original = await readPhotoBuffer(photo.url);
-    if (!original) return;
-    const ext = path.extname(photo.url) || ".jpg";
-    const { display, thumb } = await createExportImageSet(original, ext);
-    files.set(photo.localPath, display);
-    files.set(photo.thumbPath, thumb);
+    const set = await getOrCreateExportImageSet(travelId, photo.id, photo.url);
+    if (!set) return;
+    files.set(photo.localPath, set.display);
+    files.set(photo.thumbPath, set.thumb);
     completed += 1;
     onPhotoProgress?.(completed, total);
   });
@@ -1662,7 +1660,7 @@ async function prepareExportPhotoBuffers(
 function buildPhotoRegistry(files: Map<string, Buffer>): Record<string, string> {
   const registry: Record<string, string> = {};
   for (const [filePath, buffer] of files) {
-    registry[filePath] = `data:image/jpeg;base64,${buffer.toString("base64")}`;
+    registry[filePath] = `data:${EXPORT_IMAGE_MIME};base64,${buffer.toString("base64")}`;
   }
   return registry;
 }
@@ -1772,7 +1770,7 @@ export async function buildExportZip(
     message: total > 0 ? `Optimizando fotos (0/${total})…` : "Empaquetando…",
   });
 
-  const photoFiles = await prepareExportPhotoBuffers(ctx.photos, (current, photoTotal) => {
+  const photoFiles = await prepareExportPhotoBuffers(ctx.travel.id, ctx.photos, (current, photoTotal) => {
     emit({
       step: "pack",
       status: "running",
@@ -1807,7 +1805,7 @@ export async function buildSingleFileHtml(
     message: total > 0 ? `Optimizando fotos (0/${total})…` : "Preparando fotos…",
   });
 
-  const photoFiles = await prepareExportPhotoBuffers(ctx.photos, (current, photoTotal) => {
+  const photoFiles = await prepareExportPhotoBuffers(ctx.travel.id, ctx.photos, (current, photoTotal) => {
     emit({
       step: "pack",
       status: "running",

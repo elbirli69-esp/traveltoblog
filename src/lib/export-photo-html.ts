@@ -19,7 +19,7 @@ export function exportThumbImgTag(
 }
 
 export function exportDisplayPathFromPhotoPath(photoPath: string): string {
-  if (/-thumb\.jpg$/i.test(photoPath)) {
+  if (/-thumb\.webp$/i.test(photoPath)) {
     return exportDisplayPathFromThumb(photoPath);
   }
   return photoPath;
@@ -38,7 +38,7 @@ export function buildExportPhotoBootScript(): string {
 
   function exportDisplayFromThumb(thumbOrDisplayKey) {
     if (!thumbOrDisplayKey) return "";
-    var displayKey = String(thumbOrDisplayKey).replace(/-thumb\\.jpg$/i, ".jpg");
+    var displayKey = String(thumbOrDisplayKey).replace(/-thumb\\.webp$/i, ".webp");
     return resolveExportAsset(displayKey);
   }
 

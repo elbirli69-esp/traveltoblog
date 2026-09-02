@@ -3,6 +3,7 @@ import type { TimelineEvent } from "@/lib/timeline";
 import { formatDateKey } from "@/lib/travel-dates";
 import { PLACE_TYPE_EMOJI, PLACE_TYPE_LABELS } from "@/lib/places";
 import type { PlaceType } from "@prisma/client";
+import { exportDisplayPathFromThumb } from "@/lib/export-images";
 
 export interface StoryTimelineOptions {
   /** Si hay artículo de crónica, omitir trozos journal-chunk duplicados */
@@ -113,7 +114,7 @@ function renderPhotoCard(
   const media = ev.mediaUrl
     ? `<figure class="story-media">
         <button type="button" class="story-media-btn" aria-label="Ampliar foto">
-          <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(ev.mediaUrl.replace(/-thumb\\.jpg$/i, ".jpg"))}" alt="Foto del viaje" loading="lazy" class="story-photo-img">
+          <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="Foto del viaje" loading="lazy" class="story-photo-img">
         </button>
         <figcaption class="story-photo-caption">${escapeHtml(ev.author ?? "Viajero")} · ${formatTime(ev.at)}</figcaption>
       </figure>`
@@ -200,7 +201,7 @@ function renderFlightCard(ev: TimelineEvent): string {
   const label = isOut ? "Salida — inicio del viaje" : "Regreso — fin del viaje";
   const media = ev.mediaUrl
     ? `<figure class="story-media story-media--compact">
-        <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(ev.mediaUrl.replace(/-thumb\\.jpg$/i, ".jpg"))}" alt="" loading="lazy" class="story-photo-img">
+        <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="" loading="lazy" class="story-photo-img">
       </figure>`
     : "";
 
