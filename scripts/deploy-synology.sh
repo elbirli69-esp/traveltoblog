@@ -113,7 +113,7 @@ fi
 DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-$(grep -E '^DEEPSEEK_API_KEY=' .env 2>/dev/null | cut -d= -f2- | tr -d '"' || true)}"
 SSH_CMD=(ssh "${SSH_OPTS[@]}")
 
-echo "→ Generando Prisma Client (incluye binario musl para Alpine)…"
+echo "→ Generando Prisma Client (musl + debian para Alpine/Bookworm)…"
 npx prisma generate
 
 # Reuse DogTrainer Mapbox token if missing locally (same NAS / same account)
@@ -296,7 +296,7 @@ fi
 ENVPATCH
 fi
 
-echo "→ Construyendo y levantando contenedor Docker…"
+echo "→ Construyendo y levantando contenedor Docker (Dockerfile.bookworm + WeasyPrint)…"
 ssh "${SSH_OPTS[@]}" "$SSH_TARGET" bash -s <<REMOTE
 set -euo pipefail
 cd "${REMOTE_DIR}"

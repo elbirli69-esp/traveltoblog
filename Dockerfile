@@ -1,6 +1,5 @@
-# Imagen Alpine para Synology NAS — sin apt en build (DNS del NAS suele fallar).
-# Prisma Client se genera en el host con binaryTarget musl.
-# PDF/WeasyPrint: usar Dockerfile.bookworm donde haya red en el build.
+# Imagen Alpine (referencia / builds ligeros sin PDF).
+# Producción Synology: docker-compose usa Dockerfile.bookworm (WeasyPrint para export PDF).
 FROM node:22-alpine AS runner
 WORKDIR /app
 

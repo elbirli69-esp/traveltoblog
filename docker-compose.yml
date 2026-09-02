@@ -1,6 +1,8 @@
 services:
   traveltoblog:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.bookworm
     container_name: traveltoblog
     restart: unless-stopped
     # Synology Docker bridge (172.x) often blocks outbound internet/DNS.
@@ -9,6 +11,7 @@ services:
     network_mode: host
     environment:
       - HOSTNAME=127.0.0.1
+      - WEASYPRINT_BIN=/usr/bin/weasyprint
       - DATABASE_URL=file:/app/data/travel.db
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.deepseek.com/v1}

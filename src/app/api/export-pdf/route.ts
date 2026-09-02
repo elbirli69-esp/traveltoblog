@@ -20,7 +20,34 @@ function resolveWeasyPrint(): string[] {
     "/usr/bin/weasyprint",
     path.join(process.env.HOME ?? "", ".local", "bin", "weasyprint"),
   ].filter((c): c is string => Boolean(c));
-  return candidates;
+  return [...new Set(candidates)];
+}
+
+async function probeWeasyPrint(): Promise<{ available: boolean; detail?: string }> {
+  const scriptPath = path.join(process.cwd(), "scripts", "render-pdf.py");
+  const errors: string[] = [];
+
+  for (const bin of resolveWeasyPrint()) {
+    try {
+      await execFileAsync(bin, ["--version"], { timeout: 8000, env: process.env });
+      return { available: true, detail: bin };
+    } catch (err) {
+      errors.push(`${bin}: ${err instanceof Error ? err.message : "failed"}`);
+    }
+  }
+
+  try {
+    await execFileAsync(
+      "python3",
+      ["-c", "import weasyprint; print(weasyprint.__version__)"],
+      { timeout: 8000, env: process.env }
+    );
+    return { available: true, detail: "python3+weasyprint" };
+  } catch (err) {
+    errors.push(`python3: ${err instanceof Error ? err.message : "failed"}`);
+  }
+
+  return { available: false, detail: errors.join("; ") };
 }
 
 async function renderPdf(htmlPath: string, pdfPath: string, format: PdfPageFormat) {
@@ -130,11 +157,14 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
+  const probe = await probeWeasyPrint();
   return NextResponse.json({
     formats: [
       { id: "a4-landscape", name: "A4 Horizontal", size: "297 × 210 mm" },
       { id: "square", name: "Cuadrado", size: "210 × 210 mm" },
     ],
     engine: "weasyprint",
+    available: probe.available,
+    detail: probe.detail ?? null,
   });
 }

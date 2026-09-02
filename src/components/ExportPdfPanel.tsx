@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DownloadCancelledError, downloadBlob, type DownloadResult } from "@/lib/download-blob";
 
 export type PdfPageFormat = "a4-landscape" | "square";
@@ -31,8 +31,24 @@ export default function ExportPdfPanel({
 }: ExportPdfPanelProps) {
   const [format, setFormat] = useState<PdfPageFormat>("a4-landscape");
   const [loading, setLoading] = useState(false);
+  const [pdfAvailable, setPdfAvailable] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/export-pdf")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { available?: boolean } | null) => {
+        if (!cancelled) setPdfAvailable(data?.available ?? false);
+      })
+      .catch(() => {
+        if (!cancelled) setPdfAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleExport = async () => {
     setLoading(true);
@@ -113,10 +129,18 @@ export default function ExportPdfPanel({
         </p>
       )}
 
+      {pdfAvailable === false && (
+        <p className="callout callout-error text-sm">
+          WeasyPrint no está disponible en el servidor. Tras desplegar con{" "}
+          <code className="text-xs">Dockerfile.bookworm</code> (incluido en docker-compose), vuelve a
+          generar el contenedor en el NAS.
+        </p>
+      )}
+
       <button
         type="button"
         onClick={handleExport}
-        disabled={loading || photoCount === 0}
+        disabled={loading || photoCount === 0 || pdfAvailable === false}
         className="btn-pdf disabled:opacity-50"
       >
         {loading ? "Generando PDF para imprenta…" : "🖨️ Descargar Álbum para Imprenta (PDF)"}
