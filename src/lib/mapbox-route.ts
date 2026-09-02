@@ -12,6 +12,20 @@ export interface MapRouteNode extends MapRouteWaypoint {
   at: string | null;
 }
 
+export interface RoutePhotoInput {
+  latitude: number | null;
+  longitude: number | null;
+  exifDateTime?: Date | string | null;
+  isTransportStart?: boolean;
+  isTransportEnd?: boolean;
+}
+
+export interface RoutePlaceInput {
+  latitude: number;
+  longitude: number;
+  visitedAt?: Date | string | null;
+}
+
 export type MapRouteBuildMode = "segmented" | "directions" | "direct";
 
 export interface SegmentedRouteResult {
@@ -19,6 +33,14 @@ export interface SegmentedRouteResult {
   roadPolylines: string[];
   /** Encoded polylines for flight/transport legs (straight). */
   flightPolylines: string[];
+  mode: MapRouteBuildMode;
+}
+
+export interface SegmentedRouteGeometry {
+  /** Road-following segments (lat/lng pairs). */
+  roadSegments: MapRouteWaypoint[][];
+  /** Straight flight/transport legs (lat/lng pairs). */
+  flightLegs: MapRouteWaypoint[][];
   mode: MapRouteBuildMode;
 }
 
@@ -56,6 +78,117 @@ export function encodePolyline(
     chunk += String.fromCharCode(s + 63);
     return chunk;
   }
+}
+
+/** Decode Google-encoded polyline (precision 5) to coordinates. */
+export function decodePolyline(
+  encoded: string,
+  precision = 5
+): MapRouteWaypoint[] {
+  const coordinates: MapRouteWaypoint[] = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+  const factor = Math.pow(10, precision);
+
+  while (index < encoded.length) {
+    let result = 0;
+    let shift = 0;
+    let byte: number;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    const deltaLat = result & 1 ? ~(result >> 1) : result >> 1;
+    lat += deltaLat;
+
+    result = 0;
+    shift = 0;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    const deltaLng = result & 1 ? ~(result >> 1) : result >> 1;
+    lng += deltaLng;
+
+    coordinates.push({ lat: lat / factor, lng: lng / factor });
+  }
+
+  return coordinates;
+}
+
+export function routeNodeSortKey(at: string | null): string {
+  return at ?? "9999-12-31T23:59:59.999Z";
+}
+
+function toRouteNodeAt(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  return value;
+}
+
+/** Chronological route nodes: photos (incl. ida/vuelta) + places. */
+export function buildRouteNodesFromPhotosAndPlaces(
+  photos: RoutePhotoInput[],
+  places: RoutePlaceInput[] = []
+): MapRouteNode[] {
+  const nodes: MapRouteNode[] = [];
+
+  for (const photo of photos) {
+    if (photo.latitude == null || photo.longitude == null) continue;
+    let kind: MapRouteNodeKind = "ground";
+    if (photo.isTransportStart) kind = "transport-out";
+    else if (photo.isTransportEnd) kind = "transport-in";
+
+    nodes.push({
+      lng: photo.longitude,
+      lat: photo.latitude,
+      kind,
+      at: toRouteNodeAt(photo.exifDateTime),
+    });
+  }
+
+  for (const place of places) {
+    nodes.push({
+      lng: place.longitude,
+      lat: place.latitude,
+      kind: "ground",
+      at: toRouteNodeAt(place.visitedAt),
+    });
+  }
+
+  return nodes.sort((a, b) => routeNodeSortKey(a.at).localeCompare(routeNodeSortKey(b.at)));
+}
+
+/** Merge duplicate coordinates; transport markers win over ground. */
+export function coalesceRouteNodes(nodes: MapRouteNode[]): MapRouteNode[] {
+  const seen = new Map<string, MapRouteNode>();
+  for (const node of nodes) {
+    const key = `${node.lat.toFixed(4)},${node.lng.toFixed(4)}`;
+    const existing = seen.get(key);
+    if (!existing) {
+      seen.set(key, node);
+      continue;
+    }
+    const kind =
+      node.kind !== "ground"
+        ? node.kind
+        : existing.kind !== "ground"
+          ? existing.kind
+          : "ground";
+    const at =
+      existing.at && node.at
+        ? existing.at <= node.at
+          ? existing.at
+          : node.at
+        : existing.at ?? node.at;
+    seen.set(key, { ...existing, kind, at });
+  }
+  return [...seen.values()].sort((a, b) =>
+    routeNodeSortKey(a.at).localeCompare(routeNodeSortKey(b.at))
+  );
 }
 
 /** Reduce waypoints for Mapbox Directions (max 25 coordinates). */
@@ -276,6 +409,20 @@ export async function resolveSegmentedRoute(
         : "direct";
 
   return { roadPolylines, flightPolylines, mode };
+}
+
+/** Lat/lng segments for Leaflet or Mapbox GL (decoded from Directions polylines). */
+export async function resolveSegmentedRouteGeometry(
+  nodes: MapRouteNode[]
+): Promise<SegmentedRouteGeometry | null> {
+  const segmented = await resolveSegmentedRoute(nodes);
+  if (!segmented) return null;
+
+  return {
+    roadSegments: segmented.roadPolylines.map((polyline) => decodePolyline(polyline)),
+    flightLegs: segmented.flightPolylines.map((polyline) => decodePolyline(polyline)),
+    mode: segmented.mode,
+  };
 }
 
 /** @deprecated Use resolveSegmentedRoute — single polyline for all waypoints. */

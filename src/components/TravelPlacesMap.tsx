@@ -10,7 +10,13 @@ import {
   photoGpsPoints,
   resolveFlightLegs,
 } from "@/lib/flights";
-import { computeMapCenter, placeEmoji, isGeolocationSecureContext, buildTravelRoutePoints } from "@/lib/places";
+import { computeMapCenter, placeEmoji, isGeolocationSecureContext } from "@/lib/places";
+import {
+  buildRouteNodesFromPhotosAndPlaces,
+  coalesceRouteNodes,
+  resolveSegmentedRouteGeometry,
+  type SegmentedRouteGeometry,
+} from "@/lib/mapbox-route";
 import {
   createEmojiMarkerElement,
   loadMapbox,
@@ -75,6 +81,7 @@ export default function TravelPlacesMap({
   const placesCountRef = useRef(places.length);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [routeGeometry, setRouteGeometry] = useState<SegmentedRouteGeometry | null>(null);
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
 
@@ -88,7 +95,39 @@ export default function TravelPlacesMap({
 
   const { outbound, inbound } = resolveFlightLegs(photos);
   const routePhotos = photoGpsPoints(photos);
-  const routePoints = buildTravelRoutePoints(photos, places);
+
+  useEffect(() => {
+    let cancelled = false;
+    const nodes = coalesceRouteNodes(
+      buildRouteNodesFromPhotosAndPlaces(
+        photos.map((photo) => ({
+          latitude: photo.latitude,
+          longitude: photo.longitude,
+          exifDateTime: photo.exifDateTime,
+          isTransportStart: photo.isTransportStart,
+          isTransportEnd: photo.isTransportEnd,
+        })),
+        places.map((place) => ({
+          latitude: place.latitude,
+          longitude: place.longitude,
+          visitedAt: place.visitedAt ?? null,
+        }))
+      )
+    );
+
+    if (nodes.length < 2) {
+      setRouteGeometry(null);
+      return;
+    }
+
+    void resolveSegmentedRouteGeometry(nodes).then((geometry) => {
+      if (!cancelled) setRouteGeometry(geometry);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [photos, places]);
 
   useEffect(() => {
     if (places.length !== placesCountRef.current) {
@@ -225,27 +264,25 @@ export default function TravelPlacesMap({
 
       const bounds: [number, number][] = [];
 
-      const routeCoords = routePoints.map(
-        (p) => [p.longitude, p.latitude] as [number, number]
+      const roadCoords = (routeGeometry?.roadSegments ?? []).map((segment) =>
+        segment.map((point) => [point.lng, point.lat] as [number, number])
       );
+      const flightCoords = (routeGeometry?.flightLegs ?? []).map((leg) =>
+        leg.map((point) => [point.lng, point.lat] as [number, number])
+      );
+
+      const roadFeature = {
+        type: "Feature" as const,
+        properties: {},
+        geometry: {
+          type: "MultiLineString" as const,
+          coordinates: roadCoords.filter((segment) => segment.length > 1),
+        },
+      };
       if (map.getSource("photo-route")) {
-        (map.getSource("photo-route") as GeoJSONSource).setData({
-          type: "Feature",
-          properties: {},
-          geometry: {
-            type: "LineString",
-            coordinates: routeCoords.length > 1 ? routeCoords : [],
-          },
-        });
-      } else if (routeCoords.length > 1) {
-        map.addSource("photo-route", {
-          type: "geojson",
-          data: {
-            type: "Feature",
-            properties: {},
-            geometry: { type: "LineString", coordinates: routeCoords },
-          },
-        });
+        (map.getSource("photo-route") as GeoJSONSource).setData(roadFeature);
+      } else if (roadFeature.geometry.coordinates.length > 0) {
+        map.addSource("photo-route", { type: "geojson", data: roadFeature });
         map.addLayer({
           id: "photo-route-line",
           type: "line",
@@ -258,31 +295,18 @@ export default function TravelPlacesMap({
         });
       }
 
-      const flightCoords =
-        outbound?.hasGps && inbound?.hasGps
-          ? ([
-              [outbound.photo.longitude!, outbound.photo.latitude!],
-              [inbound.photo.longitude!, inbound.photo.latitude!],
-            ] as [number, number][])
-          : [];
+      const flightFeature = {
+        type: "Feature" as const,
+        properties: {},
+        geometry: {
+          type: "MultiLineString" as const,
+          coordinates: flightCoords.filter((leg) => leg.length > 1),
+        },
+      };
       if (map.getSource("flight-route")) {
-        (map.getSource("flight-route") as GeoJSONSource).setData({
-          type: "Feature",
-          properties: {},
-          geometry: {
-            type: "LineString",
-            coordinates: flightCoords,
-          },
-        });
-      } else if (flightCoords.length === 2) {
-        map.addSource("flight-route", {
-          type: "geojson",
-          data: {
-            type: "Feature",
-            properties: {},
-            geometry: { type: "LineString", coordinates: flightCoords },
-          },
-        });
+        (map.getSource("flight-route") as GeoJSONSource).setData(flightFeature);
+      } else if (flightFeature.geometry.coordinates.length > 0) {
+        map.addSource("flight-route", { type: "geojson", data: flightFeature });
         map.addLayer({
           id: "flight-route-line",
           type: "line",
@@ -397,6 +421,7 @@ export default function TravelPlacesMap({
     addMode,
     outbound,
     inbound,
+    routeGeometry,
     mapReady,
   ]);
 
@@ -429,7 +454,8 @@ export default function TravelPlacesMap({
     }
   }, []);
 
-  const hasFlightLine = outbound?.hasGps && inbound?.hasGps;
+  const hasFlightLine = (routeGeometry?.flightLegs.length ?? 0) > 0;
+  const hasRoadRoute = (routeGeometry?.roadSegments.length ?? 0) > 0;
 
   if (mapError) {
     return (
@@ -470,10 +496,10 @@ export default function TravelPlacesMap({
             Trayecto aéreo
           </span>
         )}
-        {routePoints.length > 0 && (
+        {hasRoadRoute && (
           <span className="flex items-center gap-1">
             <span className="inline-block h-0.5 w-4 border-t-2 border-[var(--accent-mint)]" />
-            Recorrido (fotos y lugares)
+            Ruta por carretera
           </span>
         )}
         {routePhotos.length > 0 && (
