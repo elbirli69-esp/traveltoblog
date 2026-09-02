@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 
 def main() -> int:
@@ -28,8 +29,16 @@ def main() -> int:
         )
         return 1
 
+    html_path = Path(args.html_path).resolve()
+    pdf_path = Path(args.pdf_path).resolve()
+    base_url = html_path.parent.as_uri() + "/"
+
     try:
-        HTML(filename=args.html_path).write_pdf(args.pdf_path)
+        document = HTML(filename=str(html_path), base_url=base_url)
+        try:
+            document.write_pdf(str(pdf_path), optimize_images=True, jpeg_quality=85)
+        except TypeError:
+            document.write_pdf(str(pdf_path))
     except Exception as exc:  # noqa: BLE001
         print(f"Error al generar PDF: {exc}", file=sys.stderr)
         return 1

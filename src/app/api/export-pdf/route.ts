@@ -1,84 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execFile } from "child_process";
-import { promisify } from "util";
-import path from "path";
-import { readFile } from "fs/promises";
-import { prisma } from "@/lib/prisma";
-import {
-  preparePdfAssets,
-  writePrintHtmlFile,
-  type PdfPageFormat,
-} from "@/lib/export-pdf";
-
-const execFileAsync = promisify(execFile);
+import { buildPdfArtifact } from "@/lib/export-pdf";
+import { probeWeasyPrint } from "@/lib/export-pdf-render";
+import type { PdfPageFormat } from "@/lib/export-pdf";
+import type { PdfPipelineEvent } from "@/lib/export-pdf-pipeline";
 
 const FORMATS: PdfPageFormat[] = ["a4-landscape", "square"];
 
-function resolveWeasyPrint(): string[] {
-  const candidates = [
-    process.env.WEASYPRINT_BIN,
-    "/usr/bin/weasyprint",
-    path.join(process.env.HOME ?? "", ".local", "bin", "weasyprint"),
-  ].filter((c): c is string => Boolean(c));
-  return [...new Set(candidates)];
-}
-
-async function probeWeasyPrint(): Promise<{ available: boolean; detail?: string }> {
-  const scriptPath = path.join(process.cwd(), "scripts", "render-pdf.py");
-  const errors: string[] = [];
-
-  for (const bin of resolveWeasyPrint()) {
-    try {
-      await execFileAsync(bin, ["--version"], { timeout: 8000, env: process.env });
-      return { available: true, detail: bin };
-    } catch (err) {
-      errors.push(`${bin}: ${err instanceof Error ? err.message : "failed"}`);
-    }
-  }
-
-  try {
-    await execFileAsync(
-      "python3",
-      ["-c", "import weasyprint; print(weasyprint.__version__)"],
-      { timeout: 8000, env: process.env }
-    );
-    return { available: true, detail: "python3+weasyprint" };
-  } catch (err) {
-    errors.push(`python3: ${err instanceof Error ? err.message : "failed"}`);
-  }
-
-  return { available: false, detail: errors.join("; ") };
-}
-
-async function renderPdf(htmlPath: string, pdfPath: string, format: PdfPageFormat) {
-  const scriptPath = path.join(process.cwd(), "scripts", "render-pdf.py");
-  const errors: string[] = [];
-
-  for (const bin of resolveWeasyPrint()) {
-    try {
-      await execFileAsync(bin, [htmlPath, pdfPath], { env: process.env });
-      return;
-    } catch (err) {
-      errors.push(`${bin}: ${err instanceof Error ? err.message : "failed"}`);
-    }
-  }
-
-  try {
-    await execFileAsync("python3", [scriptPath, htmlPath, pdfPath, "--format", format], {
-      env: process.env,
-    });
-    return;
-  } catch (err) {
-    errors.push(`python3: ${err instanceof Error ? err.message : "failed"}`);
-  }
-
-  throw new Error(`WeasyPrint no disponible (${errors.join("; ")})`);
-}
-
 export async function POST(request: NextRequest) {
-  let cleanup: (() => Promise<void>) | null = null;
-
   try {
+    const stream = request.nextUrl.searchParams.get("stream") === "true";
     const body = await request.json();
     const { travelId, format = "a4-landscape" } = body as {
       travelId?: string;
@@ -93,55 +23,60 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Formato no válido" }, { status: 400 });
     }
 
-    const travel = await prisma.travel.findUnique({
-      where: { id: travelId },
-      include: {
-        users: true,
-        photos: {
-          where: { selected: true },
-          include: {
-            user: true,
-            notes: { select: { text: true } },
-          },
-          orderBy: { exifDateTime: "asc" },
-        },
-        notes: {
-          include: { user: true },
-          orderBy: { createdAt: "asc" },
-        },
-      },
-    });
+    const run = async (emit?: (event: PdfPipelineEvent) => void) => {
+      const { buffer, filename } = await buildPdfArtifact(travelId, format, emit);
+      return { buffer, filename };
+    };
 
-    if (!travel) {
-      return NextResponse.json({ error: "Viaje no encontrado" }, { status: 404 });
+    if (stream) {
+      const encoder = new TextEncoder();
+      const readable = new ReadableStream({
+        async start(controller) {
+          const send = (event: PdfPipelineEvent) => {
+            controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+          };
+
+          try {
+            const { buffer, filename } = await run(send);
+            send({
+              step: "complete",
+              status: "done",
+              message: "PDF listo",
+              filename,
+              contentType: "application/pdf",
+              blobBase64: buffer.toString("base64"),
+            });
+          } catch (error) {
+            console.error("POST /api/export-pdf stream", error);
+            send({
+              step: "error",
+              status: "error",
+              message:
+                error instanceof Error
+                  ? error.message.includes("WeasyPrint")
+                    ? "WeasyPrint no está disponible en el servidor"
+                    : error.message
+                  : "Error al generar PDF",
+            });
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(readable, {
+        headers: {
+          "Content-Type": "application/x-ndjson; charset=utf-8",
+          "Cache-Control": "no-cache",
+        },
+      });
     }
 
-    if (travel.photos.length === 0) {
-      return NextResponse.json(
-        { error: "No hay fotos seleccionadas para el álbum" },
-        { status: 400 }
-      );
-    }
-
-    const ctx = await preparePdfAssets(travel, format);
-    const build = await writePrintHtmlFile(ctx);
-    cleanup = build.cleanup;
-
-    const pdfPath = path.join(ctx.workDir, "album.pdf");
-    await renderPdf(build.htmlPath, pdfPath, format);
-
-    const pdfBuffer = await readFile(pdfPath);
-    const slug =
-      travel.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")
-        .slice(0, 40) || "album";
-
-    return new NextResponse(new Uint8Array(pdfBuffer), {
+    const { buffer, filename } = await run();
+    return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${slug}-album-imprenta.pdf"`,
+        "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
   } catch (error) {
@@ -149,10 +84,10 @@ export async function POST(request: NextRequest) {
     const message =
       error instanceof Error && error.message.includes("WeasyPrint")
         ? "WeasyPrint no está disponible en el servidor"
-        : "Error al generar PDF";
+        : error instanceof Error
+          ? error.message
+          : "Error al generar PDF";
     return NextResponse.json({ error: message }, { status: 500 });
-  } finally {
-    if (cleanup) await cleanup().catch(() => undefined);
   }
 }
 
