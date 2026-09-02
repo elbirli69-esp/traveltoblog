@@ -213,6 +213,12 @@ export default function ExportHtmlPanel({
             HTML único (todo embebido)
           </label>
         </div>
+        {format === "html" && (
+          <p className="callout callout-warning mt-2 text-xs">
+            El HTML único embebe todas las fotos en un solo archivo: puede pesar mucho más y tardar
+            más en generarse. Para compartir o archivar, recomendamos ZIP.
+          </p>
+        )}
       </div>
 
       {!hasJournal && (

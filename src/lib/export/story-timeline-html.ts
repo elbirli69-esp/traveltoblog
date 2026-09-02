@@ -113,7 +113,7 @@ function renderPhotoCard(
   const media = ev.mediaUrl
     ? `<figure class="story-media">
         <button type="button" class="story-media-btn" aria-label="Ampliar foto">
-          <img src="${escapeHtml(ev.mediaUrl)}" alt="Foto del viaje" loading="lazy" class="story-photo-img">
+          <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(ev.mediaUrl.replace(/-thumb\\.jpg$/i, ".jpg"))}" alt="Foto del viaje" loading="lazy" class="story-photo-img">
         </button>
         <figcaption class="story-photo-caption">${escapeHtml(ev.author ?? "Viajero")} · ${formatTime(ev.at)}</figcaption>
       </figure>`
@@ -200,7 +200,7 @@ function renderFlightCard(ev: TimelineEvent): string {
   const label = isOut ? "Salida — inicio del viaje" : "Regreso — fin del viaje";
   const media = ev.mediaUrl
     ? `<figure class="story-media story-media--compact">
-        <img src="${escapeHtml(ev.mediaUrl)}" alt="" loading="lazy" class="story-photo-img">
+        <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(ev.mediaUrl.replace(/-thumb\\.jpg$/i, ".jpg"))}" alt="" loading="lazy" class="story-photo-img">
       </figure>`
     : "";
 
@@ -538,25 +538,6 @@ export function buildStoryTimelineSyncScript(): string {
     }
     var id = card.getAttribute("data-event-id");
     if (id && window.__travelPlay) window.__travelPlay.goToEvent(id);
-  });
-
-  document.querySelectorAll(".story-media-btn").forEach(function (btn) {
-    btn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      var img = btn.querySelector("img");
-      if (!img) return;
-      var lightbox = document.getElementById("lightbox");
-      var lightboxImg = lightbox && lightbox.querySelector("img");
-      var lightboxCap = lightbox && lightbox.querySelector(".lightbox-caption");
-      if (!lightbox || !lightboxImg) return;
-      lightboxImg.src = img.src;
-      lightboxImg.alt = img.alt || "";
-      var cap = btn.closest(".story-media");
-      var caption = cap && cap.querySelector(".story-photo-caption");
-      if (lightboxCap) lightboxCap.textContent = caption ? caption.textContent : "";
-      lightbox.classList.add("open");
-      document.body.style.overflow = "hidden";
-    });
   });
 })();
 `;

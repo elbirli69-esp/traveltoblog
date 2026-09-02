@@ -32,6 +32,12 @@ import {
   findTripNote,
   magazineStyles,
 } from "@/lib/export/magazine-html";
+import { createExportImageSet } from "@/lib/export-images";
+import {
+  buildExportPhotoBootScript,
+  buildExportPhotoRegistryScript,
+  exportThumbImgTag,
+} from "@/lib/export-photo-html";
 
 export type ExportTypologyId = TravelType | "auto";
 export type ExportTemplateId = "magazine" | "visual-journey" | "editorial-clean" | "dark-photo-journey";
@@ -59,7 +65,10 @@ export interface ExportMapDayGroup {
 export interface ExportPhoto {
   id: string;
   url: string;
+  /** Optimized JPEG for lightbox, hero and crónica (~1600px). */
   localPath: string;
+  /** Small JPEG for grids, timeline and map popups (~480px). */
+  thumbPath: string;
   latitude: number | null;
   longitude: number | null;
   exifDateTime: Date | null;
@@ -105,7 +114,7 @@ export function buildFlightMapPoints(photos: ExportPhoto[]): MapPoint[] {
       lat: outbound.latitude!,
       lng: outbound.longitude!,
       label: `Vuelo de ida — ${outbound.alias}`,
-      photoPath: outbound.localPath,
+      photoPath: outbound.thumbPath,
       date: (outbound.exifDateTime ?? new Date()).toISOString(),
       emoji: "✈️",
       kind: "flight-out",
@@ -120,7 +129,7 @@ export function buildFlightMapPoints(photos: ExportPhoto[]): MapPoint[] {
       lat: inbound.latitude!,
       lng: inbound.longitude!,
       label: `Vuelo de vuelta — ${inbound.alias}`,
-      photoPath: inbound.localPath,
+      photoPath: inbound.thumbPath,
       date: (inbound.exifDateTime ?? new Date()).toISOString(),
       emoji: "🛬",
       kind: "flight-in",
@@ -164,7 +173,7 @@ export function buildPhotoRoutePoints(photos: ExportPhoto[]): MapPoint[] {
       lat: p.latitude!,
       lng: p.longitude!,
       label: `Foto ${i + 1} — ${p.alias}`,
-      photoPath: p.localPath,
+      photoPath: p.thumbPath,
       date: (p.exifDateTime ?? new Date()).toISOString(),
       kind: "photo" as const,
       dayKey,
@@ -282,24 +291,6 @@ function buildInteractiveScripts(template: ExportTemplateId): string {
   return `
 (function () {
   var lightbox = document.getElementById("lightbox");
-  var lightboxImg = lightbox && lightbox.querySelector("img");
-  var lightboxCap = lightbox && lightbox.querySelector(".lightbox-caption");
-
-  document.querySelectorAll(".photo-block img, .gallery-tile img").forEach(function (img) {
-    img.addEventListener("click", function () {
-      if (!lightbox || !lightboxImg) return;
-      lightboxImg.src = img.src;
-      lightboxImg.alt = img.alt || "";
-      if (lightboxCap) {
-        var fig = img.closest("figure");
-        var cap = fig && fig.querySelector("figcaption");
-        lightboxCap.textContent = cap ? cap.textContent : "";
-      }
-      lightbox.classList.add("open");
-      document.body.style.overflow = "hidden";
-    });
-  });
-
   if (lightbox) {
     lightbox.addEventListener("click", function () {
       lightbox.classList.remove("open");
@@ -388,7 +379,7 @@ function buildGallerySection(photos: ExportPhoto[]): string {
           }).format(p.exifDateTime)
         : "";
       const caption = when ? `${p.alias} · ${when}` : p.alias;
-      return `<figure class="gallery-tile"><img src="${escapeHtml(p.localPath)}" alt="Foto de ${escapeHtml(p.alias)}" loading="lazy"><figcaption>${escapeHtml(caption)}</figcaption></figure>`;
+      return `<figure class="gallery-tile">${exportThumbImgTag(p, `Foto de ${p.alias}`, "")}<figcaption>${escapeHtml(caption)}</figcaption></figure>`;
     })
     .join("\n");
 
@@ -1199,7 +1190,7 @@ function buildMapScript(
 }
 
 function buildExportTimelineEvents(ctx: ExportContext): TimelineEvent[] {
-  const urlToLocal = new Map(ctx.photos.map((p) => [p.url, p.localPath]));
+  const urlToThumb = new Map(ctx.photos.map((p) => [p.url, p.thumbPath]));
   const timelineInput = {
     photos: ctx.photos.map((p) => ({
       id: p.id,
@@ -1252,7 +1243,7 @@ function buildExportTimelineEvents(ctx: ExportContext): TimelineEvent[] {
   const { events } = buildTimeline(timelineInput);
   return events.map((ev) => ({
     ...ev,
-    mediaUrl: ev.mediaUrl ? urlToLocal.get(ev.mediaUrl) ?? ev.mediaUrl : undefined,
+    mediaUrl: ev.mediaUrl ? urlToThumb.get(ev.mediaUrl) ?? ev.mediaUrl : undefined,
   }));
 }
 
@@ -1342,11 +1333,12 @@ export function buildExportHtml(ctx: ExportContext): string {
   const distanceKm = estimateRouteKm(photos);
   const travelers = users.map((u) => u.alias).join(", ");
 
-  const heroStyle = coverPhoto
+  const heroGradient = coverPhoto
     ? isMagazine
-      ? `background-image: linear-gradient(to top, rgba(250,249,247,.92), rgba(250,249,247,.4)), url('${coverPhoto.localPath}');`
-      : `background-image: linear-gradient(to top, rgba(12,10,9,.88), rgba(12,10,9,.25)), url('${coverPhoto.localPath}');`
+      ? "linear-gradient(to top, rgba(250,249,247,.92), rgba(250,249,247,.4))"
+      : "linear-gradient(to top, rgba(12,10,9,.88), rgba(12,10,9,.25))"
     : "";
+  const heroPhotoPath = coverPhoto?.localPath ?? null;
 
   const headerBlock = isMagazine
     ? `${buildMagazineHero({
@@ -1355,12 +1347,13 @@ export function buildExportHtml(ctx: ExportContext): string {
         dateRange,
         travelers,
         typologyLabel: profile.label,
-        heroStyle,
+        coverPhotoPath: heroPhotoPath,
+        heroGradient,
       })}
 ${buildTocHtml(timelineEvents)}
 ${buildMagazineNav(hasMap, hasJournalArticle)}`
     : isVisual
-      ? `<header class="hero" style="${heroStyle}">
+      ? `<header class="hero"${heroPhotoPath ? ` data-export-hero="${escapeHtml(heroPhotoPath)}" data-export-hero-gradient="${escapeHtml(heroGradient)}"` : ""}>
       <div class="hero-content reveal">
         <span class="hero-badge">${escapeHtml(profile.label)} · ${escapeHtml(getTemplateLabel(template))}</span>
         <h1>${escapeHtml(travel.title)}</h1>
@@ -1482,6 +1475,8 @@ ${buildMagazineNav(hasMap, hasJournalArticle)}`
       })
     : "";
 
+  const exportBootScript = `<script>${buildExportPhotoBootScript()}</script>`;
+
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1505,6 +1500,7 @@ ${buildMagazineNav(hasMap, hasJournalArticle)}`
   ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, "assets/images")}</script>` : ""}
   ${playScript}
   ${interactiveScript}
+  ${exportBootScript}
 </body>
 </html>`;
 }
@@ -1548,12 +1544,12 @@ function escapeHtml(text: string): string {
 export async function loadPhotoFiles(
   photos: (Photo & { user: User })[]
 ): Promise<ExportPhoto[]> {
-  // Export HTML/PDF: siempre archivos originales en disco (no miniaturas).
   const selected = photos.filter((p) => p.selected);
   return Promise.all(
     selected.map(async (photo, index) => {
-      const ext = path.extname(photo.filename) || ".jpg";
-      const localPath = `photos/${String(index + 1).padStart(3, "0")}${ext}`;
+      const base = `photos/${String(index + 1).padStart(3, "0")}`;
+      const localPath = `${base}.jpg`;
+      const thumbPath = `${base}-thumb.jpg`;
       const resolved = await resolvePhotoExifFromFile({
         url: photo.url,
         exifDateTime: photo.exifDateTime,
@@ -1564,6 +1560,7 @@ export async function loadPhotoFiles(
         id: photo.id,
         url: photo.url,
         localPath,
+        thumbPath,
         latitude: resolved.latitude,
         longitude: resolved.longitude,
         exifDateTime: resolved.dateTime,
@@ -1646,8 +1643,12 @@ export async function buildExportZip(ctx: ExportContext): Promise<Buffer> {
   }
 
   for (const photo of ctx.photos) {
-    const buf = await readPhotoBuffer(photo.url);
-    if (buf) zip.file(photo.localPath, buf);
+    const original = await readPhotoBuffer(photo.url);
+    if (!original) continue;
+    const ext = path.extname(photo.url) || ".jpg";
+    const { display, thumb } = await createExportImageSet(original, ext);
+    zip.file(photo.localPath, display);
+    zip.file(photo.thumbPath, thumb);
   }
 
   return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
@@ -1658,19 +1659,14 @@ export async function buildSingleFileHtml(ctx: ExportContext): Promise<Buffer> {
   const zip = await JSZip.loadAsync(zipBuffer);
   let html = await zip.file("index.html")!.async("string");
 
-  const photoDataUrls = new Map<string, string>();
+  const registry: Record<string, string> = {};
   for (const photo of ctx.photos) {
-    const file = zip.file(photo.localPath);
-    if (!file) continue;
-    const b64 = await file.async("base64");
-    const ext = path.extname(photo.localPath).toLowerCase();
-    const mime =
-      ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
-    photoDataUrls.set(photo.localPath, `data:${mime};base64,${b64}`);
-  }
-
-  for (const [localPath, dataUrl] of photoDataUrls) {
-    html = html.split(localPath).join(dataUrl);
+    for (const filePath of [photo.localPath, photo.thumbPath]) {
+      const file = zip.file(filePath);
+      if (!file || registry[filePath]) continue;
+      const b64 = await file.async("base64");
+      registry[filePath] = `data:image/jpeg;base64,${b64}`;
+    }
   }
 
   if (exportHasMap(ctx)) {
@@ -1691,7 +1687,7 @@ export async function buildSingleFileHtml(ctx: ExportContext): Promise<Buffer> {
 
     const mapPoints = mergeMapPoints(ctx.photos, ctx.places ?? []).map((p) => ({
       ...p,
-      photoPath: p.photoPath ? photoDataUrls.get(p.photoPath) ?? p.photoPath : null,
+      photoPath: p.photoPath ? registry[p.photoPath] ?? p.photoPath : null,
     }));
 
     const iconScript = `delete L.Icon.Default.prototype._getIconUrl;
@@ -1712,6 +1708,12 @@ L.Icon.Default.mergeOptions({
       `<script>${leafletJs}\n${mapScriptBody}</script>`
     );
   }
+
+  const bootScriptTag = `<script>${buildExportPhotoBootScript()}</script>`;
+  html = html.replace(
+    bootScriptTag,
+    `${buildExportPhotoRegistryScript(registry)}${bootScriptTag}`
+  );
 
   return Buffer.from(html, "utf-8");
 }
