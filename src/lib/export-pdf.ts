@@ -86,6 +86,13 @@ export async function preparePdfAssets(
       place?: { name: string } | null;
     })[];
     notes: (Note & { user: User })[];
+    places?: {
+      id: string;
+      name: string;
+      latitude: number;
+      longitude: number;
+      visitedAt: Date | null;
+    }[];
   },
   options: PdfExportOptions,
   onProgress?: (current: number, total: number) => void
@@ -130,7 +137,17 @@ export async function preparePdfAssets(
     });
   }
 
-  const mapImagePath = await fetchPdfMapImage(photos, workDir);
+  const mapResult = await fetchPdfMapImage(
+    photos,
+    workDir,
+    (travel.places ?? []).map((p) => ({
+      id: p.id,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      visitedAt: p.visitedAt,
+      name: p.name,
+    }))
+  );
 
   return {
     travel: {
@@ -146,7 +163,9 @@ export async function preparePdfAssets(
     format,
     template,
     coverPhotoId,
-    mapImagePath,
+    mapImagePath: mapResult?.relativePath ?? null,
+    mapRouteMode: mapResult?.routeMode ?? null,
+    mapPointCount: mapResult?.pointCount ?? 0,
     workDir,
   };
 }
@@ -201,6 +220,16 @@ export async function buildPdfArtifact(
       notes: {
         include: { user: true },
         orderBy: { createdAt: "asc" },
+      },
+      places: {
+        select: {
+          id: true,
+          name: true,
+          latitude: true,
+          longitude: true,
+          visitedAt: true,
+        },
+        orderBy: { visitedAt: "asc" },
       },
     },
   });

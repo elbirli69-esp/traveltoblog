@@ -45,8 +45,11 @@ export interface PdfExportContext {
   format: PdfPageFormat;
   template: PdfTemplate;
   coverPhotoId?: string | null;
-  /** Relative path to static map JPEG inside workDir (e.g. map/route.jpg). */
+  /** Relative path to static map PNG inside workDir (e.g. map/route.png). */
   mapImagePath?: string | null;
+  /** How the PDF route line was generated. */
+  mapRouteMode?: "directions" | "direct" | null;
+  mapPointCount?: number;
 }
 
 export const PDF_TEMPLATES: { id: PdfTemplate; name: string; description: string }[] = [

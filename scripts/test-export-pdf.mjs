@@ -28,13 +28,15 @@ const html = buildPrintHtml({
   notes: [],
   format: "a4-landscape",
   template: "classic",
-  mapImagePath: "map/route.jpg",
+  mapImagePath: "map/route.png",
+  mapRouteMode: "directions",
+  mapPointCount: 3,
 });
 
 assert.ok(html.includes('src="photos/001-bleed.jpg"'), "bleed image on cover");
 assert.ok(html.includes("page-cover"), "cover page");
 assert.ok(html.includes("page-map"), "map page");
-assert.ok(html.includes("map/route.jpg"), "map image path");
+assert.ok(html.includes("map/route.png"), "map image path");
 assert.ok(html.includes("page-bleed") || html.includes("page-featured"), "interior layouts");
 assert.ok(!html.includes("file://"), "no file:// urls");
 assert.ok(html.includes("Capítulo") || html.includes("Recuerdos"), "day divider");

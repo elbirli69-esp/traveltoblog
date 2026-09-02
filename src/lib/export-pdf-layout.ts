@@ -245,9 +245,13 @@ function renderMap(
 ): string {
   if (!ctx.mapImagePath) return "";
   const { width, height } = pageDimensions(format);
-  const gpsCount = ctx.photos.filter(
+  const gpsCount = ctx.mapPointCount ?? ctx.photos.filter(
     (p) => p.latitude != null && p.longitude != null
   ).length;
+  const routeHint =
+    ctx.mapRouteMode === "directions"
+      ? "Ruta por carretera (Mapbox Directions)"
+      : "Ruta cronológica entre paradas";
 
   return `
   <section class="page page-map" style="width:${width};height:${height}">
@@ -258,7 +262,7 @@ function renderMap(
         <div class="map-frame">
           <img src="${escapeHtml(ctx.mapImagePath)}" alt="Mapa de la ruta" />
         </div>
-        <p class="map-caption">${gpsCount} puntos con GPS · orden cronológico</p>
+        <p class="map-caption">${gpsCount} paradas · ${routeHint}</p>
       </div>
     </div>
     ${renderPageFooter(page.pageNumber, totalPages)}
