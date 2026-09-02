@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import { preparePhotoForStorage } from "@/lib/photo-upload";
-import { resolvePhotoPlaceId } from "@/lib/photo-place";
+import { inferPlaceIdFromGps, loadPlacesForLink } from "@/lib/photo-place-auto-link";
 import { prisma } from "@/lib/prisma";
 import { maxBytesForMedia } from "@/lib/media-limits";
 import type { MediaKind } from "@/lib/media-types";
@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
     }>;
 
     const synced = [];
+    const places = await loadPlacesForLink(travelId);
 
     for (const meta of pendingPhotos) {
       const existing = await prisma.photo.findUnique({
@@ -73,7 +74,16 @@ export async function POST(request: NextRequest) {
         }
       );
 
-      const placeId = await resolvePhotoPlaceId(travelId, meta.placeId ?? null);
+      const placeId = inferPlaceIdFromGps(
+        prepared.exif.latitude,
+        prepared.exif.longitude,
+        places,
+        meta.placeId ?? null,
+        {
+          isTransportStart: meta.isTransportStart,
+          isTransportEnd: meta.isTransportEnd,
+        }
+      );
 
       const photo = await prisma.photo.create({
         data: {

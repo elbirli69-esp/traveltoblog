@@ -24,6 +24,7 @@ import AddMemorySheet, {
 } from "@/components/AddMemorySheet";
 import EmptyMemoryState from "@/components/EmptyMemoryState";
 import TravelTimeline from "@/components/TravelTimeline";
+import PhotoPlaceLinkBanner from "@/components/PhotoPlaceLinkBanner";
 import GpsTrailRecorder from "@/components/GpsTrailRecorder";
 import type { TimelineEvent } from "@/lib/timeline";
 import type { PlaceType } from "@prisma/client";
@@ -407,6 +408,14 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
         openPickerSignal={photoPickerSignal}
         highlight={highlightUpload}
         addOnly
+      />
+
+      <PhotoPlaceLinkBanner
+        travelId={travelId}
+        photos={travel.photos}
+        places={travel.places}
+        onChanged={() => setRefreshKey((k) => k + 1)}
+        className="mb-4"
       />
 
       <TravelWorkspaceTabs

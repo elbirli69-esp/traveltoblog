@@ -9,10 +9,14 @@ export interface ExportWarningsInput {
   startDate: Date | null;
   endDate: Date | null;
   journalMarkdown: string | null;
+  placeCount?: number;
   photos: {
     latitude: number | null;
     longitude: number | null;
     exifDateTime: Date | null;
+    placeId?: string | null;
+    isTransportStart?: boolean;
+    isTransportEnd?: boolean;
     mediaType?: "IMAGE" | "VIDEO";
     /** Approximate original file size when known (videos). */
     fileSizeBytes?: number | null;
@@ -53,6 +57,22 @@ export function buildExportWarnings(input: ExportWarningsInput): ExportWarning[]
           ? "Ninguna foto tiene GPS: el mapa no aparecerá en el export."
           : `${noGps} de ${photoCount} fotos sin GPS — el mapa puede quedar incompleto.`,
     });
+  }
+
+  if ((input.placeCount ?? 0) > 0) {
+    const linkable = input.photos.filter(
+      (p) => !p.isTransportStart && !p.isTransportEnd
+    );
+    const noPlace = linkable.filter((p) => !p.placeId).length;
+    if (noPlace > 0) {
+      warnings.push({
+        level: noPlace === linkable.length ? "warning" : "info",
+        message:
+          noPlace === linkable.length
+            ? `Ninguna foto seleccionada está vinculada a un lugar (${input.placeCount} lugares en el viaje).`
+            : `${noPlace} de ${linkable.length} fotos seleccionadas sin lugar vinculado — el export puede perder contexto de sitios.`,
+      });
+    }
   }
 
   const { dayKeys } = resolveTravelDayRange({
