@@ -5,6 +5,23 @@ export interface MapRouteWaypoint {
   lat: number;
 }
 
+export type MapRouteNodeKind = "ground" | "transport-out" | "transport-in";
+
+export interface MapRouteNode extends MapRouteWaypoint {
+  kind: MapRouteNodeKind;
+  at: string | null;
+}
+
+export type MapRouteBuildMode = "segmented" | "directions" | "direct";
+
+export interface SegmentedRouteResult {
+  /** Encoded polylines for road overlays (Mapbox Directions). */
+  roadPolylines: string[];
+  /** Encoded polylines for flight/transport legs (straight). */
+  flightPolylines: string[];
+  mode: MapRouteBuildMode;
+}
+
 const MAX_DIRECTIONS_WAYPOINTS = 25;
 const STATIC_URL_MAX_LEN = 7800;
 
@@ -68,6 +85,46 @@ export function simplifyWaypoints(
   return result;
 }
 
+function isTransportKind(kind: MapRouteNodeKind): boolean {
+  return kind === "transport-out" || kind === "transport-in";
+}
+
+/** Split timeline into consecutive ground runs (between transport markers). */
+export function splitGroundRuns(nodes: MapRouteNode[]): MapRouteWaypoint[][] {
+  const runs: MapRouteWaypoint[][] = [];
+  let current: MapRouteWaypoint[] = [];
+
+  const flush = () => {
+    if (current.length >= 2) runs.push(current);
+    current = [];
+  };
+
+  for (const node of nodes) {
+    if (isTransportKind(node.kind)) {
+      flush();
+      continue;
+    }
+    current.push({ lng: node.lng, lat: node.lat });
+  }
+  flush();
+  return runs;
+}
+
+/** Flight/transport legs: straight lines adjacent to ida/vuelta markers. */
+export function buildFlightLegs(nodes: MapRouteNode[]): MapRouteWaypoint[][] {
+  const legs: MapRouteWaypoint[][] = [];
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const a = nodes[i]!;
+    const b = nodes[i + 1]!;
+    if (!isTransportKind(a.kind) && !isTransportKind(b.kind)) continue;
+    legs.push([
+      { lng: a.lng, lat: a.lat },
+      { lng: b.lng, lat: b.lat },
+    ]);
+  }
+  return legs;
+}
+
 /** Fetch road-following route geometry from Mapbox Directions API. */
 export async function fetchMapboxDirectionsPolyline(
   waypoints: MapRouteWaypoint[],
@@ -96,9 +153,27 @@ export async function fetchMapboxDirectionsPolyline(
   }
 }
 
-export function buildRoutePathOverlay(encodedPolyline: string): string {
+export function buildPathOverlay(
+  encodedPolyline: string,
+  options?: { width?: number; color?: string; opacity?: number }
+): string {
+  const width = options?.width ?? 6;
+  const color = options?.color ?? "0a84ff";
+  const opacity = options?.opacity ?? 0.95;
   const enc = encodeURIComponent(encodedPolyline);
-  return `path-6+0a84ff-0.95(${enc})`;
+  return `path-${width}+${color}-${opacity}(${enc})`;
+}
+
+export function buildRoutePathOverlay(encodedPolyline: string): string {
+  return buildPathOverlay(encodedPolyline);
+}
+
+export function buildFlightPathOverlay(encodedPolyline: string): string {
+  return buildPathOverlay(encodedPolyline, {
+    width: 4,
+    color: "818cf8",
+    opacity: 0.9,
+  });
 }
 
 export function buildRouteMarkerOverlays(waypoints: MapRouteWaypoint[]): string {
@@ -120,6 +195,16 @@ export function buildRouteMarkerOverlays(waypoints: MapRouteWaypoint[]): string 
   return markers.join(",");
 }
 
+export function buildSegmentedPathOverlays(
+  roadPolylines: string[],
+  flightPolylines: string[]
+): string {
+  return [
+    ...roadPolylines.map(buildRoutePathOverlay),
+    ...flightPolylines.map(buildFlightPathOverlay),
+  ].join(",");
+}
+
 export function buildMapboxStaticOverlays(
   waypoints: MapRouteWaypoint[],
   encodedPolyline: string
@@ -127,6 +212,16 @@ export function buildMapboxStaticOverlays(
   const path = buildRoutePathOverlay(encodedPolyline);
   const markers = buildRouteMarkerOverlays(waypoints);
   return markers ? `${markers},${path}` : path;
+}
+
+export function buildMapboxStaticOverlaysSegmented(
+  markerWaypoints: MapRouteWaypoint[],
+  roadPolylines: string[],
+  flightPolylines: string[]
+): string {
+  const paths = buildSegmentedPathOverlays(roadPolylines, flightPolylines);
+  const markers = buildRouteMarkerOverlays(markerWaypoints);
+  return markers ? `${markers},${paths}` : paths;
 }
 
 export function buildMapboxStaticUrl(
@@ -147,7 +242,43 @@ export function buildMapboxStaticUrl(
   return base;
 }
 
-/** Resolve route polyline: Directions API first, straight-line encoded fallback. */
+/** Ground runs via Directions; transport legs as straight encoded polylines. */
+export async function resolveSegmentedRoute(
+  nodes: MapRouteNode[]
+): Promise<SegmentedRouteResult | null> {
+  if (nodes.length < 2) return null;
+
+  const groundRuns = splitGroundRuns(nodes);
+  const flightLegs = buildFlightLegs(nodes);
+
+  const roadPolylines: string[] = [];
+  let usedDirections = false;
+
+  for (const run of groundRuns) {
+    const directions = await fetchMapboxDirectionsPolyline(run);
+    if (directions) {
+      roadPolylines.push(directions);
+      usedDirections = true;
+      continue;
+    }
+    roadPolylines.push(encodePolyline(run));
+  }
+
+  const flightPolylines = flightLegs.map((leg) => encodePolyline(leg));
+
+  if (roadPolylines.length === 0 && flightPolylines.length === 0) return null;
+
+  const mode: MapRouteBuildMode =
+    usedDirections && flightPolylines.length > 0
+      ? "segmented"
+      : usedDirections
+        ? "directions"
+        : "direct";
+
+  return { roadPolylines, flightPolylines, mode };
+}
+
+/** @deprecated Use resolveSegmentedRoute — single polyline for all waypoints. */
 export async function resolveRoutePolyline(
   waypoints: MapRouteWaypoint[]
 ): Promise<{ polyline: string; mode: "directions" | "direct" } | null> {

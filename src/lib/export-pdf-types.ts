@@ -25,6 +25,8 @@ export interface PdfPhotoAsset {
   placeName?: string | null;
   highlightScore?: number;
   notes: string[];
+  isTransportStart?: boolean;
+  isTransportEnd?: boolean;
 }
 
 export interface PdfExportContext {
@@ -48,7 +50,7 @@ export interface PdfExportContext {
   /** Relative path to static map PNG inside workDir (e.g. map/route.png). */
   mapImagePath?: string | null;
   /** How the PDF route line was generated. */
-  mapRouteMode?: "directions" | "direct" | null;
+  mapRouteMode?: "segmented" | "directions" | "direct" | null;
   mapPointCount?: number;
 }
 

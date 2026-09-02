@@ -134,6 +134,8 @@ export async function preparePdfAssets(
       placeName: photo.place?.name ?? null,
       highlightScore: photo.highlightScore ?? 5,
       notes: photo.notes.map((n) => n.text),
+      isTransportStart: photo.isTransportStart,
+      isTransportEnd: photo.isTransportEnd,
     });
   }
 
