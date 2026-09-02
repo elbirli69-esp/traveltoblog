@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { downloadBlob } from "@/lib/download-blob";
 
 export type PdfPageFormat = "a4-landscape" | "square";
 
@@ -53,12 +54,7 @@ export default function ExportPdfPanel({
       const match = disposition.match(/filename="([^"]+)"/);
       const filename = match?.[1] ?? "album-imprenta.pdf";
 
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      await downloadBlob(blob, filename);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al generar PDF");
     } finally {
