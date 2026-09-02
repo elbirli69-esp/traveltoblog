@@ -6,6 +6,10 @@ import ExportPdfPanel from "@/components/ExportPdfPanel";
 import ExportReelPanel from "@/components/ExportReelPanel";
 import TravelWorkspaceNav from "@/components/TravelWorkspaceNav";
 
+function photoThumbApiPath(photoId: string): string {
+  return `/api/photos/${photoId}/thumb`;
+}
+
 export default async function ExportPage({
   params,
 }: {
@@ -20,8 +24,14 @@ export default async function ExportPage({
       title: true,
       journalMarkdown: true,
       photos: {
-        where: { selected: true },
-        select: { latitude: true, longitude: true },
+        where: { selected: true, mediaType: { not: "VIDEO" } },
+        select: {
+          id: true,
+          latitude: true,
+          longitude: true,
+          highlightScore: true,
+        },
+        orderBy: [{ highlightScore: "desc" }, { exifDateTime: "asc" }],
       },
       _count: { select: { photos: { where: { selected: true } } } },
     },
@@ -32,6 +42,12 @@ export default async function ExportPage({
   const hasGpsPhotos = travel.photos.some(
     (p) => p.latitude != null && p.longitude != null
   );
+
+  const coverPhotos = travel.photos.map((p) => ({
+    id: p.id,
+    thumbUrl: photoThumbApiPath(p.id),
+    highlightScore: p.highlightScore ?? undefined,
+  }));
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 px-4 py-8">
@@ -87,6 +103,7 @@ export default async function ExportPage({
           travelId={travel.id}
           hasJournal={Boolean(travel.journalMarkdown)}
           photoCount={travel._count.photos}
+          coverPhotos={coverPhotos}
         />
       </section>
     </main>
