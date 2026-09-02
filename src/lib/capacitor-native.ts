@@ -14,6 +14,7 @@ export interface NativePickedPhoto {
 export interface PhotoExifPlugin {
   ping(): Promise<{ ok: boolean }>;
   pickImages(options?: { limit?: number }): Promise<{ photos: NativePickedPhoto[] }>;
+  takePhoto(): Promise<{ photos: NativePickedPhoto[] }>;
   readPhotoFile(options: { path: string }): Promise<{ base64: string; mimeType: string }>;
 }
 

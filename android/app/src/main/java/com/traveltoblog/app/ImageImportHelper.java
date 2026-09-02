@@ -47,6 +47,51 @@ public final class ImageImportHelper {
         }
     }
 
+    public static ImportedImage importFile(File file, boolean allowOriginalMedia) {
+        if (file == null || !file.exists() || !file.isFile()) {
+            return null;
+        }
+
+        try {
+            String name = file.getName();
+            String mimeType = guessMimeType(name);
+
+            Double latitude = null;
+            Double longitude = null;
+            String dateTime = null;
+            boolean gpsStripped = false;
+
+            ExifInterface exif = new ExifInterface(file.getAbsolutePath());
+            float[] latLong = new float[2];
+            if (exif.getLatLong(latLong)) {
+                latitude = (double) latLong[0];
+                longitude = (double) latLong[1];
+            } else {
+                gpsStripped = hasGpsIfdWithoutCoords(exif);
+            }
+
+            String exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
+            if (exifDate == null) {
+                exifDate = exif.getAttribute(ExifInterface.TAG_DATETIME);
+            }
+            if (exifDate != null) {
+                dateTime = parseExifDate(exifDate);
+            }
+
+            return new ImportedImage(
+                name,
+                mimeType,
+                file,
+                latitude,
+                longitude,
+                dateTime,
+                gpsStripped
+            );
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     public static ImportedImage importUri(Context context, Uri uri, boolean allowOriginalMedia) {
         File cacheFile = null;
         try {

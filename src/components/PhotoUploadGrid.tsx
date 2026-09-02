@@ -87,9 +87,11 @@ export default function PhotoUploadGrid({
   const [error, setError] = useState<string | null>(null);
   const [locationBusy, setLocationBusy] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+  const [showPhotoSourceSheet, setShowPhotoSourceSheet] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const explorerInputRef = useRef<HTMLInputElement>(null);
   const sectionRef = useRef<HTMLDivElement>(null);
+  const nativePickerBusyRef = useRef(false);
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
@@ -256,21 +258,10 @@ export default function PhotoUploadGrid({
     [dateRange]
   );
 
-  const openNativeGalleryPicker = useCallback(async () => {
-    if (!isCapacitorAndroid()) return;
-    if (!isPhotoExifPluginAvailable()) {
-      setError(
-        "Galería nativa no disponible. Reinstala el APK desde /download/android (v1.0.4+)."
-      );
-      return;
-    }
-    setProcessing(true);
-    setError(null);
-    try {
-      const result = await PhotoExif.pickImages({ limit: 20 });
-      const picked = normalizeNativePickedPhotos(result.photos);
+  const processNativePicked = useCallback(
+    async (picked: NativePickedPhoto[], emptyMessage: string) => {
       if (!picked.length) {
-        setError("No se seleccionaron imágenes o el sistema no permitió leerlas.");
+        setError(emptyMessage);
         return;
       }
 
@@ -282,24 +273,75 @@ export default function PhotoUploadGrid({
 
       if (newPhotos.length === 0) {
         setError(
-          "No se pudieron procesar las imágenes. Actualiza la app en /download/android (v1.0.4+)."
+          "No se pudieron procesar las imágenes. Actualiza la app en /download/android (v1.0.6+)."
         );
       } else {
         setPhotos((prev) => [...prev, ...newPhotos]);
       }
-    } catch (error) {
-      const msg = formatCapacitorError(error);
-      if (/denegad/i.test(msg) || /permission/i.test(msg)) {
+    },
+    [buildPhotoFromNativePick]
+  );
+
+  const runNativePicker = useCallback(
+    async (
+      action: () => Promise<{ photos: NativePickedPhoto[] }>,
+      options: { emptyMessage: string; permissionMessage: string; errorPrefix: string }
+    ) => {
+      if (!isCapacitorAndroid() || nativePickerBusyRef.current) return;
+      if (!isPhotoExifPluginAvailable()) {
         setError(
-          "Permiso de fotos denegado. Ve a Ajustes → Apps → TravelToBlog → Permisos y activa Fotos y Ubicación en medios."
+          "Selector nativo no disponible. Reinstala el APK desde /download/android (v1.0.6+)."
         );
-      } else {
-        setError(`No se pudo abrir la galería nativa: ${msg}`);
+        return;
       }
-    } finally {
-      setProcessing(false);
+
+      nativePickerBusyRef.current = true;
+      setProcessing(true);
+      setError(null);
+      try {
+        const result = await action();
+        const picked = normalizeNativePickedPhotos(result.photos);
+        await processNativePicked(picked, options.emptyMessage);
+      } catch (error) {
+        const msg = formatCapacitorError(error);
+        if (/denegad/i.test(msg) || /permission/i.test(msg)) {
+          setError(options.permissionMessage);
+        } else {
+          setError(`${options.errorPrefix}: ${msg}`);
+        }
+      } finally {
+        nativePickerBusyRef.current = false;
+        setProcessing(false);
+      }
+    },
+    [processNativePicked]
+  );
+
+  const openNativeGalleryPicker = useCallback(async () => {
+    await runNativePicker(() => PhotoExif.pickImages({ limit: 20 }), {
+      emptyMessage: "No se seleccionaron imágenes o el sistema no permitió leerlas.",
+      permissionMessage:
+        "Permiso de fotos denegado. Ve a Ajustes → Apps → TravelToBlog → Permisos y activa Fotos y Ubicación en medios.",
+      errorPrefix: "No se pudo abrir la galería",
+    });
+  }, [runNativePicker]);
+
+  const openNativeCamera = useCallback(async () => {
+    await runNativePicker(() => PhotoExif.takePhoto(), {
+      emptyMessage: "No se tomó ninguna foto.",
+      permissionMessage:
+        "Permiso de cámara denegado. Ve a Ajustes → Apps → TravelToBlog → Permisos y activa Cámara.",
+      errorPrefix: "No se pudo abrir la cámara",
+    });
+  }, [runNativePicker]);
+
+  const openAndroidPhotoSource = useCallback(() => {
+    if (isPhotoExifPluginAvailable()) {
+      setShowPhotoSourceSheet(true);
+      return;
     }
-  }, [buildPhotoFromNativePick]);
+    void openNativeGalleryPicker();
+  }, [openNativeGalleryPicker]);
 
   useEffect(() => {
     if (!openPickerSignal) return;
@@ -308,13 +350,13 @@ export default function PhotoUploadGrid({
     }
     const t = window.setTimeout(() => {
       if (isCapacitorAndroid()) {
-        void openNativeGalleryPicker();
+        openAndroidPhotoSource();
       } else {
         inputRef.current?.click();
       }
     }, 120);
     return () => window.clearTimeout(t);
-  }, [openPickerSignal, addOnly, openNativeGalleryPicker]);
+  }, [openPickerSignal, addOnly, openAndroidPhotoSource]);
 
   const applyLocationToPhoto = useCallback(async (photoId: string) => {
     setLocationBusy(true);
@@ -512,6 +554,76 @@ export default function PhotoUploadGrid({
 
   return (
     <>
+      {showPhotoSourceSheet && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+          <button
+            type="button"
+            aria-label="Cerrar"
+            className="absolute inset-0 bg-[var(--overlay)]"
+            onClick={() => setShowPhotoSourceSheet(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="photo-source-title"
+            className="surface-elevated relative z-10 w-full max-w-md rounded-t-3xl p-5 sm:rounded-3xl sm:p-6"
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h2 id="photo-source-title" className="heading-section">
+                  Añadir foto
+                </h2>
+                <p className="mt-0.5 text-sm text-fg-secondary">
+                  Haz una foto ahora o elige de la galería.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPhotoSourceSheet(false)}
+                className="btn-secondary px-2 py-1 text-sm"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <ul className="space-y-2">
+              <li>
+                <button
+                  type="button"
+                  disabled={processing}
+                  onClick={() => {
+                    setShowPhotoSourceSheet(false);
+                    void openNativeCamera();
+                  }}
+                  className="memory-option memory-option-photo flex w-full flex-col disabled:opacity-50"
+                >
+                  <span className="text-sm font-semibold text-accent-mint">Hacer foto</span>
+                  <span className="mt-0.5 text-xs text-fg-secondary">
+                    Abre la cámara del dispositivo
+                  </span>
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  disabled={processing}
+                  onClick={() => {
+                    setShowPhotoSourceSheet(false);
+                    void openNativeGalleryPicker();
+                  }}
+                  className="memory-option memory-option-day flex w-full flex-col disabled:opacity-50"
+                >
+                  <span className="text-sm font-semibold text-accent-cyan">Galería</span>
+                  <span className="mt-0.5 text-xs text-fg-secondary">
+                    Elige una o varias fotos guardadas
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+      )}
+
       {addOnly && showPanel && (
         <div className="fixed inset-0 z-40 bg-black/40" aria-hidden />
       )}
@@ -567,21 +679,36 @@ export default function PhotoUploadGrid({
       </div>
 
       {/* Pickers */}
-      <div className={`grid gap-3 ${isCapacitorAndroid() ? "sm:grid-cols-1" : "sm:grid-cols-2"}`}>
+      <div className={`grid gap-3 ${isCapacitorAndroid() ? "sm:grid-cols-2" : "sm:grid-cols-2"}`}>
         {isCapacitorAndroid() ? (
-          <button
-            type="button"
-            onClick={() => void openNativeGalleryPicker()}
-            disabled={processing}
-            className="picker-zone picker-zone-mint disabled:opacity-50"
-          >
-            <span className="text-sm font-medium text-accent-mint">
-              {processing ? "Leyendo EXIF…" : "Galería nativa (GPS)"}
-            </span>
-            <span className="mt-1 text-[11px] text-fg-secondary">
-              Lee ubicación embebida con permisos de la app Android (v1.0.4+)
-            </span>
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => void openNativeCamera()}
+              disabled={processing}
+              className="picker-zone picker-zone-mint disabled:opacity-50"
+            >
+              <span className="text-sm font-medium text-accent-mint">
+                {processing ? "Leyendo EXIF…" : "Hacer foto"}
+              </span>
+              <span className="mt-1 text-[11px] text-fg-secondary">
+                Abre la cámara del dispositivo
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void openNativeGalleryPicker()}
+              disabled={processing}
+              className="picker-zone picker-zone-cyan disabled:opacity-50"
+            >
+              <span className="text-sm font-medium text-accent-cyan">
+                {processing ? "Leyendo EXIF…" : "Galería nativa (GPS)"}
+              </span>
+              <span className="mt-1 text-[11px] text-fg-secondary">
+                Lee ubicación embebida con permisos de la app Android (v1.0.6+)
+              </span>
+            </button>
+          </>
         ) : (
           <>
         <label className="picker-zone picker-zone-mint cursor-pointer">
