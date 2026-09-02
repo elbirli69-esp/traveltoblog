@@ -122,8 +122,9 @@ export default function ExportReelPanel({
     <div className="space-y-4">
       <p className="text-sm text-fg-secondary">
         Genera un MP4 vertical 1080×1920 (9:16, H.264, sin audio) pensado para publicarlo
-        directamente como <strong className="font-medium text-fg">Reel de Instagram</strong>.
-        Se descarga en un ZIP aparte del HTML. Añade la música en Instagram para más alcance.
+        directamente como <span className="font-medium text-fg">Reel de Instagram</span>.
+        Incluye intro con mapa (fotos GPS + lugares), descripciones en overlays, ritmo rápido y
+        crossfades. ZIP aparte del HTML; la música se añade en Instagram.
       </p>
 
       {photoCount > 0 && (
