@@ -2,6 +2,7 @@ import type { TimelineEvent } from "@/lib/timeline";
 import { formatDateKey } from "@/lib/travel-dates";
 import { PLACE_TYPE_EMOJI, PLACE_TYPE_LABELS } from "@/lib/places";
 import type { PlaceType } from "@prisma/client";
+import { galleryExportStyles } from "@/lib/export/gallery-html";
 
 export interface MagazineNote {
   type: string;
@@ -497,21 +498,7 @@ body {
 .journal-section article h2 { font-size: 1.35rem; margin-top: 2rem; }
 .journal-section article img { width: 100%; border-radius: 8px; margin: 1.5rem 0; }
 
-.gallery-section { margin: 2.5rem 0 1rem; scroll-margin-top: 4.5rem; }
-.gallery-lead { color: var(--muted); font-family: system-ui, sans-serif; font-size: .9rem; }
-.gallery-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: .5rem;
-}
-.gallery-tile { border-radius: 10px; overflow: hidden; }
-.gallery-tile figcaption {
-  font-family: system-ui, sans-serif;
-  font-size: .68rem;
-  padding: .35rem .5rem;
-  background: var(--surface);
-  color: var(--muted);
-}
+${galleryExportStyles()}
 
 #lightbox {
   display: none;
