@@ -56,6 +56,9 @@ export default function PhotoUploadSection({
             longitude: photo.exif.longitude,
             placeId: photo.placeId ?? null,
             placeLocalId: null,
+            mediaType: photo.mediaType ?? "IMAGE",
+            durationMs: photo.durationMs ?? null,
+            posterBlob: photo.posterBlob ?? null,
             selected: photo.selected,
             isTransportStart: photo.isTransportStart,
             isTransportEnd: photo.isTransportEnd,
@@ -96,6 +99,8 @@ export default function PhotoUploadSection({
         latitude: p.exif.latitude,
         longitude: p.exif.longitude,
         placeId: p.placeId ?? null,
+        mediaType: p.mediaType ?? "IMAGE",
+        durationMs: p.durationMs ?? null,
         selected: p.selected,
         isTransportStart: p.isTransportStart,
         isTransportEnd: p.isTransportEnd,
@@ -105,6 +110,9 @@ export default function PhotoUploadSection({
 
       photos.forEach((p) => {
         formData.append(`file_${p.id}`, p.file, p.file.name);
+        if (p.posterBlob) {
+          formData.append(`poster_${p.id}`, p.posterBlob, `${p.id}.poster.jpg`);
+        }
       });
 
       const res = await fetch("/api/photos", {

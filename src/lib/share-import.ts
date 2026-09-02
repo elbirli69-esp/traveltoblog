@@ -2,6 +2,7 @@ import path from "path";
 import { deleteSharedBundle, getSharedBundle, readSharedFile } from "@/lib/share-inbox";
 import { preparePhotoForStorage } from "@/lib/photo-upload";
 import { prisma } from "@/lib/prisma";
+import { isVideoFile } from "@/lib/media-types";
 
 export interface ImportSharedPhotoInput {
   sourceName: string;
@@ -30,13 +31,19 @@ export async function importSharedPhotosToTravel(
     const buffer = await readSharedFile(bundleId, meta.sourceName);
     if (!buffer) continue;
 
-    const ext = path.extname(meta.sourceName) || ".jpg";
+    const bundleFile = bundle.files.find((f) => f.name === meta.sourceName);
+    const video =
+      bundleFile?.mediaType === "VIDEO" ||
+      isVideoFile({ name: meta.sourceName, type: bundleFile?.type ?? "" });
+
+    const ext = path.extname(meta.sourceName) || (video ? ".mp4" : ".jpg");
     const prepared = await preparePhotoForStorage(
       travelId,
       meta.localId,
       buffer,
       ext,
-      {}
+      {},
+      { mediaType: video ? "VIDEO" : "IMAGE" }
     );
 
     const photo = await prisma.photo.create({
@@ -45,17 +52,20 @@ export async function importSharedPhotosToTravel(
         userId,
         filename: prepared.filename,
         url: `/uploads/${travelId}/${prepared.filename}`,
+        mediaType: prepared.mediaType,
+        durationMs: prepared.durationMs,
+        posterFilename: prepared.posterFilename,
         exifDateTime: prepared.exif.dateTime,
         latitude: prepared.exif.latitude,
         longitude: prepared.exif.longitude,
         selected: meta.selected,
-        isTransportStart: meta.isTransportStart,
-        isTransportEnd: meta.isTransportEnd,
+        isTransportStart: video ? false : meta.isTransportStart,
+        isTransportEnd: video ? false : meta.isTransportEnd,
         localId: meta.localId,
       },
     });
 
-    if (meta.isTransportStart) {
+    if (meta.isTransportStart && !video) {
       await prisma.travel.update({
         where: { id: travelId },
         data: {
@@ -65,7 +75,7 @@ export async function importSharedPhotosToTravel(
       });
     }
 
-    if (meta.isTransportEnd) {
+    if (meta.isTransportEnd && !video) {
       await prisma.travel.update({
         where: { id: travelId },
         data: {

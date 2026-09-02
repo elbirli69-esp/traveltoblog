@@ -64,7 +64,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Foto no encontrada" }, { status: 404 });
     }
 
-    await deleteStoredPhotoFile(photo.travelId, photo.filename);
+    await deleteStoredPhotoFile(photo.travelId, photo.filename, photo.posterFilename);
     await prisma.photo.delete({ where: { id } });
 
     await prisma.travel.update({

@@ -110,6 +110,8 @@ export default function OfflineSyncBanner({
                 (p.placeLocalId
                   ? placeIdByLocalId.get(p.placeLocalId) ?? null
                   : null),
+              mediaType: p.mediaType ?? "IMAGE",
+              durationMs: p.durationMs ?? null,
               selected: p.selected,
               isTransportStart: p.isTransportStart,
               isTransportEnd: p.isTransportEnd,
@@ -120,6 +122,13 @@ export default function OfflineSyncBanner({
 
         for (const p of pendingPhotos) {
           formData.append(`file_${p.localId}`, p.fileBlob, p.filename);
+          if (p.posterBlob) {
+            formData.append(
+              `poster_${p.localId}`,
+              p.posterBlob,
+              `${p.localId}.poster.jpg`
+            );
+          }
         }
 
         const res = await fetch("/api/sync", { method: "POST", body: formData });

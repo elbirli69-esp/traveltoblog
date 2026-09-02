@@ -3,6 +3,8 @@ import path from "path";
 import { preparePhotoForStorage } from "@/lib/photo-upload";
 import { resolvePhotoPlaceId } from "@/lib/photo-place";
 import { prisma } from "@/lib/prisma";
+import { maxBytesForMedia } from "@/lib/media-limits";
+import type { MediaKind } from "@/lib/media-types";
 
 interface PhotoMeta {
   localId: string;
@@ -10,6 +12,8 @@ interface PhotoMeta {
   latitude: number | null;
   longitude: number | null;
   placeId?: string | null;
+  mediaType?: MediaKind;
+  durationMs?: number | null;
   selected: boolean;
   isTransportStart: boolean;
   isTransportEnd: boolean;
@@ -37,8 +41,18 @@ export async function POST(request: NextRequest) {
       const file = formData.get(`file_${meta.localId}`) as File | null;
       if (!file) continue;
 
-      const ext = path.extname(file.name) || ".jpg";
+      const mediaType: MediaKind = meta.mediaType === "VIDEO" ? "VIDEO" : "IMAGE";
+      const maxBytes = maxBytesForMedia(mediaType === "VIDEO");
+      if (file.size > maxBytes) continue;
+
+      const ext = path.extname(file.name) || (mediaType === "VIDEO" ? ".mp4" : ".jpg");
       const originalBuffer = Buffer.from(await file.arrayBuffer());
+
+      const posterFile = formData.get(`poster_${meta.localId}`) as File | null;
+      const posterBuffer = posterFile
+        ? Buffer.from(await posterFile.arrayBuffer())
+        : null;
+
       const prepared = await preparePhotoForStorage(
         travelId,
         meta.localId,
@@ -48,6 +62,11 @@ export async function POST(request: NextRequest) {
           dateTime: meta.exifDateTime ? new Date(meta.exifDateTime) : null,
           latitude: meta.latitude,
           longitude: meta.longitude,
+        },
+        {
+          mediaType,
+          durationMs: meta.durationMs ?? null,
+          posterBuffer,
         }
       );
 
@@ -59,18 +78,21 @@ export async function POST(request: NextRequest) {
           userId,
           filename: prepared.filename,
           url: `/uploads/${travelId}/${prepared.filename}`,
+          mediaType: prepared.mediaType,
+          durationMs: prepared.durationMs,
+          posterFilename: prepared.posterFilename,
           exifDateTime: prepared.exif.dateTime,
           latitude: prepared.exif.latitude,
           longitude: prepared.exif.longitude,
           placeId: placeId ?? null,
           selected: meta.selected,
-          isTransportStart: meta.isTransportStart,
-          isTransportEnd: meta.isTransportEnd,
+          isTransportStart: mediaType === "VIDEO" ? false : meta.isTransportStart,
+          isTransportEnd: mediaType === "VIDEO" ? false : meta.isTransportEnd,
           localId: meta.localId,
         },
       });
 
-      if (meta.isTransportStart) {
+      if (meta.isTransportStart && mediaType === "IMAGE") {
         await prisma.travel.update({
           where: { id: travelId },
           data: {
@@ -80,7 +102,7 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      if (meta.isTransportEnd) {
+      if (meta.isTransportEnd && mediaType === "IMAGE") {
         await prisma.travel.update({
           where: { id: travelId },
           data: {
@@ -94,7 +116,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (!created.length) {
-      return NextResponse.json({ error: "No se recibieron archivos de imagen" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No se recibieron archivos válidos (revisa el tamaño máximo)" },
+        { status: 400 }
+      );
     }
 
     await prisma.travel.update({

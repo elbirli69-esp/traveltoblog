@@ -75,6 +75,11 @@ model User {
   @@index([travelId])
 }
 
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
 model Photo {
   id              String    @id @default(cuid())
   travelId        String
@@ -83,6 +88,11 @@ model Photo {
   filename        String
   /// Public URL path
   url             String
+  mediaType       MediaType @default(IMAGE)
+  /// Video duration in milliseconds (null for images)
+  durationMs      Int?
+  /// Still frame JPEG for video thumbs / export posters
+  posterFilename  String?
   /// EXIF DateTimeOriginal parsed on client
   exifDateTime    DateTime?
   latitude        Float?

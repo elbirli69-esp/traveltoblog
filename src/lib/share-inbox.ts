@@ -1,18 +1,20 @@
 import { mkdir, readFile, readdir, rm, writeFile } from "fs/promises";
 import path from "path";
 import { extractExifFromBuffer, sanitizeExifMetadata } from "@/lib/exif";
+import { isMediaFile, isVideoFile } from "@/lib/media-types";
+import { MAX_IMAGE_BYTES, MAX_VIDEO_BYTES } from "@/lib/media-limits";
 import { createLocalId } from "@/lib/utils";
 
 const SHARE_INBOX_DIR =
   process.env.SHARE_INBOX_DIR ?? path.join(process.cwd(), "data", "share-inbox");
 
-const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_FILES = 20;
 
 export interface SharedFileMeta {
   name: string;
   type: string;
   size: number;
+  mediaType?: "IMAGE" | "VIDEO";
   exifDateTime?: string | null;
   latitude?: number | null;
   longitude?: number | null;
@@ -30,15 +32,15 @@ function bundleDir(id: string): string {
 
 function sanitizeFilename(name: string): string {
   const base = path.basename(name).replace(/[^\w.\-()+ ]/g, "_");
-  return base || `photo-${createLocalId()}.jpg`;
+  return base || `media-${createLocalId()}.jpg`;
 }
 
 export async function saveSharedFiles(files: File[]): Promise<SharedBundle> {
-  const imageFiles = files.filter((file) => file.type.startsWith("image/") || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name));
-  if (imageFiles.length === 0) {
-    throw new Error("No image files in share payload");
+  const mediaFiles = files.filter((file) => isMediaFile(file));
+  if (mediaFiles.length === 0) {
+    throw new Error("No media files in share payload");
   }
-  if (imageFiles.length > MAX_FILES) {
+  if (mediaFiles.length > MAX_FILES) {
     throw new Error("Too many files");
   }
 
@@ -47,16 +49,21 @@ export async function saveSharedFiles(files: File[]): Promise<SharedBundle> {
   await mkdir(dir, { recursive: true });
 
   const saved: SharedFileMeta[] = [];
-  for (const file of imageFiles.slice(0, MAX_FILES)) {
-    if (file.size > MAX_FILE_BYTES) continue;
+  for (const file of mediaFiles.slice(0, MAX_FILES)) {
+    const video = isVideoFile(file);
+    const maxBytes = video ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+    if (file.size > maxBytes) continue;
     const name = sanitizeFilename(file.name);
     const buffer = Buffer.from(await file.arrayBuffer());
     await writeFile(path.join(dir, name), buffer);
-    const exif = sanitizeExifMetadata(await extractExifFromBuffer(buffer));
+    const exif = video
+      ? { dateTime: null as Date | null, latitude: null as number | null, longitude: null as number | null }
+      : sanitizeExifMetadata(await extractExifFromBuffer(buffer));
     saved.push({
       name,
-      type: file.type || "image/jpeg",
+      type: file.type || (video ? "video/mp4" : "image/jpeg"),
       size: buffer.length,
+      mediaType: video ? "VIDEO" : "IMAGE",
       exifDateTime: exif.dateTime?.toISOString() ?? null,
       latitude: exif.latitude,
       longitude: exif.longitude,
@@ -65,7 +72,7 @@ export async function saveSharedFiles(files: File[]): Promise<SharedBundle> {
 
   if (saved.length === 0) {
     await rm(dir, { recursive: true, force: true });
-    throw new Error("No valid image files");
+    throw new Error("No valid media files");
   }
 
   const bundle: SharedBundle = {

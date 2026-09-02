@@ -45,11 +45,22 @@ export function photoFilePath(travelId: string, filename: string): string {
   return path.join(process.cwd(), "public", "uploads", travelId, filename);
 }
 
-export async function deleteStoredPhotoFile(travelId: string, filename: string): Promise<void> {
+export async function deleteStoredPhotoFile(
+  travelId: string,
+  filename: string,
+  posterFilename?: string | null
+): Promise<void> {
   try {
     await unlink(photoFilePath(travelId, filename));
   } catch {
     // File may already be missing.
+  }
+  if (posterFilename) {
+    try {
+      await unlink(photoFilePath(travelId, posterFilename));
+    } catch {
+      // already gone
+    }
   }
   await deleteThumbnailFile(travelId, filename);
 }
