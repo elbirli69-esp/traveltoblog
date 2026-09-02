@@ -32,6 +32,14 @@ import {
   findTripNote,
   magazineStyles,
 } from "@/lib/export/magazine-html";
+import { exportPhotoPaths, EXPORT_IMAGE_MIME } from "@/lib/export-images";
+import { getOrCreateExportImageSet } from "@/lib/export-image-cache";
+import {
+  buildExportPhotoBootScript,
+  buildExportPhotoRegistryScript,
+  exportThumbImgTag,
+} from "@/lib/export-photo-html";
+import type { ExportProgressCallback } from "@/lib/export-pipeline";
 
 export type ExportTypologyId = TravelType | "auto";
 export type ExportTemplateId = "magazine" | "visual-journey" | "editorial-clean" | "dark-photo-journey";
@@ -59,7 +67,10 @@ export interface ExportMapDayGroup {
 export interface ExportPhoto {
   id: string;
   url: string;
+  /** Optimized JPEG for lightbox, hero and crónica (~1600px). */
   localPath: string;
+  /** Small JPEG for grids, timeline and map popups (~480px). */
+  thumbPath: string;
   latitude: number | null;
   longitude: number | null;
   exifDateTime: Date | null;
@@ -105,7 +116,7 @@ export function buildFlightMapPoints(photos: ExportPhoto[]): MapPoint[] {
       lat: outbound.latitude!,
       lng: outbound.longitude!,
       label: `Vuelo de ida — ${outbound.alias}`,
-      photoPath: outbound.localPath,
+      photoPath: outbound.thumbPath,
       date: (outbound.exifDateTime ?? new Date()).toISOString(),
       emoji: "✈️",
       kind: "flight-out",
@@ -120,7 +131,7 @@ export function buildFlightMapPoints(photos: ExportPhoto[]): MapPoint[] {
       lat: inbound.latitude!,
       lng: inbound.longitude!,
       label: `Vuelo de vuelta — ${inbound.alias}`,
-      photoPath: inbound.localPath,
+      photoPath: inbound.thumbPath,
       date: (inbound.exifDateTime ?? new Date()).toISOString(),
       emoji: "🛬",
       kind: "flight-in",
@@ -164,7 +175,7 @@ export function buildPhotoRoutePoints(photos: ExportPhoto[]): MapPoint[] {
       lat: p.latitude!,
       lng: p.longitude!,
       label: `Foto ${i + 1} — ${p.alias}`,
-      photoPath: p.localPath,
+      photoPath: p.thumbPath,
       date: (p.exifDateTime ?? new Date()).toISOString(),
       kind: "photo" as const,
       dayKey,
@@ -282,24 +293,6 @@ function buildInteractiveScripts(template: ExportTemplateId): string {
   return `
 (function () {
   var lightbox = document.getElementById("lightbox");
-  var lightboxImg = lightbox && lightbox.querySelector("img");
-  var lightboxCap = lightbox && lightbox.querySelector(".lightbox-caption");
-
-  document.querySelectorAll(".photo-block img, .gallery-tile img").forEach(function (img) {
-    img.addEventListener("click", function () {
-      if (!lightbox || !lightboxImg) return;
-      lightboxImg.src = img.src;
-      lightboxImg.alt = img.alt || "";
-      if (lightboxCap) {
-        var fig = img.closest("figure");
-        var cap = fig && fig.querySelector("figcaption");
-        lightboxCap.textContent = cap ? cap.textContent : "";
-      }
-      lightbox.classList.add("open");
-      document.body.style.overflow = "hidden";
-    });
-  });
-
   if (lightbox) {
     lightbox.addEventListener("click", function () {
       lightbox.classList.remove("open");
@@ -388,7 +381,7 @@ function buildGallerySection(photos: ExportPhoto[]): string {
           }).format(p.exifDateTime)
         : "";
       const caption = when ? `${p.alias} · ${when}` : p.alias;
-      return `<figure class="gallery-tile"><img src="${escapeHtml(p.localPath)}" alt="Foto de ${escapeHtml(p.alias)}" loading="lazy"><figcaption>${escapeHtml(caption)}</figcaption></figure>`;
+      return `<figure class="gallery-tile">${exportThumbImgTag(p, `Foto de ${p.alias}`, "")}<figcaption>${escapeHtml(caption)}</figcaption></figure>`;
     })
     .join("\n");
 
@@ -1199,7 +1192,7 @@ function buildMapScript(
 }
 
 function buildExportTimelineEvents(ctx: ExportContext): TimelineEvent[] {
-  const urlToLocal = new Map(ctx.photos.map((p) => [p.url, p.localPath]));
+  const urlToThumb = new Map(ctx.photos.map((p) => [p.url, p.thumbPath]));
   const timelineInput = {
     photos: ctx.photos.map((p) => ({
       id: p.id,
@@ -1252,7 +1245,7 @@ function buildExportTimelineEvents(ctx: ExportContext): TimelineEvent[] {
   const { events } = buildTimeline(timelineInput);
   return events.map((ev) => ({
     ...ev,
-    mediaUrl: ev.mediaUrl ? urlToLocal.get(ev.mediaUrl) ?? ev.mediaUrl : undefined,
+    mediaUrl: ev.mediaUrl ? urlToThumb.get(ev.mediaUrl) ?? ev.mediaUrl : undefined,
   }));
 }
 
@@ -1342,11 +1335,12 @@ export function buildExportHtml(ctx: ExportContext): string {
   const distanceKm = estimateRouteKm(photos);
   const travelers = users.map((u) => u.alias).join(", ");
 
-  const heroStyle = coverPhoto
+  const heroGradient = coverPhoto
     ? isMagazine
-      ? `background-image: linear-gradient(to top, rgba(250,249,247,.92), rgba(250,249,247,.4)), url('${coverPhoto.localPath}');`
-      : `background-image: linear-gradient(to top, rgba(12,10,9,.88), rgba(12,10,9,.25)), url('${coverPhoto.localPath}');`
+      ? "linear-gradient(to top, rgba(250,249,247,.92), rgba(250,249,247,.4))"
+      : "linear-gradient(to top, rgba(12,10,9,.88), rgba(12,10,9,.25))"
     : "";
+  const heroPhotoPath = coverPhoto?.localPath ?? null;
 
   const headerBlock = isMagazine
     ? `${buildMagazineHero({
@@ -1355,12 +1349,13 @@ export function buildExportHtml(ctx: ExportContext): string {
         dateRange,
         travelers,
         typologyLabel: profile.label,
-        heroStyle,
+        coverPhotoPath: heroPhotoPath,
+        heroGradient,
       })}
 ${buildTocHtml(timelineEvents)}
 ${buildMagazineNav(hasMap, hasJournalArticle)}`
     : isVisual
-      ? `<header class="hero" style="${heroStyle}">
+      ? `<header class="hero"${heroPhotoPath ? ` data-export-hero="${escapeHtml(heroPhotoPath)}" data-export-hero-gradient="${escapeHtml(heroGradient)}"` : ""}>
       <div class="hero-content reveal">
         <span class="hero-badge">${escapeHtml(profile.label)} · ${escapeHtml(getTemplateLabel(template))}</span>
         <h1>${escapeHtml(travel.title)}</h1>
@@ -1482,6 +1477,8 @@ ${buildMagazineNav(hasMap, hasJournalArticle)}`
       })
     : "";
 
+  const exportBootScript = `<script>${buildExportPhotoBootScript()}</script>`;
+
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1505,6 +1502,7 @@ ${buildMagazineNav(hasMap, hasJournalArticle)}`
   ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, "assets/images")}</script>` : ""}
   ${playScript}
   ${interactiveScript}
+  ${exportBootScript}
 </body>
 </html>`;
 }
@@ -1548,12 +1546,10 @@ function escapeHtml(text: string): string {
 export async function loadPhotoFiles(
   photos: (Photo & { user: User })[]
 ): Promise<ExportPhoto[]> {
-  // Export HTML/PDF: siempre archivos originales en disco (no miniaturas).
   const selected = photos.filter((p) => p.selected);
   return Promise.all(
     selected.map(async (photo, index) => {
-      const ext = path.extname(photo.filename) || ".jpg";
-      const localPath = `photos/${String(index + 1).padStart(3, "0")}${ext}`;
+      const { localPath, thumbPath } = exportPhotoPaths(index);
       const resolved = await resolvePhotoExifFromFile({
         url: photo.url,
         exifDateTime: photo.exifDateTime,
@@ -1564,6 +1560,7 @@ export async function loadPhotoFiles(
         id: photo.id,
         url: photo.url,
         localPath,
+        thumbPath,
         latitude: resolved.latitude,
         longitude: resolved.longitude,
         exifDateTime: resolved.dateTime,
@@ -1621,9 +1618,54 @@ function patchLeafletCss(css: string): string {
   });
 }
 
-export async function buildExportZip(ctx: ExportContext): Promise<Buffer> {
-  const zip = new JSZip();
-  const html = buildExportHtml(ctx);
+const EXPORT_PHOTO_CONCURRENCY = 4;
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return;
+  let next = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+}
+
+async function prepareExportPhotoBuffers(
+  travelId: string,
+  photos: ExportPhoto[],
+  onPhotoProgress?: (current: number, total: number) => void
+): Promise<Map<string, Buffer>> {
+  const files = new Map<string, Buffer>();
+  const total = photos.length;
+  let completed = 0;
+
+  await runWithConcurrency(photos, EXPORT_PHOTO_CONCURRENCY, async (photo) => {
+    const set = await getOrCreateExportImageSet(travelId, photo.id, photo.url);
+    if (!set) return;
+    files.set(photo.localPath, set.display);
+    files.set(photo.thumbPath, set.thumb);
+    completed += 1;
+    onPhotoProgress?.(completed, total);
+  });
+
+  return files;
+}
+
+function buildPhotoRegistry(files: Map<string, Buffer>): Record<string, string> {
+  const registry: Record<string, string> = {};
+  for (const [filePath, buffer] of files) {
+    registry[filePath] = `data:${EXPORT_IMAGE_MIME};base64,${buffer.toString("base64")}`;
+  }
+  return registry;
+}
+
+function addCommonZipFiles(zip: JSZip, ctx: ExportContext, html: string): void {
   zip.file("index.html", html);
 
   const explicitType =
@@ -1635,83 +1677,158 @@ export async function buildExportZip(ctx: ExportContext): Promise<Buffer> {
 
   const timelineEvents = buildExportTimelineEvents(ctx);
   zip.file("assets/timeline.json", JSON.stringify(timelineEvents, null, 2));
-
-  if (exportHasMap(ctx)) {
-    const leaflet = await getLeafletAssets();
-    zip.file("assets/leaflet.css", patchLeafletCss(leaflet["leaflet.css"].toString("utf-8")));
-    zip.file("assets/leaflet.js", leaflet["leaflet.js"]);
-    zip.folder("assets/images")?.file("marker-icon.png", leaflet["images/marker-icon.png"]);
-    zip.folder("assets/images")?.file("marker-icon-2x.png", leaflet["images/marker-icon-2x.png"]);
-    zip.folder("assets/images")?.file("marker-shadow.png", leaflet["images/marker-shadow.png"]);
-  }
-
-  for (const photo of ctx.photos) {
-    const buf = await readPhotoBuffer(photo.url);
-    if (buf) zip.file(photo.localPath, buf);
-  }
-
-  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
 }
 
-export async function buildSingleFileHtml(ctx: ExportContext): Promise<Buffer> {
-  const zipBuffer = await buildExportZip(ctx);
-  const zip = await JSZip.loadAsync(zipBuffer);
-  let html = await zip.file("index.html")!.async("string");
+async function addLeafletToZip(zip: JSZip): Promise<void> {
+  const leaflet = await getLeafletAssets();
+  zip.file("assets/leaflet.css", patchLeafletCss(leaflet["leaflet.css"].toString("utf-8")));
+  zip.file("assets/leaflet.js", leaflet["leaflet.js"]);
+  zip.folder("assets/images")?.file("marker-icon.png", leaflet["images/marker-icon.png"]);
+  zip.folder("assets/images")?.file("marker-icon-2x.png", leaflet["images/marker-icon-2x.png"]);
+  zip.folder("assets/images")?.file("marker-shadow.png", leaflet["images/marker-shadow.png"]);
+}
 
-  const photoDataUrls = new Map<string, string>();
-  for (const photo of ctx.photos) {
-    const file = zip.file(photo.localPath);
-    if (!file) continue;
-    const b64 = await file.async("base64");
-    const ext = path.extname(photo.localPath).toLowerCase();
-    const mime =
-      ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
-    photoDataUrls.set(photo.localPath, `data:${mime};base64,${b64}`);
-  }
+async function inlineMapAssetsInHtml(
+  html: string,
+  ctx: ExportContext,
+  registry: Record<string, string>
+): Promise<string> {
+  if (!exportHasMap(ctx)) return html;
 
-  for (const [localPath, dataUrl] of photoDataUrls) {
-    html = html.split(localPath).join(dataUrl);
-  }
+  const leaflet = await getLeafletAssets();
+  const leafletCss = patchLeafletCss(leaflet["leaflet.css"].toString("utf-8"));
+  const leafletJs = leaflet["leaflet.js"].toString("utf-8");
+  const markerIcon = leaflet["images/marker-icon.png"].toString("base64");
+  const markerIcon2x = leaflet["images/marker-icon-2x.png"].toString("base64");
+  const markerShadow = leaflet["images/marker-shadow.png"].toString("base64");
 
-  if (exportHasMap(ctx)) {
-    const leafletCss = await zip.file("assets/leaflet.css")!.async("string");
-    const leafletJs = await zip.file("assets/leaflet.js")!.async("string");
-    const markerIcon = await zip.file("assets/images/marker-icon.png")!.async("base64");
-    const markerIcon2x = await zip.file("assets/images/marker-icon-2x.png")!.async("base64");
-    const markerShadow = await zip.file("assets/images/marker-shadow.png")!.async("base64");
-
-    html = html.replace(
-      '<link rel="stylesheet" href="assets/leaflet.css">',
-      `<style>${leafletCss}
+  let out = html.replace(
+    '<link rel="stylesheet" href="assets/leaflet.css">',
+    `<style>${leafletCss}
 .leaflet-marker-icon { background-image: url(data:image/png;base64,${markerIcon}) !important; }
 .leaflet-marker-icon.leaflet-marker-icon-2x { background-image: url(data:image/png;base64,${markerIcon2x}) !important; }
 .leaflet-marker-shadow { background-image: url(data:image/png;base64,${markerShadow}) !important; }
 </style>`
-    );
+  );
 
-    const mapPoints = mergeMapPoints(ctx.photos, ctx.places ?? []).map((p) => ({
-      ...p,
-      photoPath: p.photoPath ? photoDataUrls.get(p.photoPath) ?? p.photoPath : null,
-    }));
+  const mapPoints = mergeMapPoints(ctx.photos, ctx.places ?? []).map((p) => ({
+    ...p,
+    photoPath: p.photoPath ? registry[p.photoPath] ?? p.photoPath : null,
+  }));
 
-    const iconScript = `delete L.Icon.Default.prototype._getIconUrl;
+  const iconScript = `delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconUrl: "data:image/png;base64,${markerIcon}",
   iconRetinaUrl: "data:image/png;base64,${markerIcon2x}",
   shadowUrl: "data:image/png;base64,${markerShadow}"
 });`;
 
-    const mapDayGroups = buildMapDayGroups(mapPoints);
-    const mapScriptBody = buildMapScript(mapPoints, mapDayGroups, "assets/images").replace(
-      /delete L\.Icon\.Default\.prototype\._getIconUrl;[\s\S]*?}\);/,
-      iconScript
-    );
+  const mapDayGroups = buildMapDayGroups(mapPoints);
+  const mapScriptBody = buildMapScript(mapPoints, mapDayGroups, "assets/images").replace(
+    /delete L\.Icon\.Default\.prototype\._getIconUrl;[\s\S]*?}\);/,
+    iconScript
+  );
 
-    html = html.replace(
-      /<script src="assets\/leaflet.js"><\/script><script>[\s\S]*?<\/script>/,
-      `<script>${leafletJs}\n${mapScriptBody}</script>`
-    );
+  out = out.replace(
+    /<script src="assets\/leaflet.js"><\/script><script>[\s\S]*?<\/script>/,
+    `<script>${leafletJs}\n${mapScriptBody}</script>`
+  );
+
+  return out;
+}
+
+function injectPhotoRegistry(html: string, registry: Record<string, string>): string {
+  const bootScriptTag = `<script>${buildExportPhotoBootScript()}</script>`;
+  return html.replace(
+    bootScriptTag,
+    `${buildExportPhotoRegistryScript(registry)}${bootScriptTag}`
+  );
+}
+
+export async function buildExportZip(
+  ctx: ExportContext,
+  onProgress?: ExportProgressCallback
+): Promise<Buffer> {
+  const emit = (event: Parameters<ExportProgressCallback>[0]) => onProgress?.(event);
+
+  emit({ step: "html", status: "running", message: "Generando HTML del diario…" });
+  const zip = new JSZip();
+  const html = buildExportHtml(ctx);
+  addCommonZipFiles(zip, ctx, html);
+  emit({ step: "html", status: "done" });
+
+  if (exportHasMap(ctx)) {
+    emit({ step: "map", status: "running", message: "Preparando mapa interactivo…" });
+    await addLeafletToZip(zip);
+    emit({ step: "map", status: "done" });
   }
+
+  const total = ctx.photos.length;
+  emit({
+    step: "pack",
+    status: "running",
+    message: total > 0 ? `Optimizando fotos (0/${total})…` : "Empaquetando…",
+  });
+
+  const photoFiles = await prepareExportPhotoBuffers(ctx.travel.id, ctx.photos, (current, photoTotal) => {
+    emit({
+      step: "pack",
+      status: "running",
+      message: `Optimizando fotos (${current}/${photoTotal})…`,
+    });
+  });
+
+  for (const [filePath, buffer] of photoFiles) {
+    zip.file(filePath, buffer, { compression: "STORE" });
+  }
+
+  emit({ step: "pack", status: "running", message: "Comprimiendo ZIP…" });
+  const buffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+  emit({ step: "pack", status: "done" });
+  return buffer;
+}
+
+export async function buildSingleFileHtml(
+  ctx: ExportContext,
+  onProgress?: ExportProgressCallback
+): Promise<Buffer> {
+  const emit = (event: Parameters<ExportProgressCallback>[0]) => onProgress?.(event);
+
+  emit({ step: "html", status: "running", message: "Generando HTML del diario…" });
+  let html = buildExportHtml(ctx);
+  emit({ step: "html", status: "done" });
+
+  const total = ctx.photos.length;
+  emit({
+    step: "pack",
+    status: "running",
+    message: total > 0 ? `Optimizando fotos (0/${total})…` : "Preparando fotos…",
+  });
+
+  const photoFiles = await prepareExportPhotoBuffers(ctx.travel.id, ctx.photos, (current, photoTotal) => {
+    emit({
+      step: "pack",
+      status: "running",
+      message: `Optimizando fotos (${current}/${photoTotal})…`,
+    });
+  });
+  emit({ step: "pack", status: "done" });
+
+  emit({
+    step: "embed",
+    status: "running",
+    message: exportHasMap(ctx)
+      ? "Incrustando fotos y mapa en un solo HTML…"
+      : "Incrustando fotos en un solo HTML…",
+  });
+  const registry = buildPhotoRegistry(photoFiles);
+  if (exportHasMap(ctx)) {
+    emit({ step: "map", status: "running", message: "Preparando mapa interactivo…" });
+    html = await inlineMapAssetsInHtml(html, ctx, registry);
+    emit({ step: "map", status: "done" });
+  }
+  html = injectPhotoRegistry(html, registry);
+  emit({ step: "embed", status: "done" });
 
   return Buffer.from(html, "utf-8");
 }

@@ -213,9 +213,17 @@ export function buildMagazineHero(input: {
   dateRange: string;
   travelers: string;
   typologyLabel: string;
-  heroStyle: string;
+  coverPhotoPath?: string | null;
+  heroGradient?: string;
 }): string {
-  return `<header class="mag-hero" style="${input.heroStyle}">
+  const heroAttrs = input.coverPhotoPath
+    ? ` data-export-hero="${escapeHtml(input.coverPhotoPath)}"${
+        input.heroGradient
+          ? ` data-export-hero-gradient="${escapeHtml(input.heroGradient)}"`
+          : ""
+      }`
+    : "";
+  return `<header class="mag-hero"${heroAttrs}>
   <div class="mag-hero-inner reveal">
     <p class="mag-eyebrow">${escapeHtml(input.typologyLabel)} · ${escapeHtml(input.dateRange)}</p>
     <h1>${escapeHtml(input.title)}</h1>
