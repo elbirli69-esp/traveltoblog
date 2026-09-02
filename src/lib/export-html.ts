@@ -32,12 +32,13 @@ import {
   findTripNote,
   magazineStyles,
 } from "@/lib/export/magazine-html";
+import { buildGallerySection, galleryExportStyles } from "@/lib/export/gallery-html";
+import { buildMapTileLayerScript } from "@/lib/export/map-tiles";
 import { exportPhotoPaths, EXPORT_IMAGE_MIME } from "@/lib/export-images";
 import { getOrCreateExportImageSet } from "@/lib/export-image-cache";
 import {
   buildExportPhotoBootScript,
   buildExportPhotoRegistryScript,
-  exportThumbImgTag,
 } from "@/lib/export-photo-html";
 import type { ExportProgressCallback } from "@/lib/export-pipeline";
 
@@ -359,38 +360,6 @@ function buildInteractiveScripts(template: ExportTemplateId): string {
   }
 })();
 `;
-}
-
-function buildGallerySection(photos: ExportPhoto[]): string {
-  const galleryPhotos = photos
-    .filter((p) => !p.isTransportStart && !p.isTransportEnd)
-    .sort(
-      (a, b) =>
-        new Date(a.exifDateTime ?? 0).getTime() - new Date(b.exifDateTime ?? 0).getTime()
-    );
-  if (galleryPhotos.length === 0) return "";
-
-  const tiles = galleryPhotos
-    .map((p, i) => {
-      const when = p.exifDateTime
-        ? new Intl.DateTimeFormat("es-ES", {
-            day: "numeric",
-            month: "short",
-            hour: "2-digit",
-            minute: "2-digit",
-          }).format(p.exifDateTime)
-        : "";
-      const caption = when ? `${p.alias} · ${when}` : p.alias;
-      return `<figure class="gallery-tile">${exportThumbImgTag(p, `Foto de ${p.alias}`, "")}<figcaption>${escapeHtml(caption)}</figcaption></figure>`;
-    })
-    .join("\n");
-
-  return `
-<section id="galeria" class="gallery-section reveal">
-  <h2 class="section-title">Galería completa</h2>
-  <p class="gallery-lead">${galleryPhotos.length} momentos en orden cronológico</p>
-  <div class="gallery-grid">${tiles}</div>
-</section>`;
 }
 
 export function mapExportStyles(): string {
@@ -725,33 +694,7 @@ article .photo-credit { text-align: center; font-size: .85rem; color: var(--mute
   font-size: .9rem;
   color: var(--muted);
 }
-.gallery-section { margin: 3rem 0 1rem; }
-.gallery-lead { color: var(--muted); margin: -.5rem 0 1.5rem; }
-.gallery-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: .75rem;
-}
-.gallery-tile {
-  position: relative;
-  border-radius: 12px;
-  overflow: hidden;
-  aspect-ratio: 1;
-  opacity: 0;
-  transform: scale(.96);
-  transition: opacity .5s ease, transform .5s ease;
-}
-.gallery-tile.visible { opacity: 1; transform: scale(1); }
-.gallery-tile img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .4s ease; }
-.gallery-tile:hover img { transform: scale(1.08); }
-.gallery-tile figcaption {
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  padding: .5rem .65rem;
-  background: linear-gradient(transparent, rgba(0,0,0,.75));
-  font-size: .75rem;
-  color: #fff;
-}
+${galleryExportStyles()}
 .reveal { opacity: 0; transform: translateY(20px); transition: opacity .6s ease, transform .6s ease; }
 .reveal.visible { opacity: 1; transform: translateY(0); }
 #lightbox {
@@ -803,7 +746,6 @@ footer {
 }
 @media (max-width: 640px) {
   .hero { min-height: 60vh; }
-  .gallery-grid { grid-template-columns: repeat(2, 1fr); }
 }
 `;
   }
@@ -1058,12 +1000,12 @@ function buildCompactMapSection(mapLead: string): string {
 function buildMapScript(
   points: MapPoint[],
   dayGroups: ExportMapDayGroup[],
-  assetPrefix = "assets/images"
+  assetPrefix = "assets/images",
+  template: ExportTemplateId = "magazine"
 ): string {
   const data = JSON.stringify(points);
   const groupsData = JSON.stringify(dayGroups);
-  const tileUrl = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
-  const tileAttr = "&copy; OpenStreetMap &copy; CARTO";
+  const tileLayerScript = buildMapTileLayerScript(template);
   const dayColors = ["#2dd4bf", "#f59e0b", "#818cf8", "#f472b6", "#34d399", "#fb7185"];
 
   return `
@@ -1090,11 +1032,7 @@ function buildMapScript(
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden) refreshMap();
   });
-  L.tileLayer("${tileUrl}", {
-    attribution: "${tileAttr}",
-    subdomains: "abcd",
-    maxZoom: 20
-  }).addTo(map);
+  ${tileLayerScript}
 
   var flightOut = points.find(function (p) { return p.kind === "flight-out"; });
   var flightIn = points.find(function (p) { return p.kind === "flight-in"; });
@@ -1386,7 +1324,9 @@ ${buildMagazineNav(hasMap, hasJournalArticle)}`
       : buildCompactMapSection(mapLead)
     : "";
 
-  const galleryBlock = isVisual || isMagazine ? buildGallerySection(photos) : "";
+  const galleryBlock = isVisual || isMagazine
+    ? buildGallerySection(photos, travel.startDate, travel.endDate)
+    : "";
   const storyAnchor = isVisual || isMagazine ? ' id="historia"' : "";
   const timelineBlock = buildTimelineSectionHtml(timelineEvents, storyTimelineOptions);
   const hasFlightsInTimeline = timelineEvents.some(
@@ -1499,7 +1439,7 @@ ${buildMagazineNav(hasMap, hasJournalArticle)}`
   </div>
   ${lightboxBlock}
   ${timelineScript}
-  ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, "assets/images")}</script>` : ""}
+  ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, "assets/images", template)}</script>` : ""}
   ${playScript}
   ${interactiveScript}
   ${exportBootScript}
@@ -1724,7 +1664,7 @@ L.Icon.Default.mergeOptions({
 });`;
 
   const mapDayGroups = buildMapDayGroups(mapPoints);
-  const mapScriptBody = buildMapScript(mapPoints, mapDayGroups, "assets/images").replace(
+  const mapScriptBody = buildMapScript(mapPoints, mapDayGroups, "assets/images", ctx.template).replace(
     /delete L\.Icon\.Default\.prototype\._getIconUrl;[\s\S]*?}\);/,
     iconScript
   );
