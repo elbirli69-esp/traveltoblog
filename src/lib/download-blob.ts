@@ -1,4 +1,5 @@
 import {
+  formatCapacitorError,
   isCapacitorNative,
   isPhotoExifPluginAvailable,
   PhotoExif,
@@ -12,6 +13,15 @@ export class DownloadCancelledError extends Error {
 }
 
 export type DownloadResult = "saved" | "shared" | "preview";
+
+function isNativeMethodMissing(error: unknown): boolean {
+  const msg = formatCapacitorError(error).toLowerCase();
+  return (
+    msg.includes("not implemented") ||
+    msg.includes("unimplemented") ||
+    msg.includes("plugin is not implemented")
+  );
+}
 
 async function shareFileWithWebApi(file: File, title: string): Promise<boolean> {
   if (typeof navigator.share !== "function") return false;
@@ -27,23 +37,44 @@ async function shareFileWithWebApi(file: File, title: string): Promise<boolean> 
   }
 }
 
+/** Native save/share when PhotoExif plugin supports it; null → use web fallbacks. */
 async function saveWithNativePlugin(
   base64: string,
   filename: string,
   mimeType: string
-): Promise<"shared" | "saved"> {
+): Promise<"shared" | "saved" | null> {
   if (!isPhotoExifPluginAvailable()) {
-    throw new Error("Plugin nativo no disponible");
+    return null;
+  }
+
+  let shareMissing = false;
+  let saveMissing = false;
+
+  try {
+    const saved = await PhotoExif.saveExportFile({ base64, filename, mimeType });
+    if (saved.ok) return "saved";
+  } catch (saveError) {
+    if (isNativeMethodMissing(saveError)) {
+      saveMissing = true;
+    }
   }
 
   try {
     await PhotoExif.shareExportFile({ base64, filename, mimeType });
     return "shared";
   } catch (shareError) {
-    const result = await PhotoExif.saveExportFile({ base64, filename, mimeType });
-    if (result.ok) return "saved";
-    throw shareError;
+    if (isNativeMethodMissing(shareError)) {
+      shareMissing = true;
+    } else if (!saveMissing) {
+      throw shareError;
+    }
   }
+
+  if (saveMissing && shareMissing) {
+    return null;
+  }
+
+  return null;
 }
 
 /** Save or share a generated file (WebView/Android often ignores <a download>). */
@@ -58,7 +89,8 @@ export async function downloadBlob(
   if (isCapacitorNative() && isPhotoExifPluginAvailable()) {
     const base64 = options?.base64 ?? (await blobToBase64(blob));
     const mode = await saveWithNativePlugin(base64, filename, mimeType);
-    return mode === "shared" ? "shared" : "saved";
+    if (mode === "shared") return "shared";
+    if (mode === "saved") return "saved";
   }
 
   if (await shareFileWithWebApi(file, filename)) {
