@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TravelType } from "@prisma/client";
 import type { ExportPipelineEvent, ExportPipelineStep } from "@/lib/export-pipeline";
 import type { ExportWarning } from "@/lib/export-warnings";
+import {
+  DownloadCancelledError,
+  downloadBlob,
+  openBlobPreview,
+} from "@/lib/download-blob";
+import { isCapacitorNative } from "@/lib/capacitor-native";
 
 export type ExportTemplateId = "magazine" | "visual-journey" | "editorial-clean" | "dark-photo-journey";
 export type ExportFormat = "zip" | "html";
@@ -184,64 +190,62 @@ export default function ExportHtmlPanel({
         let buffer = "";
         let finished = false;
 
+        const handleEvent = async (event: ExportPipelineEvent) => {
+          if (event.step === "error") {
+            throw new Error(event.message ?? "Error al exportar");
+          }
+
+          if (event.status === "running" && event.step !== "complete") {
+            setCurrentStep(event.step as ExportPipelineStep);
+            setStepMessage(event.message ?? null);
+          }
+
+          if (event.status === "done" && event.step !== "complete") {
+            setCompletedSteps((prev) => {
+              const step = event.step as ExportPipelineStep;
+              return prev.includes(step) ? prev : [...prev, step];
+            });
+          }
+
+          if (event.step === "complete" && event.status === "done" && event.blobBase64) {
+            const blob = blobFromBase64(
+              event.blobBase64,
+              event.contentType ?? "application/octet-stream"
+            );
+
+            if (isPreview) {
+              await openBlobPreview(blob);
+            } else {
+              const filename =
+                event.filename ??
+                (exportFormat === "zip" ? "viaje-export.zip" : "viaje.html");
+              await downloadBlob(blob, filename);
+            }
+
+            finished = true;
+            setCompletedSteps(progressSteps);
+          }
+        };
+
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (value) {
+            buffer += decoder.decode(value, { stream: !done });
+          }
 
-          buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
           buffer = lines.pop() ?? "";
 
           for (const line of lines) {
             if (!line.trim()) continue;
-            const event = JSON.parse(line) as ExportPipelineEvent;
+            await handleEvent(JSON.parse(line) as ExportPipelineEvent);
+          }
 
-            if (event.step === "error") {
-              throw new Error(event.message ?? "Error al exportar");
+          if (done) {
+            if (buffer.trim()) {
+              await handleEvent(JSON.parse(buffer) as ExportPipelineEvent);
             }
-
-            if (event.status === "running" && event.step !== "complete") {
-              setCurrentStep(event.step as ExportPipelineStep);
-              setStepMessage(event.message ?? null);
-            }
-
-            if (event.status === "done" && event.step !== "complete") {
-              setCompletedSteps((prev) => {
-                const step = event.step as ExportPipelineStep;
-                return prev.includes(step) ? prev : [...prev, step];
-              });
-            }
-
-            if (event.step === "complete" && event.status === "done" && event.blobBase64) {
-              const blob = blobFromBase64(
-                event.blobBase64,
-                event.contentType ?? "application/octet-stream"
-              );
-
-              if (isPreview) {
-                const url = URL.createObjectURL(blob);
-                const tab = window.open(url, "_blank", "noopener,noreferrer");
-                if (!tab) {
-                  throw new Error(
-                    "No se pudo abrir la vista previa. Permite ventanas emergentes e inténtalo de nuevo."
-                  );
-                }
-                setTimeout(() => URL.revokeObjectURL(url), 60_000);
-              } else {
-                const filename =
-                  event.filename ??
-                  (exportFormat === "zip" ? "viaje-export.zip" : "viaje.html");
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = filename;
-                a.click();
-                URL.revokeObjectURL(url);
-              }
-
-              finished = true;
-              setCompletedSteps(progressSteps);
-            }
+            break;
           }
         }
 
@@ -249,6 +253,7 @@ export default function ExportHtmlPanel({
           throw new Error("La exportación no devolvió un archivo");
         }
       } catch (err) {
+        if (err instanceof DownloadCancelledError) return;
         setError(err instanceof Error ? err.message : "Error al exportar");
       } finally {
         setLoading(false);
@@ -375,6 +380,13 @@ export default function ExportHtmlPanel({
       {!hasJournal && warnings.length === 0 && (
         <p className="callout callout-warning text-sm">
           Sin crónica IA: se exportará cronología unificada y galería con las fotos seleccionadas.
+        </p>
+      )}
+
+      {isCapacitorNative() && (
+        <p className="callout callout-info text-sm">
+          En la app Android, al terminar se abrirá el menú <strong>Compartir</strong> para guardar
+          el ZIP o HTML en Descargas, Drive u otra app.
         </p>
       )}
 
