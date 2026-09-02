@@ -28,6 +28,20 @@ export const PLACE_TYPE_LABELS: Record<PlaceType, string> = {
 
 export const PLACE_TYPES = Object.keys(PLACE_TYPE_LABELS) as PlaceType[];
 
+/** Export / guía section order (playa, comida, naturaleza, cultura…). */
+export const PLACE_EXPORT_CATEGORY_ORDER: PlaceType[] = [
+  "BEACH",
+  "RESTAURANT",
+  "CAFE",
+  "PARK",
+  "VIEWPOINT",
+  "MUSEUM",
+  "HOTEL",
+  "SHOP",
+  "TRANSPORT",
+  "OTHER",
+];
+
 export function placeEmoji(type: PlaceType): string {
   return PLACE_TYPE_EMOJI[type] ?? "📍";
 }

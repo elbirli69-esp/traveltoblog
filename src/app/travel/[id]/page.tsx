@@ -51,10 +51,12 @@ interface TravelData {
     exifDateTime: string | null;
     latitude: number | null;
     longitude: number | null;
+    placeId: string | null;
     selected: boolean;
     isTransportStart: boolean;
     isTransportEnd: boolean;
     user: { alias: string };
+    place?: { id: string; name: string; type: string } | null;
     notes: {
       id: string;
       text: string;

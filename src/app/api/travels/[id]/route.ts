@@ -27,6 +27,7 @@ export async function GET(
       photos: {
         include: {
           user: true,
+          place: { select: { id: true, name: true, type: true } },
           notes: { include: { user: true }, orderBy: { createdAt: "asc" } },
         },
         orderBy: { exifDateTime: "asc" },

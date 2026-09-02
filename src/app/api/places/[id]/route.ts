@@ -10,14 +10,24 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, type, latitude, longitude, comment, visitedAt } = body as {
-      name?: string;
-      type?: PlaceType;
-      latitude?: number;
-      longitude?: number;
-      comment?: string | null;
-      visitedAt?: string | null;
-    };
+    const { name, type, latitude, longitude, comment, visitedAt, linkPhotoIds, unlinkPhotoIds } =
+      body as {
+        name?: string;
+        type?: PlaceType;
+        latitude?: number;
+        longitude?: number;
+        comment?: string | null;
+        visitedAt?: string | null;
+        /** Associate these photos with this place */
+        linkPhotoIds?: string[];
+        /** Clear place link on these photos */
+        unlinkPhotoIds?: string[];
+      };
+
+    const existing = await prisma.place.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "Lugar no encontrado" }, { status: 404 });
+    }
 
     const data: {
       name?: string;
@@ -40,6 +50,23 @@ export async function PATCH(
       data,
       include: { user: true },
     });
+
+    if (Array.isArray(linkPhotoIds) && linkPhotoIds.length > 0) {
+      await prisma.photo.updateMany({
+        where: { travelId: place.travelId, id: { in: linkPhotoIds } },
+        data: { placeId: place.id },
+      });
+    }
+    if (Array.isArray(unlinkPhotoIds) && unlinkPhotoIds.length > 0) {
+      await prisma.photo.updateMany({
+        where: {
+          travelId: place.travelId,
+          id: { in: unlinkPhotoIds },
+          placeId: place.id,
+        },
+        data: { placeId: null },
+      });
+    }
 
     await prisma.travel.update({
       where: { id: place.travelId },

@@ -958,42 +958,54 @@ export default function PhotoUploadGrid({
                 </button>
                 </div>
 
-                {!isValidGps(photo.exif.latitude, photo.exif.longitude) && (
+                {(!isValidGps(photo.exif.latitude, photo.exif.longitude) ||
+                  places.length > 0) && (
                   <div className="space-y-1.5 border-t border-[var(--border)] bg-[var(--card-grouped)] p-2">
-                    {photo.gpsStripped && (
-                      <p className="text-[10px] leading-tight opacity-90">
-                        GPS quitado por Android
-                      </p>
+                    {!isValidGps(photo.exif.latitude, photo.exif.longitude) && (
+                      <>
+                        {photo.gpsStripped && (
+                          <p className="text-[10px] leading-tight opacity-90">
+                            GPS quitado por Android
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-1">
+                          <button
+                            type="button"
+                            onClick={() => void applyLocationToPhoto(photo.id)}
+                            disabled={locationBusy}
+                            className="chip-btn disabled:opacity-50"
+                          >
+                            {locationBusy ? "…" : "📍 Aquí"}
+                          </button>
+                        </div>
+                      </>
                     )}
-                    <div className="flex flex-wrap gap-1">
-                      <button
-                        type="button"
-                        onClick={() => void applyLocationToPhoto(photo.id)}
-                        disabled={locationBusy}
-                        className="chip-btn disabled:opacity-50"
+                    {places.length > 0 && (
+                      <select
+                        className="form-input form-input-sm w-full"
+                        value={photo.placeId ?? ""}
+                        onChange={(e) => {
+                          const placeId = e.target.value;
+                          if (!placeId) {
+                            setPhotos((prev) =>
+                              prev.map((p) =>
+                                p.id === photo.id ? { ...p, placeId: null } : p
+                              )
+                            );
+                            return;
+                          }
+                          assignPlaceToPhoto(photo.id, placeId);
+                        }}
+                        aria-label="Asociar lugar"
                       >
-                        {locationBusy ? "…" : "📍 Aquí"}
-                      </button>
-                      {places.length > 0 && (
-                        <select
-                          className="form-input form-input-sm min-w-0 flex-1"
-                          defaultValue=""
-                          onChange={(e) => {
-                            const placeId = e.target.value;
-                            if (placeId) assignPlaceToPhoto(photo.id, placeId);
-                          }}
-                        >
-                          <option value="" disabled>
-                            Lugar…
+                        <option value="">Lugar (opcional)…</option>
+                        {places.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
                           </option>
-                          {places.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 )}
               </div>

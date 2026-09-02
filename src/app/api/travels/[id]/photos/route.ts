@@ -42,6 +42,7 @@ export async function GET(
         where: { travelId },
         include: {
           user: { select: { alias: true } },
+          place: { select: { id: true, name: true, type: true } },
           notes: {
             include: { user: { select: { alias: true } } },
             orderBy: { createdAt: "asc" },

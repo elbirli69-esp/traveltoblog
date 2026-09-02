@@ -61,6 +61,36 @@ export default function OfflineSyncBanner({
 
     try {
       const photoIdByLocalId = new Map<string, string>();
+      const placeIdByLocalId = new Map<string, string>();
+
+      // Places first so pending photos can resolve placeLocalId → placeId
+      const pendingPlaces = await getPendingPlaces(travelId);
+      for (const place of pendingPlaces) {
+        const res = await fetch("/api/places", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            travelId: place.travelId,
+            userId: place.userId,
+            name: place.name,
+            type: place.type,
+            latitude: place.latitude,
+            longitude: place.longitude,
+            comment: place.comment,
+            localId: place.localId,
+            visitedAt: place.visitedAt ?? place.createdAt,
+          }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as {
+            place?: { id: string; localId?: string | null };
+          };
+          if (data.place?.id) {
+            placeIdByLocalId.set(place.localId, data.place.id);
+          }
+          await removePendingPlace(place.localId);
+        }
+      }
 
       const pendingPhotos = await getPendingPhotos(travelId);
       if (pendingPhotos.length) {
@@ -75,6 +105,11 @@ export default function OfflineSyncBanner({
               exifDateTime: p.exifDateTime,
               latitude: p.latitude,
               longitude: p.longitude,
+              placeId:
+                p.placeId ??
+                (p.placeLocalId
+                  ? placeIdByLocalId.get(p.placeLocalId) ?? null
+                  : null),
               selected: p.selected,
               isTransportStart: p.isTransportStart,
               isTransportEnd: p.isTransportEnd,
@@ -100,35 +135,6 @@ export default function OfflineSyncBanner({
           for (const p of pendingPhotos) {
             await removePendingPhoto(p.localId);
           }
-        }
-      }
-
-      const pendingPlaces = await getPendingPlaces(travelId);
-      const placeIdByLocalId = new Map<string, string>();
-      for (const place of pendingPlaces) {
-        const res = await fetch("/api/places", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            travelId: place.travelId,
-            userId: place.userId,
-            name: place.name,
-            type: place.type,
-            latitude: place.latitude,
-            longitude: place.longitude,
-            comment: place.comment,
-            localId: place.localId,
-            visitedAt: place.visitedAt ?? place.createdAt,
-          }),
-        });
-        if (res.ok) {
-          const data = (await res.json()) as {
-            place?: { id: string; localId?: string | null };
-          };
-          if (data.place?.id) {
-            placeIdByLocalId.set(place.localId, data.place.id);
-          }
-          await removePendingPlace(place.localId);
         }
       }
 

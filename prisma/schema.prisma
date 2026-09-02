@@ -87,6 +87,8 @@ model Photo {
   exifDateTime    DateTime?
   latitude        Float?
   longitude       Float?
+  /// Optional explicit link to a marked place (export categories + guía)
+  placeId         String?
   /// User selected this photo for the journal
   selected        Boolean   @default(true)
   /// Marks outbound transport photo (trip start)
@@ -100,6 +102,7 @@ model Photo {
 
   travel          Travel    @relation(fields: [travelId], references: [id], onDelete: Cascade)
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  place           Place?    @relation(fields: [placeId], references: [id], onDelete: SetNull)
   notes           Note[]
 
   travelAsStart   Travel?   @relation("TravelStartPhoto")
@@ -107,6 +110,7 @@ model Photo {
 
   @@index([travelId, exifDateTime])
   @@index([userId])
+  @@index([placeId])
 }
 
 enum NoteType {
@@ -177,6 +181,7 @@ model Place {
   travel    Travel    @relation(fields: [travelId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   notes     Note[]
+  photos    Photo[]
 
   @@index([travelId])
   @@index([userId])
