@@ -36,17 +36,26 @@ export async function POST(request: NextRequest) {
 
     const shareCode = generateShareCode();
 
-    const travel = await prisma.travel.create({
-      data: {
-        title: title.trim(),
-        shareCode,
-        startDate: startDate ? new Date(startDate) : null,
-        endDate: endDate ? new Date(endDate) : null,
-        users: {
-          create: { alias: alias.trim() },
+    const travel = await prisma.$transaction(async (tx) => {
+      const created = await tx.travel.create({
+        data: {
+          title: title.trim(),
+          shareCode,
+          startDate: startDate ? new Date(startDate) : null,
+          endDate: endDate ? new Date(endDate) : null,
+          users: {
+            create: { alias: alias.trim() },
+          },
         },
-      },
-      include: { users: true },
+        include: { users: true },
+      });
+
+      const creator = created.users[0];
+      return tx.travel.update({
+        where: { id: created.id },
+        data: { creatorId: creator.id },
+        include: { users: true },
+      });
     });
 
     const creator = travel.users[0];

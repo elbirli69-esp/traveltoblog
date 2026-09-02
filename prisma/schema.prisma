@@ -38,6 +38,9 @@ model Travel {
   travelType   TravelType?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  /// Participant who created the travel room (only they may delete the trip)
+  creatorId    String?  @unique
+  creator      User?    @relation("TravelCreator", fields: [creatorId], references: [id], onDelete: SetNull)
 
   users        User[]
   photos       Photo[]
@@ -62,6 +65,7 @@ model User {
   createdAt DateTime @default(now())
 
   travel    Travel   @relation(fields: [travelId], references: [id], onDelete: Cascade)
+  createdTravel Travel? @relation("TravelCreator")
   photos    Photo[]
   notes     Note[]
   places    Place[]
