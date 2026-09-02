@@ -179,6 +179,9 @@ echo "→ Preparando base de datos SQLite local…"
 mkdir -p prisma/data
 DATABASE_URL="file:./prisma/data/travel.db" npx prisma db push --skip-generate 2>/dev/null || true
 
+echo "→ Empaquetando WeasyPrint para build Docker offline en el NAS…"
+bash scripts/bundle-weasyprint-debs.sh
+
 echo "→ Sincronizando código (tar por SSH, incluye .next standalone)…"
 "${SSH_CMD[@]}" "$SSH_TARGET" "mkdir -p ${REMOTE_DIR}"
 tar \
