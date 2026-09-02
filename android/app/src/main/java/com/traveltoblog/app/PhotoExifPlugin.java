@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
 import androidx.activity.result.ActivityResult;
@@ -24,7 +25,9 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -44,6 +47,7 @@ import java.util.List;
 public class PhotoExifPlugin extends Plugin {
 
     private static final int MAX_READ_BYTES = 25 * 1024 * 1024;
+    private static final int MAX_EXPORT_BYTES = 150 * 1024 * 1024;
 
     private File cameraOutputFile;
 
@@ -102,6 +106,124 @@ public class PhotoExifPlugin extends Plugin {
         } catch (Exception e) {
             call.reject("No se pudo leer la foto", e);
         }
+    }
+
+    @PluginMethod
+    public void shareExportFile(PluginCall call) {
+        shareOrSaveExport(call, true);
+    }
+
+    @PluginMethod
+    public void saveExportFile(PluginCall call) {
+        shareOrSaveExport(call, false);
+    }
+
+    private void shareOrSaveExport(PluginCall call, boolean openShareSheet) {
+        String base64 = call.getString("base64");
+        String filename = call.getString("filename");
+        String mimeType = call.getString("mimeType", "application/octet-stream");
+
+        if (base64 == null || base64.isEmpty()) {
+            call.reject("Datos del archivo vacíos");
+            return;
+        }
+        if (filename == null || filename.isEmpty()) {
+            call.reject("Nombre de archivo requerido");
+            return;
+        }
+
+        String safeName = filename.replaceAll("[\\\\/:*?\"<>|]", "_");
+
+        try {
+            byte[] bytes = Base64.decode(base64, Base64.DEFAULT);
+            if (bytes.length == 0) {
+                call.reject("El archivo exportado está vacío");
+                return;
+            }
+            if (bytes.length > MAX_EXPORT_BYTES) {
+                call.reject("El archivo es demasiado grande para guardar en el dispositivo (máx. 150 MB)");
+                return;
+            }
+
+            if (openShareSheet) {
+                File cacheFile = new File(getContext().getCacheDir(), "export_" + System.currentTimeMillis() + "_" + safeName);
+                try (FileOutputStream out = new FileOutputStream(cacheFile)) {
+                    out.write(bytes);
+                }
+
+                Uri uri =
+                    FileProvider.getUriForFile(
+                        getContext(),
+                        getContext().getPackageName() + ".fileprovider",
+                        cacheFile
+                    );
+
+                Intent share = new Intent(Intent.ACTION_SEND);
+                share.setType(mimeType);
+                share.putExtra(Intent.EXTRA_STREAM, uri);
+                share.putExtra(Intent.EXTRA_SUBJECT, safeName);
+                share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+                Intent chooser = Intent.createChooser(share, "Guardar exportación");
+                chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                getActivity().startActivity(chooser);
+
+                JSObject ret = new JSObject();
+                ret.put("ok", true);
+                ret.put("mode", "share");
+                call.resolve(ret);
+                return;
+            }
+
+            String savedPath = writeToDownloads(safeName, mimeType, bytes);
+            JSObject ret = new JSObject();
+            ret.put("ok", true);
+            ret.put("mode", "save");
+            ret.put("path", savedPath);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("No se pudo guardar el archivo", e);
+        }
+    }
+
+    private String writeToDownloads(String filename, String mimeType, byte[] bytes) throws Exception {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            android.content.ContentResolver resolver = getContext().getContentResolver();
+            android.content.ContentValues values = new android.content.ContentValues();
+            values.put(MediaStore.Downloads.DISPLAY_NAME, filename);
+            values.put(MediaStore.Downloads.MIME_TYPE, mimeType);
+            values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/TravelToBlog");
+            values.put(MediaStore.Downloads.IS_PENDING, 1);
+
+            Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) {
+                throw new Exception("No se pudo crear el archivo en Descargas");
+            }
+
+            try (OutputStream out = resolver.openOutputStream(uri)) {
+                if (out == null) {
+                    throw new Exception("No se pudo escribir en Descargas");
+                }
+                out.write(bytes);
+            }
+
+            values.clear();
+            values.put(MediaStore.Downloads.IS_PENDING, 0);
+            resolver.update(uri, values, null, null);
+            return "Descargas/TravelToBlog/" + filename;
+        }
+
+        File downloadsDir =
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        File targetDir = new File(downloadsDir, "TravelToBlog");
+        if (!targetDir.exists() && !targetDir.mkdirs()) {
+            throw new Exception("No se pudo crear la carpeta TravelToBlog en Descargas");
+        }
+        File targetFile = new File(targetDir, filename);
+        try (FileOutputStream out = new FileOutputStream(targetFile)) {
+            out.write(bytes);
+        }
+        return targetFile.getAbsolutePath();
     }
 
     @PermissionCallback

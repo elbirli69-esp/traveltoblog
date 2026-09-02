@@ -6,8 +6,9 @@ import type { ExportPipelineEvent, ExportPipelineStep } from "@/lib/export-pipel
 import type { ExportWarning } from "@/lib/export-warnings";
 import {
   DownloadCancelledError,
-  downloadBlob,
+  downloadFromBase64,
   openBlobPreview,
+  type DownloadResult,
 } from "@/lib/download-blob";
 import { isCapacitorNative } from "@/lib/capacitor-native";
 
@@ -102,6 +103,7 @@ export default function ExportHtmlPanel({
   const [loading, setLoading] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<ExportWarning[]>([]);
   const [currentStep, setCurrentStep] = useState<ExportPipelineStep | null>(null);
   const [stepMessage, setStepMessage] = useState<string | null>(null);
@@ -150,6 +152,7 @@ export default function ExportHtmlPanel({
         setLoading(true);
       }
       setError(null);
+      setSuccess(null);
       setCurrentStep(null);
       setStepMessage(null);
       setCompletedSteps([]);
@@ -219,7 +222,20 @@ export default function ExportHtmlPanel({
               const filename =
                 event.filename ??
                 (exportFormat === "zip" ? "viaje-export.zip" : "viaje.html");
-              await downloadBlob(blob, filename);
+              const result: DownloadResult = await downloadFromBase64(
+                event.blobBase64,
+                filename,
+                event.contentType ?? "application/octet-stream"
+              );
+              if (result === "saved") {
+                setSuccess("Archivo guardado en Descargas/TravelToBlog.");
+              } else if (result === "shared") {
+                setSuccess("Elige dónde guardar el archivo en el menú Compartir.");
+              } else {
+                setSuccess(
+                  "Se abrió la vista previa. Pulsa ⋮ o Compartir y elige «Guardar en Descargas»."
+                );
+              }
             }
 
             finished = true;
@@ -385,8 +401,9 @@ export default function ExportHtmlPanel({
 
       {isCapacitorNative() && (
         <p className="callout callout-info text-sm">
-          En la app Android, al terminar se abrirá el menú <strong>Compartir</strong> para guardar
-          el ZIP o HTML en Descargas, Drive u otra app.
+          En la app Android, al exportar se abrirá el menú <strong>Compartir</strong> para guardar
+          en Descargas, Drive u otra app. Si no aparece, el archivo se guardará en{" "}
+          <strong>Descargas/TravelToBlog</strong>.
         </p>
       )}
 
@@ -436,6 +453,7 @@ export default function ExportHtmlPanel({
         </ul>
       )}
 
+      {success && <p className="callout callout-success text-sm">{success}</p>}
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );

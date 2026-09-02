@@ -16,6 +16,16 @@ export interface PhotoExifPlugin {
   pickImages(options?: { limit?: number }): Promise<{ photos: NativePickedPhoto[] }>;
   takePhoto(): Promise<{ photos: NativePickedPhoto[] }>;
   readPhotoFile(options: { path: string }): Promise<{ base64: string; mimeType: string }>;
+  shareExportFile(options: {
+    base64: string;
+    filename: string;
+    mimeType?: string;
+  }): Promise<{ ok: boolean; mode: string }>;
+  saveExportFile(options: {
+    base64: string;
+    filename: string;
+    mimeType?: string;
+  }): Promise<{ ok: boolean; mode: string; path?: string }>;
 }
 
 export const PhotoExif = registerPlugin<PhotoExifPlugin>("PhotoExif");

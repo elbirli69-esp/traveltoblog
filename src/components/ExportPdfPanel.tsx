@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { downloadBlob } from "@/lib/download-blob";
+import { DownloadCancelledError, downloadBlob, type DownloadResult } from "@/lib/download-blob";
 
 export type PdfPageFormat = "a4-landscape" | "square";
 
@@ -32,10 +32,12 @@ export default function ExportPdfPanel({
   const [format, setFormat] = useState<PdfPageFormat>("a4-landscape");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const handleExport = async () => {
     setLoading(true);
     setError(null);
+    setSuccess(null);
 
     try {
       const res = await fetch("/api/export-pdf", {
@@ -54,8 +56,16 @@ export default function ExportPdfPanel({
       const match = disposition.match(/filename="([^"]+)"/);
       const filename = match?.[1] ?? "album-imprenta.pdf";
 
-      await downloadBlob(blob, filename);
+      const result: DownloadResult = await downloadBlob(blob, filename);
+      if (result === "saved") {
+        setSuccess("PDF guardado en Descargas/TravelToBlog.");
+      } else if (result === "shared") {
+        setSuccess("Elige dónde guardar el PDF en el menú Compartir.");
+      } else {
+        setSuccess("Se abrió la vista previa del PDF. Usa Compartir para guardarlo.");
+      }
     } catch (err) {
+      if (err instanceof DownloadCancelledError) return;
       setError(err instanceof Error ? err.message : "Error al generar PDF");
     } finally {
       setLoading(false);
@@ -112,6 +122,7 @@ export default function ExportPdfPanel({
         {loading ? "Generando PDF para imprenta…" : "🖨️ Descargar Álbum para Imprenta (PDF)"}
       </button>
 
+      {success && <p className="callout callout-success text-sm">{success}</p>}
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );
