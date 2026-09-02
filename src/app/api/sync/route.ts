@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import { preparePhotoForStorage } from "@/lib/photo-upload";
+import { resolvePhotoPlaceId } from "@/lib/photo-place";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest) {
       exifDateTime: string | null;
       latitude: number | null;
       longitude: number | null;
+      placeId?: string | null;
       selected: boolean;
       isTransportStart: boolean;
       isTransportEnd: boolean;
@@ -53,6 +55,8 @@ export async function POST(request: NextRequest) {
         }
       );
 
+      const placeId = await resolvePhotoPlaceId(travelId, meta.placeId ?? null);
+
       const photo = await prisma.photo.create({
         data: {
           travelId,
@@ -62,6 +66,7 @@ export async function POST(request: NextRequest) {
           exifDateTime: prepared.exif.dateTime,
           latitude: prepared.exif.latitude,
           longitude: prepared.exif.longitude,
+          placeId: placeId ?? null,
           selected: meta.selected,
           isTransportStart: meta.isTransportStart,
           isTransportEnd: meta.isTransportEnd,

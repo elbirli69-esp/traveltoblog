@@ -6,6 +6,7 @@ export interface FlightLegPhoto {
   url: string;
   latitude: number | null;
   longitude: number | null;
+  placeId?: string | null;
   isTransportStart: boolean;
   isTransportEnd: boolean;
   exifDateTime: string | null;

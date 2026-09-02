@@ -112,6 +112,7 @@ export default function TravelPlacesPanel({
   const [locateSignal, setLocateSignal] = useState(0);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
   const [draft, setDraft] = useState<DraftPlace | null>(null);
   const [editForm, setEditForm] = useState<{
     id: string;
@@ -159,7 +160,8 @@ export default function TravelPlacesPanel({
         p.latitude != null &&
         p.longitude != null &&
         !p.isTransportStart &&
-        !p.isTransportEnd
+        !p.isTransportEnd &&
+        p.placeId !== selectedPlace.id
     ) as Array<FlightLegPhoto & { latitude: number; longitude: number }>;
     return findNearby(
       {
@@ -170,6 +172,50 @@ export default function TravelPlacesPanel({
       NEARBY_THRESHOLD_M
     );
   }, [selectedPlace, photos]);
+
+  const linkedPhotosForSelected = useMemo(() => {
+    if (!selectedPlace) return [];
+    return photos.filter(
+      (p) => p.placeId === selectedPlace.id && !p.isTransportStart && !p.isTransportEnd
+    );
+  }, [selectedPlace, photos]);
+
+  const linkPhotosToPlace = async (photoIds: string[]) => {
+    if (!selectedPlace || photoIds.length === 0) return;
+    setLinkBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/places/${selectedPlace.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ linkPhotoIds: photoIds }),
+      });
+      if (!res.ok) throw new Error("fail");
+      onChanged?.();
+    } catch {
+      setError("No se pudieron asociar las fotos");
+    } finally {
+      setLinkBusy(false);
+    }
+  };
+
+  const unlinkPhotoFromPlace = async (photoId: string) => {
+    if (!selectedPlace) return;
+    setLinkBusy(true);
+    try {
+      const res = await fetch(`/api/places/${selectedPlace.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unlinkPhotoIds: [photoId] }),
+      });
+      if (!res.ok) throw new Error("fail");
+      onChanged?.();
+    } catch {
+      setError("No se pudo desasociar la foto");
+    } finally {
+      setLinkBusy(false);
+    }
+  };
 
   const placeNotes = (place: TravelPlace) => {
     if (place.notes && place.notes.length > 0) return place.notes;
@@ -698,29 +744,86 @@ export default function TravelPlacesPanel({
             placeId={selectedPlace.id}
             onCreated={onChanged}
           />
-          {nearbyPhotosForSelected.length > 0 && (
+          {linkedPhotosForSelected.length > 0 && (
             <div className="border-t border-divider pt-3">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-secondary">
-                Fotos cerca ({NEARBY_THRESHOLD_M} m)
+                Fotos asociadas ({linkedPhotosForSelected.length})
               </p>
               <div className="flex flex-wrap gap-2">
+                {linkedPhotosForSelected.map((photo) => (
+                  <div key={photo.id} className="group relative">
+                    <button
+                      type="button"
+                      onClick={() => onOpenPhoto?.(photo.id)}
+                      className="ring-photo"
+                    >
+                      <PhotoImage
+                        photoId={photo.id}
+                        url={photo.url}
+                        className="h-14 w-14 object-cover transition group-hover:opacity-90"
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={linkBusy}
+                      onClick={() => void unlinkPhotoFromPlace(photo.id)}
+                      className="absolute -right-1 -top-1 rounded-full bg-black/70 px-1 text-[10px] text-white"
+                      title="Quitar asociación"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {nearbyPhotosForSelected.length > 0 && (
+            <div className="border-t border-divider pt-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-fg-secondary">
+                  Fotos cerca ({NEARBY_THRESHOLD_M} m)
+                </p>
+                <button
+                  type="button"
+                  disabled={linkBusy}
+                  onClick={() =>
+                    void linkPhotosToPlace(
+                      nearbyPhotosForSelected.slice(0, 6).map((p) => p.id)
+                    )
+                  }
+                  className="chip-btn disabled:opacity-50"
+                >
+                  {linkBusy ? "…" : "Asociar cercanas"}
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
                 {nearbyPhotosForSelected.slice(0, 6).map((photo) => (
-                  <button
-                    key={photo.id}
-                    type="button"
-                    onClick={() => onOpenPhoto?.(photo.id)}
-                    className="group relative ring-photo"
-                    title={`${formatDistanceM(photo.distanceM)}`}
-                  >
-                    <PhotoImage
-                      photoId={photo.id}
-                      url={photo.url}
-                      className="h-14 w-14 object-cover transition group-hover:opacity-90"
-                    />
-                    <span className="absolute bottom-0 inset-x-0 bg-black/50 px-0.5 text-center text-[9px] text-white">
-                      {formatDistanceM(photo.distanceM)}
-                    </span>
-                  </button>
+                  <div key={photo.id} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => onOpenPhoto?.(photo.id)}
+                      className="ring-photo"
+                      title={formatDistanceM(photo.distanceM)}
+                    >
+                      <PhotoImage
+                        photoId={photo.id}
+                        url={photo.url}
+                        className="h-14 w-14 object-cover"
+                      />
+                      <span className="absolute bottom-0 inset-x-0 bg-black/50 px-0.5 text-center text-[9px] text-white">
+                        {formatDistanceM(photo.distanceM)}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={linkBusy}
+                      onClick={() => void linkPhotosToPlace([photo.id])}
+                      className="absolute -right-1 -top-1 rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-bold text-white shadow"
+                      title="Asociar a este lugar"
+                    >
+                      +
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>

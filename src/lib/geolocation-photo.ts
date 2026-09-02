@@ -45,16 +45,21 @@ export async function applyCurrentLocationToPhotos<T extends { exif: ExifMetadat
   });
 }
 
-export function applyPlaceToPhoto<T extends { exif: ExifMetadata }>(
+export function applyPlaceToPhoto<T extends { exif: ExifMetadata; placeId?: string | null }>(
   photo: T,
-  place: { latitude: number; longitude: number }
+  place: { id: string; latitude: number; longitude: number }
 ): T {
-  return {
+  const next: T = {
     ...photo,
-    exif: {
+    placeId: place.id,
+    exif: { ...photo.exif },
+  };
+  if (!isValidGps(photo.exif.latitude, photo.exif.longitude)) {
+    next.exif = {
       ...photo.exif,
       latitude: place.latitude,
       longitude: place.longitude,
-    },
-  };
+    };
+  }
+  return next;
 }

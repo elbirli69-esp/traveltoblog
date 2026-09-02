@@ -21,10 +21,12 @@ export interface GalleryPhoto {
   exifDateTime: string | null;
   latitude: number | null;
   longitude: number | null;
+  placeId?: string | null;
   selected: boolean;
   isTransportStart: boolean;
   isTransportEnd: boolean;
   user: { alias: string };
+  place?: { id: string; name: string; type: string } | null;
   notes: {
     id: string;
     text: string;
@@ -295,6 +297,7 @@ export default function PhotoGallery({
             if (photo.isTransportStart) badges.push("Ida");
             if (photo.isTransportEnd) badges.push("Vuelta");
             if (isValidGps(photo.latitude, photo.longitude)) badges.push("GPS");
+            if (photo.placeId) badges.push("Lugar");
 
             const nearby =
               isValidGps(photo.latitude, photo.longitude)
@@ -401,12 +404,54 @@ export default function PhotoGallery({
                       </button>
                     </div>
 
-                    {nearby.length > 0 && onOpenPlace && (
+                    {places.length > 0 && (
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-semibold text-fg-secondary">
+                          Lugar asociado
+                        </label>
+                        <select
+                          className="form-input form-input-sm w-full"
+                          value={photo.placeId ?? ""}
+                          onChange={async (e) => {
+                            const nextPlaceId = e.target.value || null;
+                            try {
+                              const res = await fetch(`/api/photos/${photo.id}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ placeId: nextPlaceId }),
+                              });
+                              if (!res.ok) throw new Error("fail");
+                              onNoteCreated?.();
+                            } catch {
+                              /* keep UI; next refresh fixes */
+                            }
+                          }}
+                        >
+                          <option value="">Sin lugar</option>
+                          {places.map((place) => (
+                            <option key={place.id} value={place.id}>
+                              {place.name}
+                            </option>
+                          ))}
+                        </select>
+                        {photo.placeId && onOpenPlace && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenPlace(photo.placeId!)}
+                            className="text-xs font-medium text-accent-mint underline-offset-2 hover:underline"
+                          >
+                            Ver lugar en el mapa
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {nearby.length > 0 && onOpenPlace && !photo.placeId && (
                       <div className="callout callout-success text-xs">
                         <p className="mb-1.5 font-semibold">Cerca de un lugar marcado</p>
                         <ul className="space-y-1">
                           {nearby.slice(0, 3).map((place) => (
-                            <li key={place.id}>
+                            <li key={place.id} className="flex flex-wrap items-center gap-2">
                               <button
                                 type="button"
                                 onClick={() => onOpenPlace(place.id)}
@@ -414,8 +459,44 @@ export default function PhotoGallery({
                               >
                                 {place.name} ({formatDistanceM(place.distanceM)})
                               </button>
+                              <button
+                                type="button"
+                                className="chip-btn"
+                                onClick={async () => {
+                                  const res = await fetch(`/api/photos/${photo.id}`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ placeId: place.id }),
+                                  });
+                                  if (res.ok) onNoteCreated?.();
+                                }}
+                              >
+                                Asociar
+                              </button>
                             </li>
                           ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {nearby.length > 0 && onOpenPlace && photo.placeId && (
+                      <div className="callout callout-success text-xs">
+                        <p className="mb-1.5 font-semibold">Otros lugares cerca</p>
+                        <ul className="space-y-1">
+                          {nearby
+                            .filter((place) => place.id !== photo.placeId)
+                            .slice(0, 2)
+                            .map((place) => (
+                              <li key={place.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenPlace(place.id)}
+                                  className="font-medium text-accent-mint underline-offset-2 hover:underline"
+                                >
+                                  {place.name} ({formatDistanceM(place.distanceM)})
+                                </button>
+                              </li>
+                            ))}
                         </ul>
                       </div>
                     )}

@@ -1,6 +1,6 @@
 import type { TimelineEvent } from "@/lib/timeline";
 import { formatDateKey } from "@/lib/travel-dates";
-import { PLACE_TYPE_EMOJI, PLACE_TYPE_LABELS, PLACE_TYPES } from "@/lib/places";
+import { PLACE_TYPE_EMOJI, PLACE_TYPE_LABELS, PLACE_EXPORT_CATEGORY_ORDER } from "@/lib/places";
 import type { PlaceType } from "@prisma/client";
 import { galleryExportStyles } from "@/lib/export/gallery-html";
 
@@ -11,10 +11,13 @@ export interface MagazineNote {
 }
 
 export interface MagazinePlace {
+  id?: string;
   name: string;
   type: string;
   comment: string | null;
   alias: string;
+  /** Thumb paths for linked (or nearby) photos */
+  photoPaths?: string[];
 }
 
 export interface MagazineMetaInput {
@@ -112,7 +115,7 @@ export function buildTocHtml(events: TimelineEvent[]): string {
 </nav>`;
 }
 
-const CALLOUT_TYPES = PLACE_TYPES;
+const CALLOUT_TYPES = PLACE_EXPORT_CATEGORY_ORDER;
 
 export function buildPlaceCalloutsHtml(places: MagazinePlace[]): string {
   if (places.length === 0) return "";
@@ -133,8 +136,16 @@ export function buildPlaceCalloutsHtml(places: MagazinePlace[]): string {
       const cards = items
         .map((p) => {
           const note = p.comment?.trim();
+          const thumbs = (p.photoPaths ?? [])
+            .slice(0, 4)
+            .map(
+              (src) =>
+                `<img class="mag-callout-thumb" data-export-src="${escapeHtml(src)}" alt="" loading="lazy">`
+            )
+            .join("");
           return `<article class="mag-callout-card">
   <h4 class="mag-callout-name">${emoji} ${escapeHtml(p.name)}</h4>
+  ${thumbs ? `<div class="mag-callout-photos">${thumbs}</div>` : ""}
   ${note ? `<p class="mag-callout-note">${escapeHtml(note)}</p>` : ""}
   <footer class="mag-callout-foot">${escapeHtml(p.alias)}</footer>
 </article>`;
@@ -151,7 +162,7 @@ export function buildPlaceCalloutsHtml(places: MagazinePlace[]): string {
 <section id="guia" class="mag-callouts reveal visible">
   <header class="mag-section-head">
     <p class="mag-eyebrow">Guía práctica</p>
-    <h2 class="section-title">Dónde dormir, comer y mirar</h2>
+    <h2 class="section-title">Por categorías del viaje</h2>
   </header>
   ${sections}
 </section>`;
@@ -433,6 +444,19 @@ body {
   box-shadow: 0 4px 20px rgba(28,25,23,.04);
 }
 .mag-callout-name { margin: 0 0 .4rem; font-size: 1rem; font-weight: 600; }
+.mag-callout-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin: 0 0 .55rem;
+}
+.mag-callout-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #e7e5e4;
+}
 .mag-callout-note { margin: 0; font-size: .9rem; color: #57534e; line-height: 1.5; }
 .mag-callout-foot { margin-top: .5rem; font-family: system-ui, sans-serif; font-size: .72rem; color: var(--muted); }
 

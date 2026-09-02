@@ -11,6 +11,8 @@ export interface ParsedPhoto {
   exif: ExifMetadata;
   /** Android photo picker redacts GPS tags to empty/NaN while gallery still shows location. */
   gpsStripped?: boolean;
+  /** Linked place (server id) for categories / guía export. */
+  placeId?: string | null;
   selected: boolean;
   outOfRange: boolean;
   isTransportStart: boolean;
@@ -31,6 +33,10 @@ export interface PendingPhoto {
   exifDateTime: string | null;
   latitude: number | null;
   longitude: number | null;
+  /** Server place id when already synced */
+  placeId: string | null;
+  /** Client place localId when the place is still pending */
+  placeLocalId: string | null;
   selected: boolean;
   isTransportStart: boolean;
   isTransportEnd: boolean;

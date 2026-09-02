@@ -80,6 +80,8 @@ export interface ExportPhoto {
   thumbPath: string;
   latitude: number | null;
   longitude: number | null;
+  /** Explicit place link for guía categories (preferred over GPS proximity). */
+  placeId?: string | null;
   exifDateTime: Date | null;
   alias: string;
   isTransportStart: boolean;
@@ -237,10 +239,19 @@ export interface ExportGpsTrack {
 
 const PLACE_PHOTO_RADIUS_M = 500;
 
-function photosForPlace(
-  place: Pick<ExportPlace, "latitude" | "longitude">,
+export function photosForPlace(
+  place: Pick<ExportPlace, "id" | "latitude" | "longitude">,
   photos: ExportPhoto[]
 ): ExportPhoto[] {
+  const linked = photos.filter(
+    (p) =>
+      place.id &&
+      p.placeId === place.id &&
+      !p.isTransportStart &&
+      !p.isTransportEnd
+  );
+  if (linked.length > 0) return linked;
+
   const candidates = photos.filter(
     (p) =>
       !p.isTransportStart &&
@@ -1596,7 +1607,18 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide)}`
     distanceKm,
     profile,
   });
-  const calloutsBlock = isMagazine ? buildPlaceCalloutsHtml(places) : "";
+  const calloutPlaces = places.map((p) => {
+    const linked = photosForPlace(p, mapPhotos);
+    return {
+      id: p.id,
+      name: p.name,
+      type: p.type,
+      comment: p.comment,
+      alias: p.alias,
+      photoPaths: linked.slice(0, 4).map((photo) => photo.thumbPath),
+    };
+  });
+  const calloutsBlock = isMagazine ? buildPlaceCalloutsHtml(calloutPlaces) : "";
   const closingBlock = isMagazine
     ? buildClosingSectionHtml(tripNote, {
         photoCount: photos.length,
@@ -1753,6 +1775,7 @@ export function buildMapPhotoList(
       thumbPath: `map/${photo.id}-thumb.webp`,
       latitude: photo.latitude,
       longitude: photo.longitude,
+      placeId: photo.placeId ?? null,
       exifDateTime: photo.exifDateTime,
       alias: photo.user.alias,
       isTransportStart: photo.isTransportStart,
@@ -1781,6 +1804,7 @@ export async function loadPhotoFiles(
         thumbPath,
         latitude: resolved.latitude,
         longitude: resolved.longitude,
+        placeId: photo.placeId ?? null,
         exifDateTime: resolved.dateTime,
         alias: photo.user.alias,
         isTransportStart: photo.isTransportStart,
