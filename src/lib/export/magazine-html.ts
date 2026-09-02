@@ -1,6 +1,6 @@
 import type { TimelineEvent } from "@/lib/timeline";
 import { formatDateKey } from "@/lib/travel-dates";
-import { PLACE_TYPE_EMOJI, PLACE_TYPE_LABELS } from "@/lib/places";
+import { PLACE_TYPE_EMOJI, PLACE_TYPE_LABELS, PLACE_TYPES } from "@/lib/places";
 import type { PlaceType } from "@prisma/client";
 import { galleryExportStyles } from "@/lib/export/gallery-html";
 
@@ -112,29 +112,22 @@ export function buildTocHtml(events: TimelineEvent[]): string {
 </nav>`;
 }
 
-const CALLOUT_TYPES: PlaceType[] = [
-  "HOTEL",
-  "RESTAURANT",
-  "CAFE",
-  "VIEWPOINT",
-  "MUSEUM",
-  "BEACH",
-];
+const CALLOUT_TYPES = PLACE_TYPES;
 
 export function buildPlaceCalloutsHtml(places: MagazinePlace[]): string {
+  if (places.length === 0) return "";
+
   const grouped = new Map<PlaceType, MagazinePlace[]>();
   for (const place of places) {
     const type = (place.type as PlaceType) ?? "OTHER";
-    if (!CALLOUT_TYPES.includes(type)) continue;
     const list = grouped.get(type) ?? [];
     list.push(place);
     grouped.set(type, list);
   }
 
-  if (grouped.size === 0) return "";
-
-  const sections = [...grouped.entries()]
-    .map(([type, items]) => {
+  const sections = CALLOUT_TYPES.filter((type) => grouped.has(type))
+    .map((type) => {
+      const items = grouped.get(type)!;
       const emoji = PLACE_TYPE_EMOJI[type];
       const label = PLACE_TYPE_LABELS[type];
       const cards = items
@@ -155,7 +148,7 @@ export function buildPlaceCalloutsHtml(places: MagazinePlace[]): string {
     .join("");
 
   return `
-<section id="guia" class="mag-callouts reveal">
+<section id="guia" class="mag-callouts reveal visible">
   <header class="mag-section-head">
     <p class="mag-eyebrow">Guía práctica</p>
     <h2 class="section-title">Dónde dormir, comer y mirar</h2>
@@ -235,12 +228,16 @@ export function buildMagazineHero(input: {
 <div class="mag-progress" aria-hidden="true"><span class="mag-progress-bar"></span></div>`;
 }
 
-export function buildMagazineNav(hasMap: boolean, hasJournal: boolean): string {
+export function buildMagazineNav(
+  hasMap: boolean,
+  hasJournal: boolean,
+  hasGuide = false
+): string {
   return `<nav class="mag-section-nav">
   ${hasMap ? '<a href="#mapa">Mapa</a>' : ""}
   <a href="#cronologia">Recorrido</a>
   ${hasJournal ? '<a href="#historia">Crónica</a>' : ""}
-  <a href="#guia">Guía</a>
+  ${hasGuide ? '<a href="#guia">Guía</a>' : ""}
   <a href="#cierre">Cierre</a>
   <a href="#galeria">Galería</a>
 </nav>`;
@@ -515,7 +512,7 @@ ${galleryExportStyles()}
 #lightbox img { max-width: 95vw; max-height: 80vh; border-radius: 8px; }
 .lightbox-caption { color: #d6d3d1; margin-top: 1rem; font-family: system-ui, sans-serif; font-size: .9rem; }
 
-.reveal { opacity: 0; transform: translateY(16px); transition: opacity .6s ease, transform .6s ease; }
+.reveal { opacity: 1; transform: none; }
 .reveal.visible { opacity: 1; transform: none; }
 
 footer {

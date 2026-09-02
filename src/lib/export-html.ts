@@ -310,7 +310,8 @@ function buildInteractiveScripts(template: ExportTemplateId): string {
   if ("IntersectionObserver" in window) {
     var observer = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
-        if (entry.isIntersecting) entry.target.classList.add("visible");
+        if (!entry.isIntersecting) return;
+        revealBlock(entry.target);
       });
     }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
     document.querySelectorAll(".reveal").forEach(function (el) { observer.observe(el); });
@@ -326,6 +327,15 @@ function buildInteractiveScripts(template: ExportTemplateId): string {
       setTimeout(function () { window.__refreshTravelMap(); }, 80);
     }
   }
+
+  document.querySelectorAll(".reveal.visible, .photo-block").forEach(function (el) {
+    el.classList.add("visible");
+  });
+  setTimeout(function () {
+    document.querySelectorAll(".reveal, .photo-block").forEach(function (el) {
+      el.classList.add("visible");
+    });
+  }, 400);
 
   function scrollToAnchor(id) {
     var target = document.querySelector(id);
@@ -674,9 +684,8 @@ article p { margin: 1rem 0; color: #d6d3d1; }
 article .photo-credit { text-align: center; font-size: .85rem; color: var(--muted); font-style: italic; }
 .photo-block {
   margin: 2rem 0;
-  opacity: 0;
-  transform: translateY(24px);
-  transition: opacity .6s ease, transform .6s ease;
+  opacity: 1;
+  transform: none;
 }
 .photo-block.visible { opacity: 1; transform: translateY(0); }
 .photo-frame {
@@ -695,7 +704,7 @@ article .photo-credit { text-align: center; font-size: .85rem; color: var(--mute
   color: var(--muted);
 }
 ${galleryExportStyles()}
-.reveal { opacity: 0; transform: translateY(20px); transition: opacity .6s ease, transform .6s ease; }
+.reveal { opacity: 1; transform: none; }
 .reveal.visible { opacity: 1; transform: translateY(0); }
 #lightbox {
   position: fixed;
@@ -788,12 +797,12 @@ article p { color: #d1d5db; }
 article .section-title { color: #fff; font-size: 1.5rem; border-bottom: 2px solid rgba(251,191,36,.35); padding-bottom: .4rem; }
 article .day-marker { color: #fde68a; border-left: 4px solid var(--accent); padding-left: .85rem; }
 article .pull-quote { border-left-color: var(--accent); background: rgba(251,191,36,.08); }
-.photo-block { margin: 2rem 0; opacity: 0; transform: translateY(20px); transition: opacity .5s ease, transform .5s ease; }
+.photo-block { margin: 2rem 0; opacity: 1; transform: none; }
 .photo-block.visible { opacity: 1; transform: none; }
 .photo-frame { border-radius: 14px; overflow: hidden; cursor: zoom-in; box-shadow: 0 20px 50px rgba(0,0,0,.45); }
 .photo-block img { width: 100%; display: block; margin: 0; border-radius: 0; box-shadow: none; }
 .photo-block figcaption { text-align: center; color: var(--muted); font-size: .9rem; margin-top: .5rem; }
-.reveal { opacity: 0; transform: translateY(16px); transition: opacity .5s ease, transform .5s ease; }
+.reveal { opacity: 1; transform: none; }
 .reveal.visible { opacity: 1; transform: none; }
 #lightbox { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem; background: rgba(0,0,0,.92); opacity: 0; pointer-events: none; transition: opacity .25s; }
 #lightbox.open { opacity: 1; pointer-events: auto; }
@@ -1268,6 +1277,7 @@ export function buildExportHtml(ctx: ExportContext): string {
   const tripNote = findTripNote(notes);
   const deck = extractDeck(travel.journalMarkdown, tripNote);
   const hasJournalArticle = Boolean(travel.journalMarkdown?.trim());
+  const hasGuide = isMagazine && places.length > 0;
   const storyTimelineOptions = { excludeJournalChunks: hasJournalArticle };
   const dayCount = timelineEvents.filter((e) => e.kind === "day-boundary").length;
   const distanceKm = estimateRouteKm(photos);
@@ -1291,7 +1301,7 @@ export function buildExportHtml(ctx: ExportContext): string {
         heroGradient,
       })}
 ${buildTocHtml(timelineEvents)}
-${buildMagazineNav(hasMap, hasJournalArticle)}`
+${buildMagazineNav(hasMap, hasJournalArticle, hasGuide)}`
     : isVisual
       ? `<header class="hero"${heroPhotoPath ? ` data-export-hero="${escapeHtml(heroPhotoPath)}" data-export-hero-gradient="${escapeHtml(heroGradient)}"` : ""}>
       <div class="hero-content reveal">
@@ -1369,7 +1379,7 @@ ${buildMagazineNav(hasMap, hasJournalArticle)}`
     timeline: timelineBlock,
     gallery: galleryBlock,
     journal: hasJournalArticle
-      ? `<section class="journal-section reveal"><h2 class="section-title">Crónica del viaje</h2><article${storyAnchor}>${contentHtml}</article></section>`
+      ? `<section class="journal-section reveal visible"><h2 class="section-title">Crónica del viaje</h2><article${storyAnchor}>${contentHtml}</article></section>`
       : "",
     play: playBlock,
   };
