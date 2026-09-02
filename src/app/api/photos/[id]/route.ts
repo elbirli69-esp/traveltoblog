@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { clampHighlightScore } from "@/lib/highlight-score";
 import { resolvePhotoPlaceId } from "@/lib/photo-place";
 import { deleteStoredPhotoFile } from "@/lib/photo-storage";
 
@@ -10,12 +11,17 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { exifDateTime, placeId } = body as {
+    const { exifDateTime, placeId, highlightScore } = body as {
       exifDateTime?: string | null;
       placeId?: string | null;
+      highlightScore?: number;
     };
 
-    if (exifDateTime === undefined && placeId === undefined) {
+    if (
+      exifDateTime === undefined &&
+      placeId === undefined &&
+      highlightScore === undefined
+    ) {
       return NextResponse.json({ error: "Nada que actualizar" }, { status: 400 });
     }
 
@@ -33,6 +39,9 @@ export async function PATCH(
           ? { exifDateTime: exifDateTime ? new Date(exifDateTime) : null }
           : {}),
         ...(resolvedPlaceId !== undefined ? { placeId: resolvedPlaceId } : {}),
+        ...(highlightScore !== undefined
+          ? { highlightScore: clampHighlightScore(highlightScore) }
+          : {}),
       },
       include: {
         user: true,

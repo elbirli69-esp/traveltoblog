@@ -1,4 +1,9 @@
 import { exportThumbImgTag } from "@/lib/export-photo-html";
+import {
+  compareHighlightScore,
+  exportHighlightClass,
+  exportHighlightTier,
+} from "@/lib/highlight-score";
 import { formatDateKey, isoToDateKey, resolveTravelDayRange } from "@/lib/travel-dates";
 
 export interface GalleryPhotoInput {
@@ -8,6 +13,7 @@ export interface GalleryPhotoInput {
   alias: string;
   isTransportStart: boolean;
   isTransportEnd: boolean;
+  highlightScore?: number;
 }
 
 function escapeHtml(text: string): string {
@@ -56,10 +62,13 @@ function groupGalleryPhotosByDay(
   });
 
   const sortPhotos = (list: GalleryPhotoInput[]) =>
-    [...list].sort(
-      (a, b) =>
+    [...list].sort((a, b) => {
+      const byScore = compareHighlightScore(a.highlightScore ?? 5, b.highlightScore ?? 5);
+      if (byScore !== 0) return byScore;
+      return (
         new Date(a.exifDateTime ?? 0).getTime() - new Date(b.exifDateTime ?? 0).getTime()
-    );
+      );
+    });
 
   const orderedKeys: string[] = [];
   for (const key of dayKeys) {
@@ -78,9 +87,18 @@ function groupGalleryPhotosByDay(
 }
 
 function buildGalleryTile(photo: GalleryPhotoInput): string {
+  const score = photo.highlightScore ?? 5;
+  const tier = exportHighlightTier(score);
+  const tierClass = exportHighlightClass(score, "gallery-tile");
   const when = photo.exifDateTime ? formatPhotoTime(photo.exifDateTime) : "";
   const caption = when ? `${photo.alias} · ${when}` : photo.alias;
-  return `<figure class="gallery-tile">${exportThumbImgTag(photo, `Foto de ${photo.alias}`, "gallery-tile-img")}<figcaption>${escapeHtml(caption)}</figcaption></figure>`;
+  const badge =
+    tier === "featured"
+      ? `<span class="gallery-score-badge gallery-score-badge--featured" title="Destacada (${score}/10)">★ ${score}</span>`
+      : tier === "accent"
+        ? `<span class="gallery-score-badge" title="Nota ${score}/10">${score}</span>`
+        : "";
+  return `<figure class="gallery-tile${tierClass ? ` ${tierClass}` : ""}">${badge}${exportThumbImgTag(photo, `Foto de ${photo.alias}`, "gallery-tile-img")}<figcaption>${escapeHtml(caption)}</figcaption></figure>`;
 }
 
 export function buildGallerySection(
@@ -118,72 +136,76 @@ export function galleryExportStyles(): string {
 .gallery-lead {
   color: var(--muted);
   margin: -.35rem 0 1.75rem;
-  font-size: .92rem;
+  font-size: .95rem;
 }
-.gallery-days {
-  display: flex;
-  flex-direction: column;
-  gap: 2.25rem;
-}
-.gallery-day { scroll-margin-top: 4.5rem; }
+.gallery-days { display: flex; flex-direction: column; gap: 2.5rem; }
 .gallery-day-title {
-  margin: 0 0 .25rem;
   font-size: 1.15rem;
   font-weight: 700;
-  line-height: 1.3;
+  margin: 0 0 .25rem;
+  letter-spacing: -.02em;
 }
 .gallery-day-meta {
-  margin: 0 0 .85rem;
+  margin: 0 0 1rem;
   font-size: .8rem;
   color: var(--muted);
 }
 .gallery-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
-  gap: .6rem;
-  grid-auto-flow: dense;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: .65rem;
 }
 .gallery-tile {
   position: relative;
   margin: 0;
-  aspect-ratio: 1;
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  background: var(--surface-2, rgba(0,0,0,.04));
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.gallery-tile--featured {
+  grid-column: span 2;
+  grid-row: span 2;
+}
+.gallery-tile--accent {
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, .45);
+}
+.gallery-tile--subtle { opacity: .9; }
+.gallery-tile--minimal { opacity: .82; transform: scale(.98); }
+.gallery-score-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+}
+.gallery-score-badge--featured {
+  background: rgba(45, 212, 191, .92);
+  color: #042f2e;
 }
 .gallery-tile img,
 .gallery-tile-img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
   display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
   transition: transform .35s ease;
+}
+.gallery-tile--featured img,
+.gallery-tile--featured .gallery-tile-img {
+  aspect-ratio: 1;
 }
 .gallery-tile:hover img { transform: scale(1.06); }
 .gallery-tile figcaption {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 1;
-  margin: 0;
-  padding: 1.75rem .55rem .45rem;
-  background: linear-gradient(transparent, rgba(0,0,0,.78));
-  font-size: .68rem;
-  line-height: 1.35;
-  color: #fff;
-  pointer-events: none;
-}
-@media (min-width: 640px) {
-  .gallery-grid { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: .7rem; }
-}
-@media (min-width: 900px) {
-  .gallery-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
-}
-@media (max-width: 480px) {
-  .gallery-grid { grid-template-columns: repeat(3, 1fr); gap: .45rem; }
+  padding: .45rem .55rem;
+  font-size: .72rem;
+  color: var(--muted);
+  line-height: 1.3;
 }
 `;
 }

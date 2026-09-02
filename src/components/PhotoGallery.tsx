@@ -9,6 +9,7 @@ import MemoryDateTimeField, {
   isoToDateAndTime,
 } from "@/components/MemoryDateTimeField";
 import PaginationBar from "@/components/PaginationBar";
+import HighlightScoreControl from "@/components/HighlightScoreControl";
 import PhotoImage from "@/components/PhotoImage";
 import { findNearby, formatDistanceM, NEARBY_THRESHOLD_M } from "@/lib/geo";
 import { isValidGps } from "@/lib/exif";
@@ -25,6 +26,7 @@ export interface GalleryPhoto {
   mediaType?: "IMAGE" | "VIDEO";
   durationMs?: number | null;
   selected: boolean;
+  highlightScore?: number;
   isTransportStart: boolean;
   isTransportEnd: boolean;
   user: { alias: string };
@@ -43,6 +45,7 @@ export interface GalleryPlace {
   latitude: number;
   longitude: number;
   type: string;
+  highlightScore?: number;
 }
 
 interface PhotoGalleryProps {
@@ -458,6 +461,23 @@ export default function PhotoGallery({
                         )}
                       </div>
                     )}
+
+                    <HighlightScoreControl
+                      value={photo.highlightScore ?? 5}
+                      onChange={async (highlightScore) => {
+                        try {
+                          const res = await fetch(`/api/photos/${photo.id}`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ highlightScore }),
+                          });
+                          if (!res.ok) throw new Error("fail");
+                          onNoteCreated?.();
+                        } catch {
+                          /* refresh on next load */
+                        }
+                      }}
+                    />
 
                     {nearby.length > 0 && onOpenPlace && !photo.placeId && (
                       <div className="callout callout-success text-xs">

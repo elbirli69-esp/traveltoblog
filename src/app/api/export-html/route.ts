@@ -135,6 +135,7 @@ export async function POST(request: NextRequest) {
           comment: p.notes[0]?.text ?? p.comment,
           alias: p.user.alias,
           visitedAt: p.visitedAt,
+          highlightScore: p.highlightScore ?? 5,
         };
       });
       const notes = travel.notes.map((n) => ({

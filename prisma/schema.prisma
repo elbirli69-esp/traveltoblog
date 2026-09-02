@@ -101,6 +101,8 @@ model Photo {
   placeId         String?
   /// User selected this photo for the journal
   selected        Boolean   @default(true)
+  /// Prominence 0–10 for Reel + HTML export (5 = neutral)
+  highlightScore  Int       @default(5)
   /// Marks outbound transport photo (trip start)
   isTransportStart Boolean  @default(false)
   /// Marks return transport photo (trip end)
@@ -183,6 +185,8 @@ model Place {
   comment   String?
   /// When the place was actually visited (falls back to createdAt in timeline)
   visitedAt DateTime?
+  /// Prominence 0–10 for Reel + HTML export (5 = neutral)
+  highlightScore Int @default(5)
   /// Client-side UUID for offline sync deduplication
   localId   String?   @unique
   createdAt DateTime  @default(now())

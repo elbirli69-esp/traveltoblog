@@ -53,6 +53,7 @@ interface TravelData {
     longitude: number | null;
     placeId: string | null;
     selected: boolean;
+    highlightScore?: number;
     isTransportStart: boolean;
     isTransportEnd: boolean;
     user: { alias: string };
@@ -82,6 +83,7 @@ interface TravelData {
     longitude: number;
     comment: string | null;
     visitedAt: string | null;
+    highlightScore?: number;
     user: { alias: string };
     notes?: {
       id: string;

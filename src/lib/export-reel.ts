@@ -1,5 +1,8 @@
 import { formatDateKey, isoToDateKey } from "@/lib/travel-dates";
 import {
+  computeReelPhotoPriority,
+} from "@/lib/highlight-score";
+import {
   buildReelMapPlan,
   type ReelMapPlan,
   type ReelMapPoint,
@@ -51,6 +54,8 @@ export interface ReelPhotoInput {
   selected: boolean;
   placeName?: string | null;
   placeComment?: string | null;
+  highlightScore?: number;
+  placeHighlightScore?: number | null;
   latitude?: number | null;
   longitude?: number | null;
   /** PHOTO notes / captions from travelers */
@@ -64,6 +69,7 @@ export interface ReelPlaceInput {
   comment: string | null;
   visitedAt: Date | string | null;
   createdAt?: Date | string | null;
+  highlightScore?: number;
 }
 
 export interface ReelDayNoteInput {
@@ -79,6 +85,7 @@ export interface ReelFramePlan {
   dayKey: string | null;
   dayLabel: string | null;
   placeName: string | null;
+  highlightScore: number;
   /** Short overlay line from photo/place notes */
   caption: string | null;
   /** Occasional day-note pull quote */
@@ -179,11 +186,19 @@ export function selectReelFrames(
 
   for (const list of byDay.values()) {
     list.sort((a, b) => {
-      const cap =
-        (resolveFrameCaption(b) ? 2 : 0) +
-        (b.placeName ? 1 : 0) -
-        ((resolveFrameCaption(a) ? 2 : 0) + (a.placeName ? 1 : 0));
-      if (cap !== 0) return cap;
+      const capA = computeReelPhotoPriority({
+        highlightScore: a.highlightScore,
+        hasCaption: Boolean(resolveFrameCaption(a)),
+        placeName: a.placeName,
+        placeHighlightScore: a.placeHighlightScore,
+      });
+      const capB = computeReelPhotoPriority({
+        highlightScore: b.highlightScore,
+        hasCaption: Boolean(resolveFrameCaption(b)),
+        placeName: b.placeName,
+        placeHighlightScore: b.placeHighlightScore,
+      });
+      if (capB !== capA) return capB - capA;
       const aTime = a.exifDateTime ? new Date(a.exifDateTime).getTime() : 0;
       const bTime = b.exifDateTime ? new Date(b.exifDateTime).getTime() : 0;
       return aTime - bTime;
@@ -219,6 +234,7 @@ export function selectReelFrames(
         dayKey: realDay,
         dayLabel: realDay ? formatDateKey(realDay, "short") : null,
         placeName: candidate.placeName?.trim() || null,
+        highlightScore: candidate.highlightScore ?? 5,
         caption,
         dayNote,
         hero: false,
@@ -233,8 +249,17 @@ export function selectReelFrames(
   // Mark 2–3 hero beats (prefer captioned / place frames, spaced out)
   const heroBudget = durationSeconds <= 15 ? 2 : 3;
   const heroCandidates = frames
-    .map((f, i) => ({ f, i, score: (f.caption ? 3 : 0) + (f.placeName ? 2 : 0) + (f.dayNote ? 1 : 0) }))
-    .filter((x) => x.score > 0)
+    .map((f, i) => ({
+      f,
+      i,
+      score:
+        computeReelPhotoPriority({
+          highlightScore: f.highlightScore,
+          hasCaption: Boolean(f.caption),
+          placeName: f.placeName,
+        }) +
+        (f.dayNote ? 1 : 0),
+    }))
     .sort((a, b) => b.score - a.score || a.i - b.i);
   const heroes = new Set<number>();
   for (const c of heroCandidates) {

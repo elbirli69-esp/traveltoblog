@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
               select: {
                 name: true,
                 comment: true,
+                highlightScore: true,
                 notes: {
                   where: { type: "PLACE" },
                   select: { text: true },
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
             comment: true,
             visitedAt: true,
             createdAt: true,
+            highlightScore: true,
             notes: {
               where: { type: "PLACE" },
               select: { text: true },
@@ -103,6 +105,8 @@ export async function POST(request: NextRequest) {
           selected: p.selected,
           placeName: p.place?.name ?? null,
           placeComment,
+          highlightScore: p.highlightScore,
+          placeHighlightScore: p.place?.highlightScore ?? null,
           latitude: p.latitude,
           longitude: p.longitude,
           comments: p.notes.map((n) => n.text).filter((t) => t.trim()),
@@ -120,6 +124,7 @@ export async function POST(request: NextRequest) {
               : place.comment?.trim() || null,
           visitedAt: place.visitedAt,
           createdAt: place.createdAt,
+          highlightScore: place.highlightScore,
         };
       }),
       dayNotes: travel.notes

@@ -11,6 +11,7 @@ import { simplifyIfNeeded } from "@/lib/export/polyline";
 import { distanceMeters } from "@/lib/geo";
 import { buildTravelRoutePoints } from "@/lib/places";
 import { isValidGps, sanitizeGpsPair } from "@/lib/exif";
+import { compareHighlightScore } from "@/lib/highlight-score";
 import { resolvePhotoExifFromFile } from "@/lib/photo-gps";
 import {
   buildFlightsSectionHtml,
@@ -92,6 +93,8 @@ export interface ExportPhoto {
   alias: string;
   isTransportStart: boolean;
   isTransportEnd: boolean;
+  /** 0–10 prominence (5 = neutral) */
+  highlightScore: number;
 }
 
 export interface ExportContext {
@@ -222,6 +225,7 @@ export interface ExportPlace {
   comment: string | null;
   alias: string;
   visitedAt?: Date | string | null;
+  highlightScore?: number;
 }
 
 export interface ExportNote {
@@ -378,7 +382,11 @@ function markdownToHtml(markdown: string): string {
 
 function pickCoverPhoto(photos: ExportPhoto[]): ExportPhoto | null {
   const candidates = photos.filter((p) => !p.isTransportStart && !p.isTransportEnd);
-  return candidates[0] ?? photos[0] ?? null;
+  const pool = candidates.length > 0 ? candidates : photos;
+  if (pool.length === 0) return null;
+  return [...pool].sort(
+    (a, b) => compareHighlightScore(a.highlightScore, b.highlightScore)
+  )[0];
 }
 
 function enhanceArticleHtml(html: string): string {
@@ -1613,14 +1621,19 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide)}`
     distanceKm,
     profile,
   });
-  const calloutPlaces = places.map((p) => {
-    const linked = photosForPlace(p, mapPhotos);
+  const calloutPlaces = [...places]
+    .sort((a, b) => compareHighlightScore(a.highlightScore ?? 5, b.highlightScore ?? 5))
+    .map((p) => {
+    const linked = [...photosForPlace(p, mapPhotos)].sort((a, b) =>
+      compareHighlightScore(a.highlightScore, b.highlightScore)
+    );
     return {
       id: p.id,
       name: p.name,
       type: p.type,
       comment: p.comment,
       alias: p.alias,
+      highlightScore: p.highlightScore ?? 5,
       photoPaths: linked.slice(0, 4).map((photo) => photo.thumbPath),
     };
   });
@@ -1794,6 +1807,7 @@ export function buildMapPhotoList(
       alias: photo.user.alias,
       isTransportStart: photo.isTransportStart,
       isTransportEnd: photo.isTransportEnd,
+      highlightScore: photo.highlightScore ?? 5,
     };
   });
 }
@@ -1834,6 +1848,7 @@ export async function loadPhotoFiles(
         alias: photo.user.alias,
         isTransportStart: photo.isTransportStart,
         isTransportEnd: photo.isTransportEnd,
+        highlightScore: photo.highlightScore ?? 5,
       };
     })
   );

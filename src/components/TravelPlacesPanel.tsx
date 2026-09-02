@@ -12,6 +12,7 @@ import {
 import type { FlightLegPhoto } from "@/lib/flights";
 import { formatFlightDate, resolveFlightLegs } from "@/lib/flights";
 import { createLocalId } from "@/lib/utils";
+import HighlightScoreControl from "@/components/HighlightScoreControl";
 import SecureLocationHint from "@/components/SecureLocationHint";
 import PhotoImage from "@/components/PhotoImage";
 import PaginationBar from "@/components/PaginationBar";
@@ -43,6 +44,7 @@ export interface TravelPlace {
   longitude: number;
   /** @deprecated Prefer `notes` (NoteType.PLACE) */
   comment: string | null;
+  highlightScore?: number;
   user: { alias: string };
   visitedAt?: string | null;
   notes?: {
@@ -668,6 +670,11 @@ export default function TravelPlacesPanel({
                 <span className="mr-2 text-lg">{placeEmoji(place.type)}</span>
                 <span className="font-medium text-fg">{place.name}</span>
                 <span className="ml-2 text-xs text-fg-tertiary">{placeLabel(place.type)}</span>
+                {(place.highlightScore ?? 5) !== 5 && (
+                  <span className="ml-2 rounded-full bg-[var(--surface-inset)] px-1.5 py-0.5 text-[10px] font-bold text-accent-mint">
+                    {place.highlightScore}/10
+                  </span>
+                )}
                 <p className="mt-0.5 text-xs text-fg-secondary">
                   {place.user.alias}
                   {formatVisitedAt(place.visitedAt)
@@ -711,6 +718,22 @@ export default function TravelPlacesPanel({
                 : ""}
             </p>
           </div>
+          <HighlightScoreControl
+            value={selectedPlace.highlightScore ?? 5}
+            onChange={async (highlightScore) => {
+              try {
+                const res = await fetch(`/api/places/${selectedPlace.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ highlightScore }),
+                });
+                if (!res.ok) throw new Error("fail");
+                onChanged?.();
+              } catch {
+                setError("No se pudo guardar la nota");
+              }
+            }}
+          />
           {placeNotes(selectedPlace).length > 0 && (
             <ul className="space-y-3">
               {placeNotes(selectedPlace).map((note) =>

@@ -3,6 +3,7 @@ import { formatDateKey } from "@/lib/travel-dates";
 import { PLACE_TYPE_EMOJI, PLACE_TYPE_LABELS, PLACE_EXPORT_CATEGORY_ORDER } from "@/lib/places";
 import type { PlaceType } from "@prisma/client";
 import { galleryExportStyles } from "@/lib/export/gallery-html";
+import { compareHighlightScore, exportHighlightClass } from "@/lib/highlight-score";
 
 export interface MagazineNote {
   type: string;
@@ -16,6 +17,7 @@ export interface MagazinePlace {
   type: string;
   comment: string | null;
   alias: string;
+  highlightScore?: number;
   /** Thumb paths for linked (or nearby) photos */
   photoPaths?: string[];
 }
@@ -130,12 +132,22 @@ export function buildPlaceCalloutsHtml(places: MagazinePlace[]): string {
 
   const sections = CALLOUT_TYPES.filter((type) => grouped.has(type))
     .map((type) => {
-      const items = grouped.get(type)!;
+      const items = [...grouped.get(type)!].sort((a, b) =>
+        compareHighlightScore(a.highlightScore ?? 5, b.highlightScore ?? 5)
+      );
       const emoji = PLACE_TYPE_EMOJI[type];
       const label = PLACE_TYPE_LABELS[type];
       const cards = items
         .map((p) => {
           const note = p.comment?.trim();
+          const score = p.highlightScore ?? 5;
+          const tierClass = exportHighlightClass(score, "mag-callout-card");
+          const scoreBadge =
+            score >= 8
+              ? `<span class="mag-callout-score mag-callout-score--high">${score}/10</span>`
+              : score !== 5
+                ? `<span class="mag-callout-score">${score}/10</span>`
+                : "";
           const thumbs = (p.photoPaths ?? [])
             .slice(0, 4)
             .map(
@@ -143,8 +155,8 @@ export function buildPlaceCalloutsHtml(places: MagazinePlace[]): string {
                 `<img class="mag-callout-thumb" data-export-src="${escapeHtml(src)}" alt="" loading="lazy">`
             )
             .join("");
-          return `<article class="mag-callout-card">
-  <h4 class="mag-callout-name">${emoji} ${escapeHtml(p.name)}</h4>
+          return `<article class="mag-callout-card${tierClass ? ` ${tierClass}` : ""}">
+  <h4 class="mag-callout-name">${emoji} ${escapeHtml(p.name)}${scoreBadge}</h4>
   ${thumbs ? `<div class="mag-callout-photos">${thumbs}</div>` : ""}
   ${note ? `<p class="mag-callout-note">${escapeHtml(note)}</p>` : ""}
   <footer class="mag-callout-foot">${escapeHtml(p.alias)}</footer>
@@ -443,6 +455,21 @@ body {
   border: 1px solid var(--border);
   box-shadow: 0 4px 20px rgba(28,25,23,.04);
 }
+.mag-callout-card--featured {
+  grid-column: span 2;
+  border-color: rgba(45, 212, 191, .45);
+  box-shadow: 0 8px 28px rgba(45, 212, 191, .12);
+}
+.mag-callout-card--accent { border-color: rgba(45, 212, 191, .28); }
+.mag-callout-card--subtle { opacity: .92; }
+.mag-callout-card--minimal { opacity: .85; }
+.mag-callout-score {
+  margin-left: .35rem;
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.mag-callout-score--high { color: var(--accent-2); }
 .mag-callout-name { margin: 0 0 .4rem; font-size: 1rem; font-weight: 600; }
 .mag-callout-photos {
   display: flex;

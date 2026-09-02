@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PlaceType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { clampHighlightScore } from "@/lib/highlight-score";
 import { PLACE_TYPES } from "@/lib/places";
 
 export async function PATCH(
@@ -10,19 +11,29 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, type, latitude, longitude, comment, visitedAt, linkPhotoIds, unlinkPhotoIds } =
-      body as {
-        name?: string;
-        type?: PlaceType;
-        latitude?: number;
-        longitude?: number;
-        comment?: string | null;
-        visitedAt?: string | null;
-        /** Associate these photos with this place */
-        linkPhotoIds?: string[];
-        /** Clear place link on these photos */
-        unlinkPhotoIds?: string[];
-      };
+    const {
+      name,
+      type,
+      latitude,
+      longitude,
+      comment,
+      visitedAt,
+      highlightScore,
+      linkPhotoIds,
+      unlinkPhotoIds,
+    } = body as {
+      name?: string;
+      type?: PlaceType;
+      latitude?: number;
+      longitude?: number;
+      comment?: string | null;
+      visitedAt?: string | null;
+      highlightScore?: number;
+      /** Associate these photos with this place */
+      linkPhotoIds?: string[];
+      /** Clear place link on these photos */
+      unlinkPhotoIds?: string[];
+    };
 
     const existing = await prisma.place.findUnique({ where: { id } });
     if (!existing) {
@@ -36,6 +47,7 @@ export async function PATCH(
       longitude?: number;
       comment?: string | null;
       visitedAt?: Date | null;
+      highlightScore?: number;
     } = {};
 
     if (name != null) data.name = name.trim();
@@ -44,6 +56,9 @@ export async function PATCH(
     if (longitude != null) data.longitude = longitude;
     if (comment !== undefined) data.comment = comment?.trim() || null;
     if (visitedAt !== undefined) data.visitedAt = visitedAt ? new Date(visitedAt) : null;
+    if (highlightScore !== undefined) {
+      data.highlightScore = clampHighlightScore(highlightScore);
+    }
 
     const place = await prisma.place.update({
       where: { id },
