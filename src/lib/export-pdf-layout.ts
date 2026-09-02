@@ -1,13 +1,16 @@
 import { marked } from "marked";
 import { formatDateKey, isoToDateKey } from "@/lib/travel-dates";
+import { getPdfThemeCss, pageDimensions } from "@/lib/export-pdf-themes";
 import type { PdfExportContext, PdfPageFormat, PdfPhotoAsset } from "@/lib/export-pdf-types";
 
 export type PdfPageKind =
   | "cover"
+  | "map"
   | "day-divider"
   | "full-bleed"
   | "featured"
   | "pair"
+  | "mosaic"
   | "closing";
 
 export interface PdfPlannedPage {
@@ -58,10 +61,12 @@ function photoCaption(photo: PdfPhotoAsset): string {
 }
 
 function photoSubcaption(photo: PdfPhotoAsset): string {
-  const parts: string[] = [];
-  if (photo.notes[0]) parts.push(photo.notes[0]);
-  else parts.push(`@${photo.alias}`);
-  return parts.join("");
+  if (photo.notes[0]) return photo.notes[0];
+  return `@${photo.alias}`;
+}
+
+function photoSrc(photo: PdfPhotoAsset, bleed = false): string {
+  return bleed ? photo.bleedImagePath : photo.imagePath;
 }
 
 function splitNarrativeSections(markdown: string | null): string[] {
@@ -76,7 +81,11 @@ function splitNarrativeSections(markdown: string | null): string[] {
     .map((section) => marked.parse(section.trim(), { async: false }) as string);
 }
 
-function pickHeroPhoto(photos: PdfPhotoAsset[]): PdfPhotoAsset {
+function pickHeroPhoto(photos: PdfPhotoAsset[], coverPhotoId?: string | null): PdfPhotoAsset {
+  if (coverPhotoId) {
+    const chosen = photos.find((p) => p.id === coverPhotoId);
+    if (chosen) return chosen;
+  }
   const sorted = [...photos].sort(
     (a, b) => (b.highlightScore ?? 5) - (a.highlightScore ?? 5)
   );
@@ -92,6 +101,19 @@ function groupPhotosByDay(photos: PdfPhotoAsset[]): Map<string, PdfPhotoAsset[]>
     groups.set(key, list);
   }
   return new Map([...groups.entries()].sort(([a], [b]) => a.localeCompare(b)));
+}
+
+function isLowScore(photo: PdfPhotoAsset): boolean {
+  return (photo.highlightScore ?? 5) < 7;
+}
+
+function takeMosaicBatch(dayPhotos: PdfPhotoAsset[], start: number): number {
+  const remaining = dayPhotos.length - start;
+  if (remaining < 3) return 0;
+  const slice = dayPhotos.slice(start, start + 4);
+  if (!slice.every(isLowScore)) return 0;
+  if (remaining >= 4) return 4;
+  return remaining >= 3 ? 3 : 0;
 }
 
 /** Build a rhythmic photobook page sequence (Fotoprix / CEWE style). */
@@ -112,7 +134,11 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
     pages.push({ ...page, pageNumber });
   };
 
-  push({ kind: "cover", photos: [pickHeroPhoto(photos)] });
+  push({ kind: "cover", photos: [pickHeroPhoto(photos, ctx.coverPhotoId)] });
+
+  if (ctx.mapImagePath) {
+    push({ kind: "map" });
+  }
 
   let narrativeIndex = 0;
   let dayIndex = 0;
@@ -122,6 +148,8 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
       dayKey === "sin-fecha" ? "Recuerdos" : formatDateKey(dayKey, "long");
     const narrative = narratives[narrativeIndex] ?? narratives[narratives.length - 1];
     if (narratives.length > 0 && dayIndex < narratives.length) narrativeIndex += 1;
+
+    const busyDay = dayPhotos.length >= 5;
 
     push({
       kind: "day-divider",
@@ -137,6 +165,15 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
       const isFirstOfDay = i === 0;
       const next = dayPhotos[i + 1];
 
+      if (busyDay) {
+        const mosaicCount = takeMosaicBatch(dayPhotos, i);
+        if (mosaicCount >= 3) {
+          push({ kind: "mosaic", photos: dayPhotos.slice(i, i + mosaicCount) });
+          i += mosaicCount;
+          continue;
+        }
+      }
+
       if (isFirstOfDay || score >= 8) {
         push({ kind: "full-bleed", photos: [photo] });
         i += 1;
@@ -150,8 +187,7 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
       }
 
       const section =
-        narratives[Math.min(narrativeIndex, narratives.length - 1)] ??
-        narratives[0];
+        narratives[Math.min(narrativeIndex, narratives.length - 1)] ?? narratives[0];
       push({
         kind: "featured",
         photos: [photo],
@@ -168,17 +204,7 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
   return pages;
 }
 
-function pageDimensions(format: PdfPageFormat): { width: string; height: string } {
-  if (format === "square") return { width: "210mm", height: "210mm" };
-  return { width: "297mm", height: "210mm" };
-}
-
-function pageSizeCss(format: PdfPageFormat): string {
-  const { width, height } = pageDimensions(format);
-  return `size: ${width} ${height}; margin: 0;`;
-}
-
-function renderPageFooter(pageNumber: number, totalPages: number): string {
+function renderPageFooter(pageNumber: number, _totalPages: number): string {
   if (pageNumber <= 1) return "";
   return `<footer class="page-footer"><span>${pageNumber}</span></footer>`;
 }
@@ -195,10 +221,10 @@ function renderCover(
   const participants = ctx.users.map((u) => escapeHtml(u.alias)).join(" · ");
 
   return `
-  <section class="page page-cover" style="width:${width};height:${height}">
+  <section class="page page-cover page-bleed-full" style="width:${width};height:${height}">
     ${
       hero
-        ? `<img class="cover-photo" src="${escapeHtml(hero.imagePath)}" alt="" />`
+        ? `<img class="cover-photo" src="${escapeHtml(photoSrc(hero, true))}" alt="" />`
         : ""
     }
     <div class="cover-scrim"></div>
@@ -206,6 +232,34 @@ function renderCover(
       <p class="cover-eyebrow">${escapeHtml(dateRange)}</p>
       <h1 class="cover-title">${escapeHtml(ctx.travel.title)}</h1>
       <p class="cover-sub">${participants}</p>
+    </div>
+    ${renderPageFooter(page.pageNumber, totalPages)}
+  </section>`;
+}
+
+function renderMap(
+  ctx: PdfExportContext,
+  page: PdfPlannedPage,
+  format: PdfPageFormat,
+  totalPages: number
+): string {
+  if (!ctx.mapImagePath) return "";
+  const { width, height } = pageDimensions(format);
+  const gpsCount = ctx.photos.filter(
+    (p) => p.latitude != null && p.longitude != null
+  ).length;
+
+  return `
+  <section class="page page-map" style="width:${width};height:${height}">
+    <div class="map-inner">
+      <div class="map-content">
+        <p class="map-eyebrow">Ruta del viaje</p>
+        <h2 class="map-title">${escapeHtml(ctx.travel.title)}</h2>
+        <div class="map-frame">
+          <img src="${escapeHtml(ctx.mapImagePath)}" alt="Mapa de la ruta" />
+        </div>
+        <p class="map-caption">${gpsCount} puntos con GPS · orden cronológico</p>
+      </div>
     </div>
     ${renderPageFooter(page.pageNumber, totalPages)}
   </section>`;
@@ -241,12 +295,41 @@ function renderFullBleed(
   if (!photo) return "";
   const { width, height } = pageDimensions(format);
   return `
-  <section class="page page-bleed" style="width:${width};height:${height}">
-    <img class="bleed-photo" src="${escapeHtml(photo.imagePath)}" alt="" />
+  <section class="page page-bleed page-bleed-full" style="width:${width};height:${height}">
+    <img class="bleed-photo" src="${escapeHtml(photoSrc(photo, true))}" alt="" />
     <div class="bleed-caption">
       <p class="caption-main">${escapeHtml(photoCaption(photo))}</p>
       <p class="caption-sub">${escapeHtml(photoSubcaption(photo))}</p>
     </div>
+    ${renderPageFooter(page.pageNumber, totalPages)}
+  </section>`;
+}
+
+function renderMosaic(
+  page: PdfPlannedPage,
+  format: PdfPageFormat,
+  totalPages: number
+): string {
+  const photos = page.photos ?? [];
+  if (photos.length < 3) return "";
+  const { width, height } = pageDimensions(format);
+  const cellWidth = photos.length === 4 ? "25%" : `${(100 / photos.length).toFixed(2)}%`;
+
+  const cells = photos
+    .map(
+      (photo) => `
+    <div class="mosaic-cell" style="width:${cellWidth}">
+      <div class="photo-mat mosaic-mat">
+        <img src="${escapeHtml(photoSrc(photo))}" alt="" />
+      </div>
+      <p class="mosaic-caption">${escapeHtml(photoCaption(photo))}</p>
+    </div>`
+    )
+    .join("");
+
+  return `
+  <section class="page page-mosaic" style="width:${width};height:${height}">
+    <div class="mosaic-row">${cells}</div>
     ${renderPageFooter(page.pageNumber, totalPages)}
   </section>`;
 }
@@ -263,7 +346,7 @@ function renderFeatured(
   <section class="page page-featured" style="width:${width};height:${height}">
     <div class="featured-photo-col">
       <div class="photo-mat">
-        <img src="${escapeHtml(photo.imagePath)}" alt="" />
+        <img src="${escapeHtml(photoSrc(photo))}" alt="" />
       </div>
       <p class="featured-caption">${escapeHtml(photoCaption(photo))}</p>
     </div>
@@ -290,7 +373,7 @@ function renderPair(
   const cell = (photo: PdfPhotoAsset) => `
     <div class="pair-cell">
       <div class="photo-mat pair-mat">
-        <img src="${escapeHtml(photo.imagePath)}" alt="" />
+        <img src="${escapeHtml(photoSrc(photo))}" alt="" />
       </div>
       <p class="pair-caption">${escapeHtml(photoCaption(photo))}</p>
       ${
@@ -336,10 +419,14 @@ function renderPage(
   switch (page.kind) {
     case "cover":
       return renderCover(ctx, page, format, totalPages);
+    case "map":
+      return renderMap(ctx, page, format, totalPages);
     case "day-divider":
       return renderDayDivider(page, format, totalPages);
     case "full-bleed":
       return renderFullBleed(page, format, totalPages);
+    case "mosaic":
+      return renderMosaic(page, format, totalPages);
     case "featured":
       return renderFeatured(page, format, totalPages);
     case "pair":
@@ -352,6 +439,7 @@ function renderPage(
 }
 
 export function buildPrintHtml(ctx: PdfExportContext): string {
+  const template = ctx.template ?? "classic";
   const pages = planPdfPages(ctx);
   const totalPages = pages.length;
   const body = pages.map((p) => renderPage(ctx, p, ctx.format, totalPages)).join("\n");
@@ -362,324 +450,7 @@ export function buildPrintHtml(ctx: PdfExportContext): string {
   <meta charset="utf-8">
   <title>${escapeHtml(ctx.travel.title)} — Álbum</title>
   <style>
-    @page { ${pageSizeCss(ctx.format)} }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    html, body {
-      font-family: "Liberation Sans", "Helvetica Neue", Arial, sans-serif;
-      color: #1a1816;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-
-    .page {
-      position: relative;
-      page-break-after: always;
-      page-break-inside: avoid;
-      overflow: hidden;
-      background: #faf8f5;
-    }
-
-    .page-footer {
-      position: absolute;
-      bottom: 6mm;
-      left: 0;
-      right: 0;
-      text-align: center;
-      font-size: 7pt;
-      letter-spacing: 0.2em;
-      color: #a8a29e;
-    }
-
-    /* —— Cover —— */
-    .page-cover { background: #0c0a09; color: #fafaf9; }
-
-    .cover-photo {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .cover-scrim {
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(
-        180deg,
-        rgba(12, 10, 9, 0.35) 0%,
-        rgba(12, 10, 9, 0.2) 40%,
-        rgba(12, 10, 9, 0.82) 100%
-      );
-    }
-
-    .cover-inner {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      padding: 16mm 20mm 22mm;
-      text-align: left;
-    }
-
-    .cover-eyebrow {
-      font-size: 8pt;
-      letter-spacing: 0.28em;
-      text-transform: uppercase;
-      color: #d6d3d1;
-      margin-bottom: 5mm;
-    }
-
-    .cover-title {
-      font-family: "Liberation Serif", Georgia, serif;
-      font-size: 32pt;
-      font-weight: 400;
-      line-height: 1.08;
-      letter-spacing: -0.02em;
-      max-width: 85%;
-    }
-
-    .cover-sub {
-      margin-top: 5mm;
-      font-size: 9.5pt;
-      color: #d6d3d1;
-      letter-spacing: 0.06em;
-    }
-
-    /* —— Day divider —— */
-    .page-divider {
-      display: table;
-      background: #f5f2ec;
-    }
-
-    .divider-inner {
-      display: table-cell;
-      vertical-align: middle;
-      text-align: center;
-      padding: 20mm;
-      width: 100%;
-    }
-
-    .divider-eyebrow {
-      font-size: 8pt;
-      letter-spacing: 0.35em;
-      text-transform: uppercase;
-      color: #78716c;
-      margin-bottom: 6mm;
-    }
-
-    .divider-title {
-      font-family: "Liberation Serif", Georgia, serif;
-      font-size: 26pt;
-      font-weight: 400;
-      color: #1c1917;
-      line-height: 1.15;
-      margin-bottom: 8mm;
-    }
-
-    .divider-rule {
-      width: 18mm;
-      height: 0.4mm;
-      background: #c4b5a5;
-      margin: 0 auto;
-    }
-
-    .divider-intro {
-      max-width: 120mm;
-      margin: 0 auto;
-      text-align: left;
-      font-family: "Liberation Serif", Georgia, serif;
-      font-size: 10.5pt;
-      line-height: 1.6;
-      color: #44403c;
-    }
-
-    .divider-intro h2 { font-size: 13pt; margin-bottom: 3mm; }
-
-    /* —— Full bleed —— */
-    .page-bleed { background: #000; }
-
-    .bleed-photo {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .bleed-caption {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      padding: 10mm 14mm 14mm;
-      background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
-      color: #fafaf9;
-    }
-
-    .caption-main {
-      font-size: 9pt;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .caption-sub {
-      margin-top: 1.5mm;
-      font-family: "Liberation Serif", Georgia, serif;
-      font-size: 11pt;
-      font-style: italic;
-      opacity: 0.92;
-    }
-
-    /* —— Featured spread —— */
-    .page-featured {
-      display: table;
-      table-layout: fixed;
-      width: 100%;
-    }
-
-    .featured-photo-col {
-      display: table-cell;
-      width: 58%;
-      vertical-align: middle;
-      padding: 12mm 10mm 12mm 14mm;
-      background: #f5f2ec;
-    }
-
-    .featured-text-col {
-      display: table-cell;
-      width: 42%;
-      vertical-align: middle;
-      padding: 14mm 16mm 14mm 10mm;
-    }
-
-    .photo-mat {
-      background: #fff;
-      padding: 3mm;
-      border: 0.2mm solid #e7e5e4;
-    }
-
-    .photo-mat img {
-      display: block;
-      width: 100%;
-      max-height: 150mm;
-      object-fit: contain;
-    }
-
-    .featured-caption {
-      margin-top: 4mm;
-      font-size: 8pt;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: #78716c;
-    }
-
-    .featured-narrative {
-      font-family: "Liberation Serif", Georgia, serif;
-      font-size: 10.5pt;
-      line-height: 1.62;
-      color: #292524;
-    }
-
-    .featured-narrative h2 {
-      font-size: 14pt;
-      font-weight: 600;
-      margin-bottom: 4mm;
-      line-height: 1.2;
-    }
-
-    .featured-narrative p { margin-bottom: 3mm; }
-
-    .featured-quote {
-      margin-top: 8mm;
-      padding-top: 5mm;
-      border-top: 0.3mm solid #e7e5e4;
-      font-family: "Liberation Serif", Georgia, serif;
-      font-size: 10pt;
-      font-style: italic;
-      color: #57534e;
-      line-height: 1.5;
-    }
-
-    /* —— Pair —— */
-    .page-pair {
-      display: table;
-      table-layout: fixed;
-      width: 100%;
-    }
-
-    .pair-cell {
-      display: table-cell;
-      width: 50%;
-      vertical-align: top;
-      padding: 14mm 12mm;
-      text-align: center;
-    }
-
-    .pair-cell:first-child {
-      border-right: 0.2mm solid #ebe6df;
-    }
-
-    .pair-mat img {
-      max-height: 130mm;
-    }
-
-    .pair-caption {
-      margin-top: 5mm;
-      font-size: 8pt;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #78716c;
-    }
-
-    .pair-note {
-      margin-top: 2mm;
-      font-family: "Liberation Serif", Georgia, serif;
-      font-size: 9.5pt;
-      font-style: italic;
-      color: #57534e;
-    }
-
-    /* —— Closing —— */
-    .page-closing {
-      display: table;
-      background: #1c1917;
-      color: #fafaf9;
-    }
-
-    .closing-inner {
-      display: table-cell;
-      vertical-align: middle;
-      text-align: center;
-      padding: 20mm;
-    }
-
-    .closing-eyebrow {
-      font-size: 8pt;
-      letter-spacing: 0.3em;
-      text-transform: uppercase;
-      color: #a8a29e;
-      margin-bottom: 6mm;
-    }
-
-    .closing-title {
-      font-family: "Liberation Serif", Georgia, serif;
-      font-size: 22pt;
-      font-weight: 400;
-      margin-bottom: 4mm;
-    }
-
-    .closing-meta {
-      font-size: 9pt;
-      color: #d6d3d1;
-      margin-bottom: 12mm;
-    }
-
-    .closing-brand {
-      font-size: 7pt;
-      letter-spacing: 0.25em;
-      text-transform: uppercase;
-      color: #78716c;
-    }
+    ${getPdfThemeCss(template, ctx.format)}
   </style>
 </head>
 <body>

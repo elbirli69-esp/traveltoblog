@@ -12,8 +12,8 @@ import {
   type PdfPipelineEvent,
   type PdfPipelineStep,
 } from "@/lib/export-pdf-pipeline";
-
-export type PdfPageFormat = "a4-landscape" | "square";
+import type { PdfPageFormat, PdfTemplate } from "@/lib/export-pdf-types";
+import { PDF_TEMPLATES } from "@/lib/export-pdf-types";
 
 const FORMATS: { id: PdfPageFormat; name: string; description: string }[] = [
   {
@@ -28,18 +28,28 @@ const FORMATS: { id: PdfPageFormat; name: string; description: string }[] = [
   },
 ];
 
+export interface PdfCoverPhotoOption {
+  id: string;
+  thumbUrl: string;
+  highlightScore?: number;
+}
+
 interface ExportPdfPanelProps {
   travelId: string;
   hasJournal?: boolean;
   photoCount?: number;
+  coverPhotos?: PdfCoverPhotoOption[];
 }
 
 export default function ExportPdfPanel({
   travelId,
   hasJournal = false,
   photoCount = 0,
+  coverPhotos = [],
 }: ExportPdfPanelProps) {
   const [format, setFormat] = useState<PdfPageFormat>("a4-landscape");
+  const [template, setTemplate] = useState<PdfTemplate>("classic");
+  const [coverPhotoId, setCoverPhotoId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [pdfAvailable, setPdfAvailable] = useState<boolean | null>(null);
   const [currentStep, setCurrentStep] = useState<PdfPipelineStep | null>(null);
@@ -75,7 +85,12 @@ export default function ExportPdfPanel({
       const res = await fetch("/api/export-pdf?stream=true", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ travelId, format }),
+        body: JSON.stringify({
+          travelId,
+          format,
+          template,
+          coverPhotoId,
+        }),
       });
 
       if (!res.ok) {
@@ -159,7 +174,7 @@ export default function ExportPdfPanel({
       setCurrentStep(null);
       setStepMessage(null);
     }
-  }, [format, travelId]);
+  }, [coverPhotoId, format, template, travelId]);
 
   return (
     <div className="space-y-4">
@@ -185,10 +200,79 @@ export default function ExportPdfPanel({
         </div>
       </div>
 
+      <div>
+        <h3 className="mb-2 text-sm font-semibold text-fg-secondary">Plantilla</h3>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {PDF_TEMPLATES.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTemplate(t.id)}
+              disabled={loading}
+              className={`rounded-xl border-2 p-3 text-left transition ${
+                template === t.id
+                  ? "select-card-violet-active"
+                  : "border-[var(--border)] hover:border-[var(--border-strong)]"
+              }`}
+            >
+              <p className="font-medium text-fg">{t.name}</p>
+              <p className="mt-1 text-xs text-fg-secondary">{t.description}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {coverPhotos.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-semibold text-fg-secondary">
+            Foto de portada
+            <span className="ml-2 font-normal text-fg-muted">(opcional)</span>
+          </h3>
+          <p className="mb-3 text-xs text-fg-secondary">
+            Si no eliges ninguna, se usará la foto con mayor puntuación de destacado.
+          </p>
+          <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+            <button
+              type="button"
+              onClick={() => setCoverPhotoId(null)}
+              disabled={loading}
+              className={`flex aspect-square items-center justify-center rounded-lg border-2 text-xs ${
+                coverPhotoId === null
+                  ? "select-card-violet-active"
+                  : "border-[var(--border)] text-fg-secondary"
+              }`}
+            >
+              Auto
+            </button>
+            {coverPhotos.map((photo) => (
+              <button
+                key={photo.id}
+                type="button"
+                onClick={() => setCoverPhotoId(photo.id)}
+                disabled={loading}
+                className={`relative aspect-square overflow-hidden rounded-lg border-2 ${
+                  coverPhotoId === photo.id
+                    ? "select-card-violet-active"
+                    : "border-[var(--border)]"
+                }`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photo.thumbUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <ul className="space-y-1 text-sm text-fg-secondary">
-        <li>📖 Portada con foto destacada y tipografía editorial</li>
-        <li>📅 Capítulos por día, páginas a sangre y diseños en pareja</li>
-        <li>🖨️ Estilo fotolibro (Fotoprix / CEWE): márgenes, pies y pies de foto discretos</li>
+        <li>📖 Portada personalizable y página de mapa con ruta GPS</li>
+        <li>📅 Mosaicos (3–4 fotos) en días con muchas imágenes</li>
+        <li>🖨️ Sangrado 3 mm y alta resolución en páginas a sangre</li>
       </ul>
 
       {!hasJournal && (

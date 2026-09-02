@@ -1,18 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildPdfArtifact } from "@/lib/export-pdf";
 import { probeWeasyPrint } from "@/lib/export-pdf-render";
-import type { PdfPageFormat } from "@/lib/export-pdf-types";
+import type { PdfPageFormat, PdfTemplate } from "@/lib/export-pdf-types";
+import { PDF_TEMPLATES } from "@/lib/export-pdf-types";
 import type { PdfPipelineEvent } from "@/lib/export-pdf-pipeline";
 
 const FORMATS: PdfPageFormat[] = ["a4-landscape", "square"];
+const TEMPLATES: PdfTemplate[] = ["classic", "minimal", "dark-magazine"];
 
 export async function POST(request: NextRequest) {
   try {
     const stream = request.nextUrl.searchParams.get("stream") === "true";
     const body = await request.json();
-    const { travelId, format = "a4-landscape" } = body as {
+    const {
+      travelId,
+      format = "a4-landscape",
+      template = "classic",
+      coverPhotoId = null,
+    } = body as {
       travelId?: string;
       format?: PdfPageFormat;
+      template?: PdfTemplate;
+      coverPhotoId?: string | null;
     };
 
     if (!travelId) {
@@ -23,8 +32,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Formato no válido" }, { status: 400 });
     }
 
+    if (!TEMPLATES.includes(template)) {
+      return NextResponse.json({ error: "Plantilla no válida" }, { status: 400 });
+    }
+
     const run = async (emit?: (event: PdfPipelineEvent) => void) => {
-      const { buffer, filename } = await buildPdfArtifact(travelId, format, emit);
+      const { buffer, filename } = await buildPdfArtifact(
+        travelId,
+        { format, template, coverPhotoId },
+        emit
+      );
       return { buffer, filename };
     };
 
@@ -98,6 +115,7 @@ export async function GET() {
       { id: "a4-landscape", name: "A4 Horizontal", size: "297 × 210 mm" },
       { id: "square", name: "Cuadrado", size: "210 × 210 mm" },
     ],
+    templates: PDF_TEMPLATES,
     engine: "weasyprint",
     available: probe.available,
     detail: probe.detail ?? null,

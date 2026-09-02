@@ -12,9 +12,12 @@ export const EXPORT_DISPLAY_WEBP_QUALITY = 82;
 export const EXPORT_THUMB_MAX_WIDTH = 480;
 export const EXPORT_THUMB_WEBP_QUALITY = 75;
 
-/** Print PDF: JPEG max width (~1800px fits A4 landscape photo column at 300 DPI). */
+/** Print PDF interior: JPEG max width (~1800px fits A4 landscape photo column at 300 DPI). */
 export const PDF_PRINT_MAX_WIDTH = 1800;
+/** Full-bleed / cover: ~3500px for A4 landscape at 300 DPI with 3 mm bleed. */
+export const PDF_BLEED_MAX_WIDTH = 3500;
 export const PDF_JPEG_QUALITY = 86;
+export const PDF_BLEED_JPEG_QUALITY = 88;
 
 export interface ExportImageSet {
   display: Buffer;
@@ -61,20 +64,36 @@ export async function createExportImageSet(
   return { display, thumb };
 }
 
-/** JPEG optimized for WeasyPrint print PDF (smaller files, reliable rendering). */
+async function pdfSourceBuffer(source: Buffer, originalExt: string): Promise<Buffer> {
+  if (/\.(heic|heif)$/i.test(originalExt)) {
+    const normalized = await normalizeImageForStorage(source, originalExt);
+    return Buffer.from(normalized.buffer);
+  }
+  return source;
+}
+
+/** JPEG optimized for WeasyPrint interior layouts (pair, featured, mosaic). */
 export async function createPdfPrintImage(
   source: Buffer,
   originalExt = ".jpg"
 ): Promise<Buffer> {
-  let buffer = source;
-  if (/\.(heic|heif)$/i.test(originalExt)) {
-    const normalized = await normalizeImageForStorage(source, originalExt);
-    buffer = Buffer.from(normalized.buffer);
-  }
-
+  const buffer = await pdfSourceBuffer(source, originalExt);
   return sharp(buffer)
     .rotate()
     .resize({ width: PDF_PRINT_MAX_WIDTH, withoutEnlargement: true })
     .jpeg({ quality: PDF_JPEG_QUALITY, mozjpeg: true })
+    .toBuffer();
+}
+
+/** High-resolution JPEG for cover and full-bleed pages. */
+export async function createPdfBleedImage(
+  source: Buffer,
+  originalExt = ".jpg"
+): Promise<Buffer> {
+  const buffer = await pdfSourceBuffer(source, originalExt);
+  return sharp(buffer)
+    .rotate()
+    .resize({ width: PDF_BLEED_MAX_WIDTH, withoutEnlargement: true })
+    .jpeg({ quality: PDF_BLEED_JPEG_QUALITY, mozjpeg: true })
     .toBuffer();
 }

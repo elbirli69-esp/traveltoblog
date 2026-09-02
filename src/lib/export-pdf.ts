@@ -6,16 +6,29 @@ import sharp from "sharp";
 import type { Note, Photo, Travel, User } from "@prisma/client";
 import { getOrCreateExportImageSet } from "@/lib/export-image-cache";
 import {
+  createPdfBleedImage,
   createPdfPrintImage,
+  PDF_BLEED_JPEG_QUALITY,
   PDF_JPEG_QUALITY,
 } from "@/lib/export-images";
 import { readPhotoBuffer } from "@/lib/export-html";
+import { fetchPdfMapImage } from "@/lib/export-pdf-map";
 import { prisma } from "@/lib/prisma";
 import type { PdfProgressCallback } from "@/lib/export-pdf-pipeline";
 
-import type { PdfPageFormat, PdfPhotoAsset, PdfExportContext } from "@/lib/export-pdf-types";
+import type {
+  PdfExportOptions,
+  PdfPhotoAsset,
+  PdfExportContext,
+} from "@/lib/export-pdf-types";
 
-export type { PdfPageFormat, PdfPhotoAsset, PdfExportContext } from "@/lib/export-pdf-types";
+export type {
+  PdfPageFormat,
+  PdfPhotoAsset,
+  PdfExportContext,
+  PdfTemplate,
+  PdfExportOptions,
+} from "@/lib/export-pdf-types";
 export { buildPrintHtml } from "@/lib/export-pdf-layout";
 
 export interface PdfBuildResult {
@@ -24,21 +37,44 @@ export interface PdfBuildResult {
   cleanup: () => Promise<void>;
 }
 
-async function preparePdfImageBuffer(
+async function readPhotoSource(
   travelId: string,
   photo: Photo & { url: string; filename: string }
 ): Promise<Buffer | null> {
-  const ext = path.extname(photo.filename) || ".jpg";
   const cached = await getOrCreateExportImageSet(travelId, photo.id, photo.url);
-  if (cached) {
-    return sharp(cached.display)
-      .jpeg({ quality: PDF_JPEG_QUALITY, mozjpeg: true })
-      .toBuffer();
-  }
+  if (cached) return cached.display;
 
   const original = await readPhotoBuffer(photo.url);
-  if (!original) return null;
-  return createPdfPrintImage(original, ext);
+  return original;
+}
+
+async function preparePdfImageBuffers(
+  travelId: string,
+  photo: Photo & { url: string; filename: string }
+): Promise<{ standard: Buffer; bleed: Buffer } | null> {
+  const ext = path.extname(photo.filename) || ".jpg";
+  const source = await readPhotoSource(travelId, photo);
+  if (!source) return null;
+
+  const cached = await getOrCreateExportImageSet(travelId, photo.id, photo.url);
+  if (cached) {
+    const [standard, bleed] = await Promise.all([
+      sharp(cached.display)
+        .jpeg({ quality: PDF_JPEG_QUALITY, mozjpeg: true })
+        .toBuffer(),
+      sharp(cached.display)
+        .resize({ width: 3500, withoutEnlargement: true })
+        .jpeg({ quality: PDF_BLEED_JPEG_QUALITY, mozjpeg: true })
+        .toBuffer(),
+    ]);
+    return { standard, bleed };
+  }
+
+  const [standard, bleed] = await Promise.all([
+    createPdfPrintImage(source, ext),
+    createPdfBleedImage(source, ext),
+  ]);
+  return { standard, bleed };
 }
 
 export async function preparePdfAssets(
@@ -51,9 +87,10 @@ export async function preparePdfAssets(
     })[];
     notes: (Note & { user: User })[];
   },
-  format: PdfPageFormat,
+  options: PdfExportOptions,
   onProgress?: (current: number, total: number) => void
 ): Promise<PdfExportContext & { workDir: string }> {
+  const { format, template = "classic", coverPhotoId = null } = options;
   const workDir = path.join(tmpdir(), `ttb-pdf-${randomBytes(8).toString("hex")}`);
   const photosDir = path.join(workDir, "photos");
   await mkdir(photosDir, { recursive: true });
@@ -66,19 +103,23 @@ export async function preparePdfAssets(
 
   for (let i = 0; i < selected.length; i++) {
     const photo = selected[i]!;
-    const jpeg = await preparePdfImageBuffer(travel.id, photo);
+    const buffers = await preparePdfImageBuffers(travel.id, photo);
     onProgress?.(i + 1, selected.length);
-    if (!jpeg) continue;
+    if (!buffers) continue;
 
     index += 1;
-    const filename = `${String(index).padStart(3, "0")}.jpg`;
-    const absolutePath = path.join(photosDir, filename);
-    await writeFile(absolutePath, jpeg);
+    const base = `${String(index).padStart(3, "0")}`;
+    const standardFilename = `${base}.jpg`;
+    const bleedFilename = `${base}-bleed.jpg`;
+    await writeFile(path.join(photosDir, standardFilename), buffers.standard);
+    await writeFile(path.join(photosDir, bleedFilename), buffers.bleed);
+
     photos.push({
       id: photo.id,
       url: photo.url,
-      filename,
-      imagePath: `photos/${filename}`,
+      filename: standardFilename,
+      imagePath: `photos/${standardFilename}`,
+      bleedImagePath: `photos/${bleedFilename}`,
       latitude: photo.latitude,
       longitude: photo.longitude,
       exifDateTime: photo.exifDateTime,
@@ -88,6 +129,8 @@ export async function preparePdfAssets(
       notes: photo.notes.map((n) => n.text),
     });
   }
+
+  const mapImagePath = await fetchPdfMapImage(photos, workDir);
 
   return {
     travel: {
@@ -101,6 +144,9 @@ export async function preparePdfAssets(
     photos,
     notes: travel.notes,
     format,
+    template,
+    coverPhotoId,
+    mapImagePath,
     workDir,
   };
 }
@@ -124,9 +170,11 @@ export async function writePrintHtmlFile(
 
 export async function buildPdfArtifact(
   travelId: string,
-  format: PdfPageFormat,
+  options: PdfExportOptions = { format: "a4-landscape" },
   emit?: PdfProgressCallback
 ): Promise<{ buffer: Buffer; filename: string; photoCount: number }> {
+  const format = options.format ?? "a4-landscape";
+
   const emitStep = (
     step: Parameters<PdfProgressCallback>[0]["step"],
     status: "running" | "done",
@@ -167,15 +215,19 @@ export async function buildPdfArtifact(
   emitStep("load", "done");
 
   emitStep("photos", "running", `Optimizando 0/${imagePhotos.length} fotos…`);
-  const ctx = await preparePdfAssets(travel, format, (current, total) => {
-    emit?.({
-      step: "photos",
-      status: "running",
-      message: `Optimizando fotos ${current}/${total}…`,
-      current,
-      total,
-    });
-  });
+  const ctx = await preparePdfAssets(
+    travel,
+    options,
+    (current, total) => {
+      emit?.({
+        step: "photos",
+        status: "running",
+        message: `Optimizando fotos ${current}/${total}…`,
+        current,
+        total,
+      });
+    }
+  );
 
   if (ctx.photos.length === 0) {
     throw new Error("No se pudieron preparar las imágenes del álbum");
