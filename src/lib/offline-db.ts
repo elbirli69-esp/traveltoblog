@@ -120,3 +120,16 @@ export async function getPendingCounts(travelId: string): Promise<PendingCounts>
     total: photos.length + notes.length + places.length,
   };
 }
+
+export async function clearPendingForTravel(travelId: string): Promise<void> {
+  const [photos, notes, places] = await Promise.all([
+    getPendingPhotos(travelId),
+    getPendingNotes(travelId),
+    getPendingPlaces(travelId),
+  ]);
+  await Promise.all([
+    ...photos.map((item) => removePendingPhoto(item.localId)),
+    ...notes.map((item) => removePendingNote(item.localId)),
+    ...places.map((item) => removePendingPlace(item.localId)),
+  ]);
+}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { clearSessionIfTravel, removeTravelFromHistory } from "@/lib/utils";
+import { clearLocalTravelData } from "@/lib/travel-local-cleanup";
 
 interface DeleteTravelPanelProps {
   travelId: string;
@@ -64,8 +64,7 @@ export default function DeleteTravelPanel({
         throw new Error(data.error ?? "No se pudo eliminar el viaje");
       }
 
-      removeTravelFromHistory(travelId);
-      clearSessionIfTravel(travelId);
+      await clearLocalTravelData(travelId);
       router.push("/");
       router.refresh();
     } catch (err) {

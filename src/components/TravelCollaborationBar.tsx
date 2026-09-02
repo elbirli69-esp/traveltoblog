@@ -1,12 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  clearLocalTravelData,
+  isTravelNotFoundResponse,
+} from "@/lib/travel-local-cleanup";
 
 interface TravelCollaborationBarProps {
   travelId: string;
   participantCount: number;
   lastUpdated: string | null;
   onRefresh: () => void;
+  onTravelDeleted?: () => void;
 }
 
 export default function TravelCollaborationBar({
@@ -14,7 +20,9 @@ export default function TravelCollaborationBar({
   participantCount,
   lastUpdated,
   onRefresh,
+  onTravelDeleted,
 }: TravelCollaborationBarProps) {
+  const router = useRouter();
   const [isOnline, setIsOnline] = useState(true);
   const [remoteUpdatedAt, setRemoteUpdatedAt] = useState<string | null>(null);
   const [hasRemoteUpdates, setHasRemoteUpdates] = useState(false);
@@ -33,7 +41,13 @@ export default function TravelCollaborationBar({
   const checkRemote = useCallback(async () => {
     if (!navigator.onLine) return;
     try {
-      const res = await fetch(`/api/travels/${travelId}?meta=1`);
+      const res = await fetch(`/api/travels/${travelId}?meta=1`, { cache: "no-store" });
+      if (isTravelNotFoundResponse(res)) {
+        await clearLocalTravelData(travelId);
+        onTravelDeleted?.();
+        router.replace("/");
+        return;
+      }
       if (!res.ok) return;
       const data = (await res.json()) as { updatedAt?: string };
       if (!data.updatedAt) return;
@@ -46,7 +60,7 @@ export default function TravelCollaborationBar({
     } catch {
       /* ignore poll errors */
     }
-  }, [travelId, lastUpdated]);
+  }, [travelId, lastUpdated, onTravelDeleted, router]);
 
   useEffect(() => {
     checkRemote();
