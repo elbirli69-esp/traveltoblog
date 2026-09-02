@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.bookworm
+      network: host
     container_name: traveltoblog
     restart: unless-stopped
     # Synology Docker bridge (172.x) often blocks outbound internet/DNS.
