@@ -595,6 +595,18 @@ export function mapExportStyles(): string {
   box-shadow: 0 4px 16px rgba(0,0,0,.28);
   border: 2px solid rgba(245,158,11,.75);
 }
+.map-load-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--muted);
+  font-family: system-ui, sans-serif;
+  font-size: .92rem;
+  line-height: 1.5;
+}
 @media (max-width: 900px) {
   .map-explorer-body { grid-template-columns: 1fr; min-height: auto; }
   .map-sidebar { max-height: 220px; }
@@ -1122,13 +1134,35 @@ function buildMapScript(
 
   return `
 (function () {
+  function showMapLoadError(mapEl, message) {
+    if (!mapEl || mapEl.dataset.mapError) return;
+    mapEl.dataset.mapError = "1";
+    mapEl.innerHTML = '<div class="map-load-error">' + message + "</div>";
+  }
+
   function initTravelMap() {
-    var points = ${data}.filter(function (p) {
+    var rawPoints = ${data};
+    var points = rawPoints.filter(function (p) {
       return typeof p.lat === "number" && typeof p.lng === "number" && isFinite(p.lat) && isFinite(p.lng);
     });
     var dayGroups = ${groupsData};
     var mapEl = document.getElementById("map");
-    if (!points.length || typeof L === "undefined" || !mapEl) return;
+    if (!mapEl || window.__travelMap) return;
+
+    if (!points.length) {
+      showMapLoadError(
+        mapEl,
+        "No hay coordenadas GPS en las fotos de este export. Comprueba que las fotos tengan ubicación en la app."
+      );
+      return;
+    }
+    if (typeof L === "undefined") {
+      showMapLoadError(
+        mapEl,
+        "No se pudo cargar el motor del mapa. Vuelve a exportar o abre el archivo en Chrome/Firefox de un ordenador."
+      );
+      return;
+    }
 
     delete L.Icon.Default.prototype._getIconUrl;
     L.Icon.Default.mergeOptions({
@@ -1287,10 +1321,38 @@ function buildMapScript(
     }
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initTravelMap);
-  } else {
+  function scheduleMapInit() {
     initTravelMap();
+    if (!window.__travelMap) {
+      window.setTimeout(initTravelMap, 350);
+      window.setTimeout(initTravelMap, 1500);
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", scheduleMapInit);
+  } else {
+    scheduleMapInit();
+  }
+
+  window.addEventListener("load", function () {
+    window.setTimeout(scheduleMapInit, 200);
+  });
+
+  if ("IntersectionObserver" in window) {
+    var mapSection = document.getElementById("mapa");
+    if (mapSection) {
+      var mapObs = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          scheduleMapInit();
+          if (window.__refreshTravelMap) {
+            window.setTimeout(function () { window.__refreshTravelMap(); }, 120);
+          }
+        });
+      }, { threshold: 0.08, rootMargin: "0px 0px -5% 0px" });
+      mapObs.observe(mapSection);
+    }
   }
 })();
 `;
@@ -1814,7 +1876,7 @@ async function addLeafletToZip(zip: JSZip): Promise<void> {
 async function inlineMapAssetsInHtml(
   html: string,
   ctx: ExportContext,
-  registry: Record<string, string>
+  registry?: Record<string, string>
 ): Promise<string> {
   if (!exportHasMap(ctx)) return html;
 
@@ -1834,11 +1896,14 @@ async function inlineMapAssetsInHtml(
 </style>`
   );
 
-  const mapPoints = mergeMapPoints(ctx.photos, ctx.places ?? []).map((p) => ({
-    ...p,
-    photoPath: p.photoPath ? registry[p.photoPath] ?? p.photoPath : null,
-    photoPaths: p.photoPaths?.map((path) => registry[path] ?? path),
-  }));
+  const mapPoints = mergeMapPoints(ctx.photos, ctx.places ?? []).map((p) => {
+    if (!registry) return p;
+    return {
+      ...p,
+      photoPath: p.photoPath ? registry[p.photoPath] ?? p.photoPath : null,
+      photoPaths: p.photoPaths?.map((path) => registry[path] ?? path),
+    };
+  });
 
   const iconScript = `delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -1884,14 +1949,19 @@ export async function buildExportZip(
 
   emit({ step: "html", status: "running", message: "Generando HTML del diario…" });
   const zip = new JSZip();
-  const html = buildExportHtml(ctx);
+  let html = buildExportHtml(ctx);
+
+  if (exportHasMap(ctx)) {
+    emit({ step: "map", status: "running", message: "Preparando mapa interactivo…" });
+    html = await inlineMapAssetsInHtml(html, ctx);
+    emit({ step: "map", status: "done" });
+  }
+
   addCommonZipFiles(zip, ctx, html);
   emit({ step: "html", status: "done" });
 
   if (exportHasMap(ctx)) {
-    emit({ step: "map", status: "running", message: "Preparando mapa interactivo…" });
     await addLeafletToZip(zip);
-    emit({ step: "map", status: "done" });
   }
 
   const total = ctx.photos.length;
