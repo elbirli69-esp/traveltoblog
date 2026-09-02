@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { sanitizeGpsPair } from "@/lib/exif";
 import { resolvePhotoExifFromFile } from "@/lib/photo-gps";
 import {
+  buildMapPhotoList,
   loadPhotoFiles,
   type ExportFormat,
   type ExportTemplateId,
@@ -68,7 +69,6 @@ export async function POST(request: NextRequest) {
         include: {
           users: true,
           photos: {
-            where: { selected: true },
             include: { user: true },
             orderBy: { exifDateTime: "asc" },
           },
@@ -121,6 +121,7 @@ export async function POST(request: NextRequest) {
 
       emit({ step: "photos", status: "running", message: "Preparando archivos de fotos…" });
       const photos = await loadPhotoFiles(travel.photos);
+      const mapPhotos = buildMapPhotoList(travel.photos, photos);
       emit({ step: "photos", status: "done" });
 
       const places = travel.places.map((p) => {
@@ -165,6 +166,7 @@ export async function POST(request: NextRequest) {
         },
         users: travel.users,
         photos,
+        mapPhotos,
         places,
         notes,
         gpsTracks,
