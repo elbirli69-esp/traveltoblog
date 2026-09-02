@@ -149,6 +149,11 @@ function renderPlaceCard(ev: TimelineEvent): string {
   const emoji = placeEmoji(ev.meta?.placeType);
   const typeLabel = placeTypeLabel(ev.meta?.placeType);
   const body = ev.body ? `<div class="story-place-note">${bodyParagraphs(ev.body)}</div>` : "";
+  const media = ev.mediaUrl
+    ? `<figure class="story-media story-media--compact">
+        <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="" loading="lazy" class="story-photo-img">
+      </figure>`
+    : "";
 
   return `
 <article ${eventAttrs(ev)}>
@@ -163,6 +168,7 @@ function renderPlaceCard(ev: TimelineEvent): string {
         <time datetime="${escapeHtml(ev.at)}">${formatTime(ev.at)}</time>
       </header>
       <h4 class="story-place-name">${escapeHtml(ev.title)}</h4>
+      ${media}
       ${body}
       ${ev.author ? `<footer class="story-card-foot"><span class="story-author">${escapeHtml(ev.author)}</span></footer>` : ""}
     </div>

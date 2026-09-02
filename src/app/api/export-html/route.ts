@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { sanitizeGpsPair } from "@/lib/exif";
 import { resolvePhotoExifFromFile } from "@/lib/photo-gps";
 import {
   loadPhotoFiles,
@@ -122,16 +123,19 @@ export async function POST(request: NextRequest) {
       const photos = await loadPhotoFiles(travel.photos);
       emit({ step: "photos", status: "done" });
 
-      const places = travel.places.map((p) => ({
-        id: p.id,
-        name: p.name,
-        type: p.type,
-        latitude: p.latitude,
-        longitude: p.longitude,
-        comment: p.notes[0]?.text ?? p.comment,
-        alias: p.user.alias,
-        visitedAt: p.visitedAt,
-      }));
+      const places = travel.places.map((p) => {
+        const gps = sanitizeGpsPair(p.latitude, p.longitude);
+        return {
+          id: p.id,
+          name: p.name,
+          type: p.type,
+          latitude: gps.latitude ?? p.latitude,
+          longitude: gps.longitude ?? p.longitude,
+          comment: p.notes[0]?.text ?? p.comment,
+          alias: p.user.alias,
+          visitedAt: p.visitedAt,
+        };
+      });
       const notes = travel.notes.map((n) => ({
         id: n.id,
         type: n.type,
