@@ -4,6 +4,8 @@ import { formatDateKey } from "@/lib/travel-dates";
 import { PLACE_TYPE_EMOJI, PLACE_TYPE_LABELS } from "@/lib/places";
 import type { PlaceType } from "@prisma/client";
 import { exportDisplayPathFromThumb } from "@/lib/export-images";
+import { exportVideoBadgeHtml } from "@/lib/export-photo-html";
+import { formatDurationMs } from "@/lib/media-types";
 
 export interface StoryTimelineOptions {
   /** Si hay artículo de crónica, omitir trozos journal-chunk duplicados */
@@ -111,12 +113,23 @@ function renderPhotoCard(
   notes: string[],
   index: number
 ): string {
+  const isVideo = ev.meta?.mediaType === "VIDEO";
+  const videoPath = ev.meta?.videoPath ?? null;
+  const durationMs = ev.meta?.durationMs ?? null;
+  const videoAttr = isVideo
+    ? videoPath
+      ? ` data-export-video="${escapeHtml(videoPath)}" data-export-media="video"`
+      : ` data-export-video-missing="1" data-export-media="video"`
+    : "";
   const media = ev.mediaUrl
-    ? `<figure class="story-media">
-        <button type="button" class="story-media-btn" aria-label="Ampliar foto">
-          <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="Foto del viaje" loading="lazy" class="story-photo-img">
+    ? `<figure class="story-media${isVideo ? " story-media--video" : ""}">
+        <button type="button" class="story-media-btn" aria-label="${isVideo ? "Reproducir vídeo" : "Ampliar foto"}">
+          <span class="export-media-wrap">
+            <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="${isVideo ? "Vídeo del viaje" : "Foto del viaje"}" loading="lazy" class="story-photo-img"${videoAttr}>
+            ${isVideo ? exportVideoBadgeHtml(durationMs) : ""}
+          </span>
         </button>
-        <figcaption class="story-photo-caption">${escapeHtml(ev.author ?? "Viajero")} · ${formatTime(ev.at)}</figcaption>
+        <figcaption class="story-photo-caption">${isVideo ? "▶ " : ""}${escapeHtml(ev.author ?? "Viajero")} · ${formatTime(ev.at)}${isVideo && formatDurationMs(durationMs) ? ` · ${formatDurationMs(durationMs)}` : ""}</figcaption>
       </figure>`
     : "";
 
@@ -135,7 +148,7 @@ function renderPhotoCard(
     </div>
     <div class="story-card-content">
       <header class="story-card-head">
-        <span class="story-kind">📷 Momento capturado</span>
+        <span class="story-kind">${isVideo ? "🎬 Momento en vídeo" : "📷 Momento capturado"}</span>
         <time datetime="${escapeHtml(ev.at)}">${formatTime(ev.at)}</time>
       </header>
       ${media}
@@ -435,6 +448,12 @@ export function storyTimelineStyles(): string {
 .story-media { margin: 0 0 .85rem; border-radius: 14px; overflow: hidden; }
 .story-media-btn {
   display: block; width: 100%; padding: 0; border: none; background: none; cursor: zoom-in;
+  position: relative;
+}
+.story-media-btn .export-media-wrap {
+  display: block;
+  position: relative;
+  width: 100%;
 }
 .story-photo-img {
   width: 100%;
@@ -452,6 +471,7 @@ export function storyTimelineStyles(): string {
 }
 .story-media-btn:hover .story-photo-img { transform: scale(1.03); }
 .story-media--compact .story-photo-img { aspect-ratio: 16/9; max-height: 220px; }
+.story-media--video .story-media-btn { cursor: pointer; }
 
 .story-quotes { display: flex; flex-direction: column; gap: .65rem; }
 .story-quote {

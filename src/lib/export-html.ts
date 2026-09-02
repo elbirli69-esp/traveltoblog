@@ -404,14 +404,21 @@ function buildInteractiveScripts(template: ExportTemplateId): string {
 (function () {
   var lightbox = document.getElementById("lightbox");
   if (lightbox) {
-    lightbox.addEventListener("click", function () {
-      lightbox.classList.remove("open");
-      document.body.style.overflow = "";
+    lightbox.addEventListener("click", function (e) {
+      if (e.target && (e.target.tagName === "VIDEO" || e.target.closest("video"))) return;
+      if (window.__closeExportLightbox) window.__closeExportLightbox();
+      else {
+        lightbox.classList.remove("open");
+        document.body.style.overflow = "";
+      }
     });
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") {
-        lightbox.classList.remove("open");
-        document.body.style.overflow = "";
+        if (window.__closeExportLightbox) window.__closeExportLightbox();
+        else {
+          lightbox.classList.remove("open");
+          document.body.style.overflow = "";
+        }
       }
     });
   }
@@ -854,11 +861,13 @@ ${galleryExportStyles()}
   transition: opacity .25s ease;
 }
 #lightbox.open { opacity: 1; pointer-events: auto; }
-#lightbox img {
+#lightbox img,
+#lightbox video {
   max-width: min(96vw, 1100px);
   max-height: 80vh;
   border-radius: 8px;
   box-shadow: 0 30px 80px rgba(0,0,0,.6);
+  background: #000;
 }
 .lightbox-caption { margin-top: 1rem; color: #d6d3d1; font-size: .95rem; text-align: center; max-width: 640px; }
 footer {
@@ -939,7 +948,8 @@ article .pull-quote { border-left-color: var(--accent); background: rgba(251,191
 .reveal.visible { opacity: 1; transform: none; }
 #lightbox { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem; background: rgba(0,0,0,.92); opacity: 0; pointer-events: none; transition: opacity .25s; }
 #lightbox.open { opacity: 1; pointer-events: auto; }
-#lightbox img { max-width: min(96vw, 1000px); max-height: 80vh; border-radius: 8px; }
+#lightbox img,
+#lightbox video { max-width: min(96vw, 1000px); max-height: 80vh; border-radius: 8px; background: #000; }
 .lightbox-caption { margin-top: 1rem; color: #d1d5db; text-align: center; }
 footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.85rem; }
 .leaflet-container { background: #1e293b !important; font-family: inherit; }
@@ -1383,6 +1393,7 @@ function buildMapScript(
 
 function buildExportTimelineEvents(ctx: ExportContext): TimelineEvent[] {
   const urlToThumb = new Map(ctx.photos.map((p) => [p.url, p.thumbPath]));
+  const urlToPhoto = new Map(ctx.photos.map((p) => [p.url, p]));
   const timelineInput = {
     photos: ctx.photos.map((p) => ({
       id: p.id,
@@ -1440,14 +1451,28 @@ function buildExportTimelineEvents(ctx: ExportContext): TimelineEvent[] {
       .filter((entry): entry is [string, string] => Boolean(entry[1]))
   );
 
-  return events.map((ev) => ({
-    ...ev,
-    mediaUrl: ev.mediaUrl
-      ? urlToThumb.get(ev.mediaUrl) ?? ev.mediaUrl
-      : ev.kind === "place" && ev.meta?.placeId
-        ? placeThumbById.get(ev.meta.placeId)
-        : undefined,
-  }));
+  return events.map((ev) => {
+    const sourcePhoto = ev.mediaUrl ? urlToPhoto.get(ev.mediaUrl) : undefined;
+    return {
+      ...ev,
+      mediaUrl: ev.mediaUrl
+        ? urlToThumb.get(ev.mediaUrl) ?? ev.mediaUrl
+        : ev.kind === "place" && ev.meta?.placeId
+          ? placeThumbById.get(ev.meta.placeId)
+          : undefined,
+      meta: {
+        ...ev.meta,
+        ...(sourcePhoto
+          ? {
+              mediaType: sourcePhoto.mediaType ?? "IMAGE",
+              videoPath: sourcePhoto.videoPath ?? null,
+              durationMs: sourcePhoto.durationMs ?? null,
+              photoId: sourcePhoto.id,
+            }
+          : {}),
+      },
+    };
+  });
 }
 
 function estimateRouteKm(photos: ExportPhoto[]): number | undefined {
@@ -1672,7 +1697,7 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide)}`
     .join("\n");
 
   const lightboxBlock = isInteractive
-    ? `<div id="lightbox" role="dialog" aria-label="Visor de fotos"><img src="" alt=""><p class="lightbox-caption"></p></div>`
+    ? `<div id="lightbox" role="dialog" aria-label="Visor de fotos y vídeos"><img src="" alt=""><video controls playsinline preload="metadata" style="display:none"></video><p class="lightbox-caption"></p></div>`
     : "";
 
   const timelineJson = JSON.stringify(timelineEvents).replace(/</g, "\\u003c");

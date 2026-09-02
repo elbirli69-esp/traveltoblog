@@ -1,5 +1,6 @@
 import type { ExportPhoto } from "@/lib/export-html";
 import { exportDisplayPathFromThumb } from "@/lib/export-images";
+import { formatDurationMs } from "@/lib/media-types";
 
 function escapeHtml(text: string): string {
   return text
@@ -9,13 +10,43 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+export function exportVideoBadgeHtml(durationMs?: number | null): string {
+  const label = formatDurationMs(durationMs);
+  return `<span class="export-video-badge" aria-hidden="true">▶${label ? ` ${escapeHtml(label)}` : ""}</span>`;
+}
+
 export function exportThumbImgTag(
-  photo: Pick<ExportPhoto, "thumbPath" | "localPath">,
+  photo: Pick<
+    ExportPhoto,
+    "thumbPath" | "localPath" | "mediaType" | "videoPath" | "durationMs"
+  >,
   alt: string,
   extraClass = ""
 ): string {
   const cls = extraClass ? ` class="${escapeHtml(extraClass)}"` : "";
-  return `<img data-export-src="${escapeHtml(photo.thumbPath)}" data-export-display="${escapeHtml(photo.localPath)}" alt="${escapeHtml(alt)}" loading="lazy"${cls}>`;
+  const isVideo = photo.mediaType === "VIDEO";
+  const videoAttr =
+    isVideo && photo.videoPath
+      ? ` data-export-video="${escapeHtml(photo.videoPath)}"`
+      : isVideo
+        ? ` data-export-video-missing="1"`
+        : "";
+  const mediaAttr = isVideo ? ` data-export-media="video"` : "";
+  return `<img data-export-src="${escapeHtml(photo.thumbPath)}" data-export-display="${escapeHtml(photo.localPath)}" alt="${escapeHtml(alt)}" loading="lazy"${cls}${videoAttr}${mediaAttr}>`;
+}
+
+/** Gallery / story wrapper with optional ▶ badge over the thumb. */
+export function exportThumbWithBadge(
+  photo: Pick<
+    ExportPhoto,
+    "thumbPath" | "localPath" | "mediaType" | "videoPath" | "durationMs"
+  >,
+  alt: string,
+  imgClass = ""
+): string {
+  const img = exportThumbImgTag(photo, alt, imgClass);
+  if (photo.mediaType !== "VIDEO") return img;
+  return `<span class="export-media-wrap">${img}${exportVideoBadgeHtml(photo.durationMs)}</span>`;
 }
 
 export function exportDisplayPathFromPhotoPath(photoPath: string): string {
@@ -71,24 +102,80 @@ export function buildExportPhotoBootScript(): string {
     el.style.backgroundPosition = "center";
   });
 
+  function closeLightbox() {
+    var lightbox = document.getElementById("lightbox");
+    var lightboxImg = lightbox && lightbox.querySelector("img");
+    var lightboxVideo = lightbox && lightbox.querySelector("video");
+    if (!lightbox) return;
+    lightbox.classList.remove("open");
+    document.body.style.overflow = "";
+    if (lightboxVideo) {
+      try { lightboxVideo.pause(); } catch (e) {}
+      lightboxVideo.removeAttribute("src");
+      lightboxVideo.load();
+      lightboxVideo.style.display = "none";
+    }
+    if (lightboxImg) {
+      lightboxImg.style.display = "";
+      lightboxImg.src = "";
+    }
+  }
+
   function openLightboxFromImg(img) {
     var lightbox = document.getElementById("lightbox");
     var lightboxImg = lightbox && lightbox.querySelector("img");
+    var lightboxVideo = lightbox && lightbox.querySelector("video");
     var lightboxCap = lightbox && lightbox.querySelector(".lightbox-caption");
     if (!lightbox || !lightboxImg || !img) return;
+
     var displayKey = img.getAttribute("data-export-display");
-    lightboxImg.src = displayKey
+    var posterUrl = displayKey
       ? resolveExportAsset(displayKey)
       : exportDisplayFromThumb(img.getAttribute("data-export-src") || img.src);
-    lightboxImg.alt = img.alt || "";
-    if (lightboxCap) {
-      var fig = img.closest("figure");
-      var cap = fig && fig.querySelector("figcaption, .story-photo-caption");
-      lightboxCap.textContent = cap ? cap.textContent : "";
+    var videoPath = img.getAttribute("data-export-video");
+    var videoMissing = img.getAttribute("data-export-video-missing") === "1";
+    var isVideo = img.getAttribute("data-export-media") === "video" || Boolean(videoPath) || videoMissing;
+
+    var fig = img.closest("figure");
+    var cap = fig && fig.querySelector("figcaption, .story-photo-caption");
+    var captionText = cap ? cap.textContent : "";
+
+    if (lightboxVideo && isVideo && videoPath) {
+      lightboxImg.style.display = "none";
+      lightboxVideo.style.display = "block";
+      lightboxVideo.poster = posterUrl || "";
+      lightboxVideo.src = videoPath;
+      lightboxVideo.load();
+      try { lightboxVideo.play(); } catch (e) {}
+      if (lightboxCap) {
+        lightboxCap.textContent = captionText ? "▶ " + captionText : "▶ Vídeo";
+      }
+    } else {
+      if (lightboxVideo) {
+        try { lightboxVideo.pause(); } catch (e) {}
+        lightboxVideo.removeAttribute("src");
+        lightboxVideo.load();
+        lightboxVideo.style.display = "none";
+      }
+      lightboxImg.style.display = "";
+      lightboxImg.src = posterUrl;
+      lightboxImg.alt = img.alt || "";
+      if (lightboxCap) {
+        if (isVideo && videoMissing) {
+          lightboxCap.textContent = (captionText ? captionText + " · " : "") + "Vídeo (abre el ZIP para reproducirlo)";
+        } else if (isVideo) {
+          lightboxCap.textContent = captionText ? "▶ " + captionText : "▶ Vídeo";
+        } else {
+          lightboxCap.textContent = captionText || "";
+        }
+      }
     }
+
     lightbox.classList.add("open");
     document.body.style.overflow = "hidden";
   }
+
+  window.__closeExportLightbox = closeLightbox;
 
   document.querySelectorAll(".photo-block img, .gallery-tile img").forEach(function (img) {
     img.addEventListener("click", function () { openLightboxFromImg(img); });

@@ -1,4 +1,4 @@
-import { exportThumbImgTag } from "@/lib/export-photo-html";
+import { exportThumbWithBadge } from "@/lib/export-photo-html";
 import { formatDateKey, isoToDateKey, resolveTravelDayRange } from "@/lib/travel-dates";
 
 export interface GalleryPhotoInput {
@@ -8,6 +8,9 @@ export interface GalleryPhotoInput {
   alias: string;
   isTransportStart: boolean;
   isTransportEnd: boolean;
+  mediaType?: "IMAGE" | "VIDEO";
+  videoPath?: string | null;
+  durationMs?: number | null;
 }
 
 function escapeHtml(text: string): string {
@@ -79,8 +82,12 @@ function groupGalleryPhotosByDay(
 
 function buildGalleryTile(photo: GalleryPhotoInput): string {
   const when = photo.exifDateTime ? formatPhotoTime(photo.exifDateTime) : "";
-  const caption = when ? `${photo.alias} · ${when}` : photo.alias;
-  return `<figure class="gallery-tile">${exportThumbImgTag(photo, `Foto de ${photo.alias}`, "gallery-tile-img")}<figcaption>${escapeHtml(caption)}</figcaption></figure>`;
+  const isVideo = photo.mediaType === "VIDEO";
+  const caption = when
+    ? `${isVideo ? "▶ " : ""}${photo.alias} · ${when}`
+    : `${isVideo ? "▶ " : ""}${photo.alias}`;
+  const alt = isVideo ? `Vídeo de ${photo.alias}` : `Foto de ${photo.alias}`;
+  return `<figure class="gallery-tile${isVideo ? " gallery-tile--video" : ""}">${exportThumbWithBadge(photo, alt, "gallery-tile-img")}<figcaption>${escapeHtml(caption)}</figcaption></figure>`;
 }
 
 export function buildGallerySection(
@@ -92,21 +99,30 @@ export function buildGallerySection(
   if (dayGroups.length === 0) return "";
 
   const totalPhotos = dayGroups.reduce((sum, g) => sum + g.photos.length, 0);
+  const videoCount = dayGroups.reduce(
+    (sum, g) => sum + g.photos.filter((p) => p.mediaType === "VIDEO").length,
+    0
+  );
   const dayBlocks = dayGroups
     .map(
       (group) => `
   <section class="gallery-day reveal" aria-labelledby="gallery-day-${escapeHtml(group.key)}">
     <h3 class="gallery-day-title" id="gallery-day-${escapeHtml(group.key)}">${escapeHtml(group.label)}</h3>
-    <p class="gallery-day-meta">${group.photos.length} foto${group.photos.length !== 1 ? "s" : ""}</p>
+    <p class="gallery-day-meta">${group.photos.length} momento${group.photos.length !== 1 ? "s" : ""}</p>
     <div class="gallery-grid">${group.photos.map(buildGalleryTile).join("\n")}</div>
   </section>`
     )
     .join("\n");
 
+  const videoNote =
+    videoCount > 0
+      ? ` · ${videoCount} vídeo${videoCount === 1 ? "" : "s"}`
+      : "";
+
   return `
 <section id="galeria" class="gallery-section reveal">
   <h2 class="section-title">Galería por días</h2>
-  <p class="gallery-lead">${totalPhotos} momentos en ${dayGroups.length} día${dayGroups.length !== 1 ? "s" : ""} del viaje</p>
+  <p class="gallery-lead">${totalPhotos} momentos${videoNote} en ${dayGroups.length} día${dayGroups.length !== 1 ? "s" : ""} del viaje</p>
   <div class="gallery-days">${dayBlocks}</div>
 </section>`;
 }
@@ -150,6 +166,7 @@ export function galleryExportStyles(): string {
   border-radius: 10px;
   overflow: hidden;
   background: color-mix(in srgb, var(--muted) 18%, transparent);
+  cursor: pointer;
 }
 .gallery-tile img,
 .gallery-tile-img {
@@ -160,6 +177,11 @@ export function galleryExportStyles(): string {
   object-fit: cover;
   display: block;
   transition: transform .35s ease;
+}
+.gallery-tile .export-media-wrap {
+  position: absolute;
+  inset: 0;
+  display: block;
 }
 .gallery-tile:hover img { transform: scale(1.06); }
 .gallery-tile figcaption {
@@ -176,6 +198,24 @@ export function galleryExportStyles(): string {
   color: #fff;
   pointer-events: none;
 }
+.export-media-wrap { position: relative; display: inline-block; max-width: 100%; }
+.export-video-badge {
+  position: absolute;
+  left: .45rem;
+  top: .45rem;
+  z-index: 2;
+  padding: .2rem .45rem;
+  border-radius: 999px;
+  background: rgba(0,0,0,.72);
+  color: #fff;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  line-height: 1.2;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,.25);
+}
+.gallery-tile .export-video-badge { left: .4rem; top: .4rem; }
 @media (min-width: 640px) {
   .gallery-grid { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: .7rem; }
 }

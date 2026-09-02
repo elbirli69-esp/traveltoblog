@@ -18,6 +18,10 @@ export interface TimelineEventMeta {
   photoId?: string;
   placeId?: string;
   trackId?: string;
+  mediaType?: "IMAGE" | "VIDEO";
+  /** Relative path in ZIP export (e.g. videos/001.mp4) */
+  videoPath?: string | null;
+  durationMs?: number | null;
 }
 
 export interface TimelineEvent {
