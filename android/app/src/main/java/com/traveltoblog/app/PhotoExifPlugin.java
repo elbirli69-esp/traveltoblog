@@ -6,9 +6,11 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.provider.MediaStore;
 import android.util.Base64;
 import androidx.activity.result.ActivityResult;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -35,12 +37,15 @@ import java.util.List;
             alias = "photospartial"
         ),
         @Permission(strings = { Manifest.permission.READ_EXTERNAL_STORAGE }, alias = "storage"),
-        @Permission(strings = { Manifest.permission.ACCESS_MEDIA_LOCATION }, alias = "medialocation")
+        @Permission(strings = { Manifest.permission.ACCESS_MEDIA_LOCATION }, alias = "medialocation"),
+        @Permission(strings = { Manifest.permission.CAMERA }, alias = "camera")
     }
 )
 public class PhotoExifPlugin extends Plugin {
 
     private static final int MAX_READ_BYTES = 25 * 1024 * 1024;
+
+    private File cameraOutputFile;
 
     @PluginMethod
     public void ping(PluginCall call) {
@@ -55,6 +60,14 @@ public class PhotoExifPlugin extends Plugin {
             return;
         }
         launchPicker(call);
+    }
+
+    @PluginMethod
+    public void takePhoto(PluginCall call) {
+        if (!ensureCameraPermission(call)) {
+            return;
+        }
+        launchCamera(call);
     }
 
     @PluginMethod
@@ -102,6 +115,17 @@ public class PhotoExifPlugin extends Plugin {
         launchPicker(call);
     }
 
+    @PermissionCallback
+    private void cameraPermissionCallback(PluginCall call) {
+        if (!hasCameraPermission()) {
+            call.reject(
+                "Permiso de cámara denegado. Ve a Ajustes → Apps → TravelToBlog → Permisos y activa Cámara."
+            );
+            return;
+        }
+        launchCamera(call);
+    }
+
     /** Only photos/storage are required — medialocation is optional for GPS. */
     private boolean ensurePhotoPermission(PluginCall call) {
         if (hasPhotoReadPermission()) {
@@ -113,6 +137,14 @@ public class PhotoExifPlugin extends Plugin {
         } else {
             requestPermissionForAlias("storage", call, "permissionCallback");
         }
+        return false;
+    }
+
+    private boolean ensureCameraPermission(PluginCall call) {
+        if (hasCameraPermission()) {
+            return true;
+        }
+        requestPermissionForAlias("camera", call, "cameraPermissionCallback");
         return false;
     }
 
@@ -134,6 +166,16 @@ public class PhotoExifPlugin extends Plugin {
         return true;
     }
 
+    private boolean hasCameraPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            return (
+                ContextCompat.checkSelfPermission(getContext(), Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
+            );
+        }
+        return true;
+    }
+
     private void launchPicker(PluginCall call) {
         try {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -143,10 +185,37 @@ public class PhotoExifPlugin extends Plugin {
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
 
-            Intent chooser = Intent.createChooser(intent, "Seleccionar fotos");
-            startActivityForResult(call, chooser, "handlePickerResult");
+            startActivityForResult(call, intent, "handlePickerResult");
         } catch (Exception e) {
             call.reject("No se pudo abrir el selector de fotos", e);
+        }
+    }
+
+    private void launchCamera(PluginCall call) {
+        try {
+            File photoFile =
+                new File(
+                    getContext().getCacheDir(),
+                    "camera_" + System.currentTimeMillis() + ".jpg"
+                );
+            cameraOutputFile = photoFile;
+
+            Uri outputUri =
+                FileProvider.getUriForFile(
+                    getContext(),
+                    getContext().getPackageName() + ".fileprovider",
+                    photoFile
+                );
+
+            Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, outputUri);
+            intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+            startActivityForResult(call, intent, "handleCameraResult");
+        } catch (Exception e) {
+            cameraOutputFile = null;
+            call.reject("No se pudo abrir la cámara", e);
         }
     }
 
@@ -183,6 +252,38 @@ public class PhotoExifPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    @ActivityCallback
+    private void handleCameraResult(PluginCall call, ActivityResult result) {
+        File outputFile = cameraOutputFile;
+        cameraOutputFile = null;
+
+        if (
+            result.getResultCode() != Activity.RESULT_OK ||
+            outputFile == null ||
+            !outputFile.exists() ||
+            outputFile.length() == 0
+        ) {
+            if (outputFile != null && outputFile.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                outputFile.delete();
+            }
+            JSObject empty = new JSObject();
+            empty.put("photos", new JSArray());
+            call.resolve(empty);
+            return;
+        }
+
+        JSObject photo = processFile(outputFile);
+        JSArray photos = new JSArray();
+        if (photo != null) {
+            photos.put(photo);
+        }
+
+        JSObject ret = new JSObject();
+        ret.put("photos", photos);
+        call.resolve(ret);
+    }
+
     private JSObject processUri(Uri uri) {
         boolean allowOriginalMedia =
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
@@ -194,6 +295,24 @@ public class PhotoExifPlugin extends Plugin {
             return null;
         }
 
+        return buildPhotoObject(image);
+    }
+
+    private JSObject processFile(File file) {
+        boolean allowOriginalMedia =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            getPermissionState("medialocation") == PermissionState.GRANTED;
+
+        ImageImportHelper.ImportedImage image =
+            ImageImportHelper.importFile(file, allowOriginalMedia);
+        if (image == null) {
+            return null;
+        }
+
+        return buildPhotoObject(image);
+    }
+
+    private JSObject buildPhotoObject(ImageImportHelper.ImportedImage image) {
         String absolutePath = image.file.getAbsolutePath();
         String webPath = getBridge().getLocalUrl() + Bridge.CAPACITOR_FILE_START + absolutePath;
 
