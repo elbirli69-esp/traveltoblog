@@ -29,5 +29,9 @@ sudo rm -f "${OUT_DIR}"/*.deb 2>/dev/null || true
 sudo cp "${CHROOT}/deb-cache/"*.deb "$OUT_DIR/"
 sudo chown -R "$(id -u):$(id -g)" "$OUT_DIR"
 sudo rm -rf "$CHROOT"
+(
+  cd "$OUT_DIR"
+  dpkg-scanpackages . /dev/null 2>/dev/null | gzip -9c > Packages.gz
+)
 date -Iseconds > "$MARKER"
 echo "   $(ls "${OUT_DIR}"/*.deb | wc -l) paquetes en ${OUT_DIR} ($(du -sh "$OUT_DIR" | cut -f1))"

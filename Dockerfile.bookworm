@@ -13,8 +13,14 @@ ENV WEASYPRINT_BIN=/usr/bin/weasyprint
 
 COPY docker/debian-debs /tmp/debian-debs
 
-RUN if ls /tmp/debian-debs/*.deb >/dev/null 2>&1; then \
-      echo "Installing WeasyPrint from offline debs…"; \
+RUN if [ -f /tmp/debian-debs/Packages.gz ]; then \
+      echo "Installing WeasyPrint from offline apt repo…"; \
+      echo "deb [trusted=yes] file:/tmp/debian-debs ./" > /etc/apt/sources.list.d/offline-weasyprint.list; \
+      apt-get update \
+      && apt-get install -y --no-install-recommends weasyprint python3 \
+      && rm -f /etc/apt/sources.list.d/offline-weasyprint.list; \
+    elif ls /tmp/debian-debs/*.deb >/dev/null 2>&1; then \
+      echo "Installing WeasyPrint from offline debs (dpkg)…"; \
       dpkg -i /tmp/debian-debs/*.deb 2>/dev/null || true; \
       apt-get -f install -y --no-install-recommends \
         -o Dir::Cache::archives=/tmp/debian-debs \
