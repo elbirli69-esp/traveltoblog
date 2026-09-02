@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildPdfArtifact } from "@/lib/export-pdf";
 import { probeWeasyPrint } from "@/lib/export-pdf-render";
-import type { PdfPageFormat } from "@/lib/export-pdf";
+import type { PdfPageFormat } from "@/lib/export-pdf-types";
 import type { PdfPipelineEvent } from "@/lib/export-pdf-pipeline";
 
 const FORMATS: PdfPageFormat[] = ["a4-landscape", "square"];

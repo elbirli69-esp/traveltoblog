@@ -1,7 +1,7 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
-import type { PdfPageFormat } from "@/lib/export-pdf";
+import type { PdfPageFormat } from "@/lib/export-pdf-types";
 
 const execFileAsync = promisify(execFile);
 

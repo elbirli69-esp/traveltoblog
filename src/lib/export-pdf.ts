@@ -1,4 +1,3 @@
-import { marked } from "marked";
 import path from "path";
 import { mkdir, writeFile, rm } from "fs/promises";
 import { tmpdir } from "os";
@@ -14,353 +13,15 @@ import { readPhotoBuffer } from "@/lib/export-html";
 import { prisma } from "@/lib/prisma";
 import type { PdfProgressCallback } from "@/lib/export-pdf-pipeline";
 
-export type PdfPageFormat = "a4-landscape" | "square";
+import type { PdfPageFormat, PdfPhotoAsset, PdfExportContext } from "@/lib/export-pdf-types";
 
-export interface PdfPhotoAsset {
-  id: string;
-  url: string;
-  filename: string;
-  /** Path relative to album.html (e.g. photos/001.jpg) */
-  imagePath: string;
-  latitude: number | null;
-  longitude: number | null;
-  exifDateTime: Date | null;
-  alias: string;
-  notes: string[];
-}
-
-export interface PdfExportContext {
-  travel: Pick<Travel, "id" | "title" | "startDate" | "endDate" | "journalMarkdown">;
-  users: User[];
-  photos: PdfPhotoAsset[];
-  notes: (Note & { user: User })[];
-  format: PdfPageFormat;
-}
+export type { PdfPageFormat, PdfPhotoAsset, PdfExportContext } from "@/lib/export-pdf-types";
+export { buildPrintHtml } from "@/lib/export-pdf-layout";
 
 export interface PdfBuildResult {
   htmlPath: string;
   workDir: string;
   cleanup: () => Promise<void>;
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function formatDateRange(start: Date | null, end: Date | null): string {
-  const fmt = (d: Date) =>
-    new Intl.DateTimeFormat("es-ES", { dateStyle: "long" }).format(d);
-  if (start && end) return `${fmt(start)} — ${fmt(end)}`;
-  if (start) return `Desde ${fmt(start)}`;
-  if (end) return `Hasta ${fmt(end)}`;
-  return "";
-}
-
-function formatExifMeta(photo: PdfPhotoAsset): string {
-  const parts: string[] = [];
-  if (photo.exifDateTime) {
-    const dt = new Intl.DateTimeFormat("es-ES", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(photo.exifDateTime);
-    parts.push(dt);
-  }
-  if (photo.latitude != null && photo.longitude != null) {
-    parts.push(`${photo.latitude.toFixed(5)}°, ${photo.longitude.toFixed(5)}°`);
-  }
-  parts.push(`@${photo.alias}`);
-  return parts.join(" · ");
-}
-
-function pageDimensions(format: PdfPageFormat): { width: string; height: string } {
-  if (format === "square") {
-    return { width: "210mm", height: "210mm" };
-  }
-  return { width: "297mm", height: "210mm" };
-}
-
-function pageSizeCss(format: PdfPageFormat): string {
-  const { width, height } = pageDimensions(format);
-  return `size: ${width} ${height}; margin: 0;`;
-}
-
-/** Split journal into sections (by ## headings) for spread narrative. */
-function splitNarrativeSections(markdown: string | null, users: User[]): string[] {
-  if (!markdown?.trim()) {
-    return [
-      `<p>Álbum del viaje con ${users.map((u) => escapeHtml(u.alias)).join(", ")}.</p>`,
-    ];
-  }
-
-  const raw = markdown.trim();
-  if (!/^##\s+/m.test(raw)) {
-    return [marked.parse(raw, { async: false }) as string];
-  }
-
-  const sections = raw.split(/\n(?=##\s+)/).filter((s) => s.trim());
-  return sections.map((section) => marked.parse(section.trim(), { async: false }) as string);
-}
-
-function buildSpreads(
-  ctx: PdfExportContext
-): { photo: PdfPhotoAsset; narrative: string; quotes: string[] }[] {
-  const narratives = splitNarrativeSections(ctx.travel.journalMarkdown, ctx.users);
-  const photos = [...ctx.photos].sort(
-    (a, b) =>
-      new Date(a.exifDateTime ?? 0).getTime() - new Date(b.exifDateTime ?? 0).getTime()
-  );
-
-  if (photos.length === 0) return [];
-
-  const spreads: { photo: PdfPhotoAsset; narrative: string; quotes: string[] }[] = [];
-
-  for (let i = 0; i < photos.length; i++) {
-    const photo = photos[i]!;
-    const sectionIndex = Math.min(
-      Math.floor((i / photos.length) * narratives.length),
-      narratives.length - 1
-    );
-    const narrative = narratives[sectionIndex] ?? narratives[0] ?? "<p></p>";
-
-    const quotes = [
-      ...photo.notes,
-      ...ctx.notes
-        .filter((n) => n.type === "DAY" || n.type === "TRIP")
-        .slice(i, i + 2)
-        .map((n) => `${n.user.alias}: «${n.text}»`),
-    ].slice(0, 3);
-
-    spreads.push({ photo, narrative, quotes });
-  }
-
-  return spreads;
-}
-
-export function buildPrintHtml(ctx: PdfExportContext): string {
-  const { travel, users, format } = ctx;
-  const spreads = buildSpreads(ctx);
-  const dateRange = formatDateRange(travel.startDate, travel.endDate);
-  const participants = users.map((u) => escapeHtml(u.alias)).join(" · ");
-  const { width, height } = pageDimensions(format);
-
-  const spreadPages = spreads
-    .map(
-      ({ photo, narrative, quotes }) => `
-    <section class="spread">
-      <div class="col-photo">
-        <figure class="photo-frame">
-          <img src="${escapeHtml(photo.imagePath)}" alt="" />
-        </figure>
-        <div class="exif-meta">
-          <span class="exif-label">EXIF</span>
-          <p>${escapeHtml(formatExifMeta(photo))}</p>
-        </div>
-      </div>
-      <div class="col-narrative">
-        <div class="narrative-body">${narrative}</div>
-        ${
-          quotes.length
-            ? `<div class="quotes">
-            ${quotes.map((q) => `<blockquote>${escapeHtml(q)}</blockquote>`).join("")}
-          </div>`
-            : ""
-        }
-      </div>
-    </section>`
-    )
-    .join("\n");
-
-  return `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <title>${escapeHtml(travel.title)} — Álbum</title>
-  <style>
-    @page {
-      ${pageSizeCss(format)}
-    }
-
-    * { box-sizing: border-box; }
-
-    html, body {
-      margin: 0;
-      padding: 0;
-      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-      color: #1c1917;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-
-    .page-cover {
-      width: ${width};
-      height: ${height};
-      background: #0f172a;
-      color: #f8fafc;
-      text-align: center;
-      padding: 18mm;
-      page-break-after: always;
-      position: relative;
-    }
-
-    .page-cover h1 {
-      font-size: 28pt;
-      font-weight: 300;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      margin: 30mm 0 8mm;
-      line-height: 1.2;
-    }
-
-    .page-cover .dates {
-      font-size: 11pt;
-      color: #94a3b8;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      margin-top: 25mm;
-    }
-
-    .page-cover .participants {
-      font-size: 10pt;
-      color: #64748b;
-      margin-top: 6mm;
-    }
-
-    .page-cover .brand {
-      position: absolute;
-      bottom: 12mm;
-      left: 0;
-      right: 0;
-      font-size: 8pt;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: #475569;
-    }
-
-    /* WeasyPrint: table layout (flexbox is unreliable in print) */
-    .spread {
-      display: table;
-      width: ${width};
-      height: ${height};
-      table-layout: fixed;
-      page-break-after: always;
-      page-break-inside: avoid;
-      border-collapse: collapse;
-    }
-
-    .col-photo {
-      display: table-cell;
-      width: 48%;
-      vertical-align: top;
-      background: #f5f5f4;
-      padding: 10mm 8mm 8mm 10mm;
-      border-right: 0.3mm solid #e7e5e4;
-    }
-
-    .col-narrative {
-      display: table-cell;
-      width: 52%;
-      vertical-align: top;
-      padding: 10mm 12mm 10mm 10mm;
-    }
-
-    .photo-frame {
-      margin: 0;
-      width: 100%;
-      text-align: center;
-    }
-
-    .photo-frame img {
-      display: block;
-      width: 100%;
-      max-width: 100%;
-      max-height: 155mm;
-      height: auto;
-      margin: 0 auto;
-      object-fit: contain;
-    }
-
-    .exif-meta {
-      margin-top: 4mm;
-      padding-top: 3mm;
-      border-top: 0.3mm solid #d6d3d1;
-      font-size: 8pt;
-      color: #57534e;
-      line-height: 1.45;
-    }
-
-    .exif-label {
-      display: block;
-      font-size: 7pt;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: #0d9488;
-      margin-bottom: 1mm;
-      font-weight: 600;
-    }
-
-    .narrative-body {
-      width: 100%;
-      font-family: Georgia, "Times New Roman", serif;
-      font-size: 10.5pt;
-      line-height: 1.55;
-      color: #292524;
-    }
-
-    .narrative-body h1,
-    .narrative-body h2 {
-      font-size: 14pt;
-      font-weight: 600;
-      margin: 0 0 4mm;
-      color: #0f172a;
-      line-height: 1.25;
-    }
-
-    .narrative-body h3 {
-      font-size: 12pt;
-      margin: 3mm 0 2mm;
-    }
-
-    .narrative-body p {
-      margin: 0 0 3mm;
-      text-align: left;
-    }
-
-    .narrative-body ul,
-    .narrative-body ol {
-      margin: 0 0 3mm 5mm;
-      padding-left: 4mm;
-    }
-
-    .quotes {
-      margin-top: 6mm;
-      padding-top: 4mm;
-      border-top: 0.3mm solid #e7e5e4;
-    }
-
-    .quotes blockquote {
-      margin: 0 0 3mm;
-      padding-left: 3mm;
-      border-left: 1mm solid #0d9488;
-      font-size: 9pt;
-      font-style: italic;
-      color: #44403c;
-    }
-  </style>
-</head>
-<body>
-  <section class="page-cover">
-    <p class="dates">${escapeHtml(dateRange)}</p>
-    <h1>${escapeHtml(travel.title)}</h1>
-    <p class="participants">${participants}</p>
-    <p class="brand">TravelToBlog · Álbum para imprenta</p>
-  </section>
-  ${spreadPages}
-</body>
-</html>`;
 }
 
 async function preparePdfImageBuffer(
@@ -383,7 +44,11 @@ async function preparePdfImageBuffer(
 export async function preparePdfAssets(
   travel: Travel & {
     users: User[];
-    photos: (Photo & { user: User; notes: { text: string }[] })[];
+    photos: (Photo & {
+      user: User;
+      notes: { text: string }[];
+      place?: { name: string } | null;
+    })[];
     notes: (Note & { user: User })[];
   },
   format: PdfPageFormat,
@@ -418,6 +83,8 @@ export async function preparePdfAssets(
       longitude: photo.longitude,
       exifDateTime: photo.exifDateTime,
       alias: photo.user.alias,
+      placeName: photo.place?.name ?? null,
+      highlightScore: photo.highlightScore ?? 5,
       notes: photo.notes.map((n) => n.text),
     });
   }
@@ -441,6 +108,7 @@ export async function preparePdfAssets(
 export async function writePrintHtmlFile(
   ctx: PdfExportContext & { workDir: string }
 ): Promise<PdfBuildResult> {
+  const { buildPrintHtml } = await import("@/lib/export-pdf-layout");
   const html = buildPrintHtml(ctx);
   const htmlPath = path.join(ctx.workDir, "album.html");
   await writeFile(htmlPath, html, "utf-8");
@@ -477,6 +145,7 @@ export async function buildPdfArtifact(
         where: { selected: true },
         include: {
           user: true,
+          place: { select: { name: true } },
           notes: { select: { text: true } },
         },
         orderBy: { exifDateTime: "asc" },

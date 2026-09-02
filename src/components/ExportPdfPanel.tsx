@@ -186,9 +186,9 @@ export default function ExportPdfPanel({
       </div>
 
       <ul className="space-y-1 text-sm text-fg-secondary">
-        <li>📖 Portada oscura con título y fechas</li>
-        <li>📷 Páginas a dos columnas: foto optimizada | narrativa IA + citas</li>
-        <li>🖨️ Fotos JPEG optimizadas para imprenta (menor peso, carga fiable)</li>
+        <li>📖 Portada con foto destacada y tipografía editorial</li>
+        <li>📅 Capítulos por día, páginas a sangre y diseños en pareja</li>
+        <li>🖨️ Estilo fotolibro (Fotoprix / CEWE): márgenes, pies y pies de foto discretos</li>
       </ul>
 
       {!hasJournal && (
