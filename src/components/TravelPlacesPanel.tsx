@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PlaceType } from "@prisma/client";
 import {
   PLACE_TYPE_LABELS,
@@ -123,6 +123,7 @@ export default function TravelPlacesPanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [placesPage, setPlacesPage] = useState(1);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!startAddSignal) return;
@@ -132,6 +133,10 @@ export default function TravelPlacesPanel({
     setError(null);
     setPickOnMap(true);
     setSelectedPlaceId(null);
+    const t = window.setTimeout(() => {
+      panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(t);
   }, [startAddSignal]);
 
   useEffect(() => {
@@ -334,7 +339,7 @@ export default function TravelPlacesPanel({
   };
 
   return (
-    <div className="space-y-6">
+    <div ref={panelRef} id="travel-places-panel" className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-fg">Lugares del viaje</h2>
@@ -723,7 +728,7 @@ export default function TravelPlacesPanel({
         </div>
       )}
 
-      {places.length === 0 && !draft && (
+      {places.length === 0 && !draft && !addMode && (
         <EmptyMemoryState
           title="Aún no hay lugares"
           description="Marca hoteles, restaurantes o miradores en el mapa para enriquecer la crónica."

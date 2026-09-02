@@ -97,6 +97,7 @@ export default function PhotoUploadGrid({
   const explorerInputRef = useRef<HTMLInputElement>(null);
   const sectionRef = useRef<HTMLDivElement>(null);
   const nativePickerBusyRef = useRef(false);
+  const openAndroidPhotoSourceRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
@@ -353,6 +354,8 @@ export default function PhotoUploadGrid({
     void openNativeGalleryPicker();
   }, [openNativeGalleryPicker]);
 
+  openAndroidPhotoSourceRef.current = openAndroidPhotoSource;
+
   useEffect(() => {
     if (!openPickerSignal) return;
     if (!addOnly) {
@@ -360,13 +363,13 @@ export default function PhotoUploadGrid({
     }
     const t = window.setTimeout(() => {
       if (isCapacitorAndroid()) {
-        openAndroidPhotoSource();
+        openAndroidPhotoSourceRef.current();
       } else {
         inputRef.current?.click();
       }
     }, 120);
     return () => window.clearTimeout(t);
-  }, [openPickerSignal, addOnly, openAndroidPhotoSource]);
+  }, [openPickerSignal, addOnly]);
 
   const applyLocationToPhoto = useCallback(async (photoId: string) => {
     setLocationBusy(true);
