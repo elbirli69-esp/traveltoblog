@@ -21,15 +21,53 @@ async function toArrayBuffer(source: ExifSource): Promise<ArrayBuffer> {
   return source.arrayBuffer();
 }
 
-function parseExifDate(rawDate: unknown): Date | null {
-  if (rawDate instanceof Date && !Number.isNaN(rawDate.getTime())) {
-    return rawDate;
-  }
-  if (typeof rawDate === "string") {
-    const d = new Date(rawDate);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
+function normalizeExifOffset(offset?: string | null): string | null {
+  if (!offset || typeof offset !== "string") return null;
+  const trimmed = offset.trim();
+  if (/^[+-]\d{2}:\d{2}$/.test(trimmed)) return trimmed;
+  const compact = trimmed.match(/^([+-])(\d{2})(\d{2})$/);
+  if (compact) return `${compact[1]}${compact[2]}:${compact[3]}`;
   return null;
+}
+
+/**
+ * EXIF DateTimeOriginal is wall-clock time (often without timezone).
+ * When OffsetTimeOriginal is present, use it. Otherwise interpret in local runtime TZ
+ * (correct on the user's device; server should prefer client-provided dateTime).
+ */
+export function parseExifWallClock(
+  raw: unknown,
+  offset?: string | null
+): Date | null {
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+    return raw;
+  }
+  if (typeof raw !== "string" || !raw.trim()) return null;
+
+  const tiff = raw.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  if (tiff) {
+    const [, ys, mos, ds, hs, mis, ss] = tiff;
+    const wall = `${ys}-${mos}-${ds}T${hs}:${mis}:${ss}`;
+    const normalizedOffset = normalizeExifOffset(offset);
+    if (normalizedOffset) {
+      const parsed = new Date(`${wall}${normalizedOffset}`);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    const y = Number(ys);
+    const mo = Number(mos);
+    const d = Number(ds);
+    const h = Number(hs);
+    const mi = Number(mis);
+    const s = Number(ss);
+    return new Date(y, mo - 1, d, h, mi, s);
+  }
+
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseExifDate(rawDate: unknown, offset?: string | null): Date | null {
+  return parseExifWallClock(rawDate, offset);
 }
 
 /** Android photo picker often sends 0/0 rationals → NaN. Treat as missing GPS. */
@@ -154,14 +192,15 @@ async function readDateTime(source: ExifSource): Promise<Date | null> {
   const input = await toArrayBuffer(source);
   const dateTime = await exifr
     .parse(input, {
-      pick: ["DateTimeOriginal", "CreateDate", "ModifyDate"],
-      reviveValues: true,
+      pick: ["DateTimeOriginal", "CreateDate", "ModifyDate", "OffsetTimeOriginal"],
+      reviveValues: false,
     })
     .catch(() => null);
 
   const rawDate =
     dateTime?.DateTimeOriginal ?? dateTime?.CreateDate ?? dateTime?.ModifyDate;
-  return parseExifDate(rawDate);
+  const offset = dateTime?.OffsetTimeOriginal as string | undefined;
+  return parseExifDate(rawDate, offset);
 }
 
 /** True when GPS IFD exists but coordinates were redacted (typical Android photo picker). */
@@ -228,7 +267,8 @@ export function mergeExifMetadata(
   const clientGps = sanitizeGpsPair(client.latitude, client.longitude);
   const fileGps = sanitizeGpsPair(fromFile.latitude, fromFile.longitude);
   return sanitizeExifMetadata({
-    dateTime: fromFile.dateTime ?? client.dateTime ?? null,
+    // Client date was parsed on the user's device (correct TZ). Server re-read uses UTC runtime.
+    dateTime: client.dateTime ?? fromFile.dateTime ?? null,
     latitude: fileGps.latitude ?? clientGps.latitude,
     longitude: fileGps.longitude ?? clientGps.longitude,
   });
