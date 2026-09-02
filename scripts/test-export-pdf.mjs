@@ -29,7 +29,7 @@ const html = buildPrintHtml({
   format: "a4-landscape",
   template: "classic",
   mapImagePath: "map/route.png",
-  mapRouteMode: "directions",
+  mapRouteMode: "segmented",
   mapPointCount: 3,
 });
 

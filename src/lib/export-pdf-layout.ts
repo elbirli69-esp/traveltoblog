@@ -249,9 +249,11 @@ function renderMap(
     (p) => p.latitude != null && p.longitude != null
   ).length;
   const routeHint =
-    ctx.mapRouteMode === "directions"
-      ? "Ruta por carretera (Mapbox Directions)"
-      : "Ruta cronológica entre paradas";
+    ctx.mapRouteMode === "segmented"
+      ? "Carretera entre paradas · vuelos en línea directa (ida/vuelta)"
+      : ctx.mapRouteMode === "directions"
+        ? "Ruta por carretera (Mapbox Directions)"
+        : "Ruta cronológica entre paradas";
 
   return `
   <section class="page page-map" style="width:${width};height:${height}">
