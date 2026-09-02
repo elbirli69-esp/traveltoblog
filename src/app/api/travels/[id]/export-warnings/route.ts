@@ -21,6 +21,8 @@ export async function GET(
             latitude: true,
             longitude: true,
             exifDateTime: true,
+            mediaType: true,
+            filename: true,
           },
         },
         notes: {

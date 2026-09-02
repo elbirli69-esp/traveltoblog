@@ -13,6 +13,11 @@ export interface ParsedPhoto {
   gpsStripped?: boolean;
   /** Linked place (server id) for categories / guía export. */
   placeId?: string | null;
+  mediaType: "IMAGE" | "VIDEO";
+  durationMs?: number | null;
+  /** Client-only JPEG still for video upload */
+  posterBlob?: Blob | null;
+  posterPreviewUrl?: string | null;
   selected: boolean;
   outOfRange: boolean;
   isTransportStart: boolean;
@@ -37,6 +42,9 @@ export interface PendingPhoto {
   placeId: string | null;
   /** Client place localId when the place is still pending */
   placeLocalId: string | null;
+  mediaType: "IMAGE" | "VIDEO";
+  durationMs: number | null;
+  posterBlob?: Blob | null;
   selected: boolean;
   isTransportStart: boolean;
   isTransportEnd: boolean;

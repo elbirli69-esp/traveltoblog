@@ -5,13 +5,22 @@ import {
   extractExifFromFile,
   formatExifDate,
   formatGpsCoordinates,
-  isImageFile,
+  isMediaFile,
   isPhotoInTravelRange,
   isValidGps,
+  isVideoFile,
   mergeExifMetadata,
   wasAndroidGpsStripped,
 } from "@/lib/exif";
 import { applyCurrentLocationToPhotos, applyPlaceToPhoto, isAndroidDevice } from "@/lib/geolocation-photo";
+import {
+  formatBytes,
+  MAX_IMAGE_BYTES,
+  MAX_VIDEO_BYTES,
+  MAX_VIDEOS_PER_BATCH,
+} from "@/lib/media-limits";
+import { extractVideoPoster } from "@/lib/video-poster";
+import { formatDurationMs } from "@/lib/media-types";
 import {
   formatCapacitorError,
   isCapacitorAndroid,
@@ -28,7 +37,7 @@ import type { ParsedPhoto, TravelDateRange } from "@/types";
 
 /** Android photo picker strips GPS when accept="image/*". text/plain opens file explorer. */
 const PHOTO_INPUT_ACCEPT =
-  ".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif,text/plain,application/octet-stream";
+  ".jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.webm,.mov,.m4v,image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/webm,video/quicktime,text/plain,application/octet-stream";
 
 function normalizeNativePickedPhotos(
   photos: NativePickedPhoto[] | Record<string, NativePickedPhoto> | undefined
@@ -149,14 +158,68 @@ export default function PhotoUploadGrid({
       try {
         const newPhotos: ParsedPhoto[] = [];
         let skipped = 0;
+        let sizeSkipped = 0;
 
-        const imageFiles = files.filter((file) => isImageFile(file));
-        skipped += files.length - imageFiles.length;
+        const mediaFiles = files.filter((file) => isMediaFile(file));
+        skipped += files.length - mediaFiles.length;
+
+        const videosInBatch = mediaFiles.filter((f) => isVideoFile(f));
+        if (videosInBatch.length > MAX_VIDEOS_PER_BATCH) {
+          setError(
+            `Máximo ${MAX_VIDEOS_PER_BATCH} vídeos por tanda (recibidos ${videosInBatch.length}).`
+          );
+          return;
+        }
 
         const parsed = await Promise.all(
-          imageFiles.map(async (file) => {
-            const previewUrl = await createPhotoPreviewUrl(file);
+          mediaFiles.map(async (file) => {
+            const video = isVideoFile(file);
+            const maxBytes = video ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+            if (file.size > maxBytes) {
+              sizeSkipped += 1;
+              return null;
+            }
+
+            const previewUrl = video
+              ? URL.createObjectURL(file)
+              : await createPhotoPreviewUrl(file);
+
             try {
+              if (video) {
+                let posterBlob: Blob | null = null;
+                let posterPreviewUrl: string | null = null;
+                let durationMs: number | null = null;
+                try {
+                  const poster = await extractVideoPoster(file);
+                  posterBlob = poster.posterBlob;
+                  durationMs = poster.durationMs;
+                  posterPreviewUrl = URL.createObjectURL(poster.posterBlob);
+                } catch {
+                  // poster optional — gallery will show video element
+                }
+                const hint = serverExif[file.name];
+                const exif = {
+                  dateTime: hint?.dateTime ?? new Date(file.lastModified),
+                  latitude: hint?.latitude ?? null,
+                  longitude: hint?.longitude ?? null,
+                };
+                const outOfRange = !isPhotoInTravelRange(exif.dateTime, dateRange);
+                return {
+                  id: createLocalId(),
+                  file,
+                  previewUrl: posterPreviewUrl ?? previewUrl,
+                  exif,
+                  mediaType: "VIDEO" as const,
+                  durationMs,
+                  posterBlob,
+                  posterPreviewUrl,
+                  selected: true,
+                  outOfRange,
+                  isTransportStart: false,
+                  isTransportEnd: false,
+                } satisfies ParsedPhoto;
+              }
+
               const clientExif = await extractExifFromFile(file);
               const gpsStripped = await wasAndroidGpsStripped(file);
               const hint = serverExif[file.name];
@@ -168,6 +231,9 @@ export default function PhotoUploadGrid({
                 previewUrl,
                 exif,
                 gpsStripped,
+                mediaType: "IMAGE" as const,
+                durationMs: null,
+                posterBlob: null,
                 selected: true,
                 outOfRange,
                 isTransportStart: false,
@@ -187,15 +253,22 @@ export default function PhotoUploadGrid({
 
         if (newPhotos.length === 0) {
           setError(
-            skipped > 0
-              ? "No se pudieron procesar las imágenes seleccionadas."
-              : "No se encontraron imágenes válidas."
+            sizeSkipped > 0
+              ? `Archivos demasiado grandes (foto ≤ ${formatBytes(MAX_IMAGE_BYTES)}, vídeo ≤ ${formatBytes(MAX_VIDEO_BYTES)}).`
+              : skipped > 0
+                ? "No se pudieron procesar los archivos seleccionados."
+                : "No se encontraron fotos o vídeos válidos."
           );
         } else {
           setPhotos((prev) => [...prev, ...newPhotos]);
+          if (sizeSkipped > 0) {
+            setError(
+              `${sizeSkipped} archivo${sizeSkipped === 1 ? "" : "s"} omitido${sizeSkipped === 1 ? "" : "s"} por tamaño (foto ≤ ${formatBytes(MAX_IMAGE_BYTES)}, vídeo ≤ ${formatBytes(MAX_VIDEO_BYTES)}).`
+            );
+          }
         }
       } catch {
-        setError("Error al procesar las imágenes. Prueba de nuevo.");
+        setError("Error al procesar los archivos. Prueba de nuevo.");
       } finally {
         setProcessing(false);
         if (inputRef.current) inputRef.current.value = "";
@@ -257,6 +330,9 @@ export default function PhotoUploadGrid({
           previewUrl,
           exif,
           gpsStripped: item.gpsStripped,
+          mediaType: "IMAGE",
+          durationMs: null,
+          posterBlob: null,
           selected: true,
           outOfRange,
           isTransportStart: false,
@@ -457,8 +533,12 @@ export default function PhotoUploadGrid({
 
   const markTransport = useCallback(
     (id: string, type: "start" | "end") => {
+      const current = photos.find((p) => p.id === id);
+      if (current?.mediaType === "VIDEO") return;
+
       setPhotos((prev) =>
         prev.map((p) => {
+          if (p.mediaType === "VIDEO") return p;
           if (type === "start") {
             return {
               ...p,
@@ -485,14 +565,20 @@ export default function PhotoUploadGrid({
   const removePhoto = useCallback((id: string) => {
     setPhotos((prev) => {
       const target = prev.find((p) => p.id === id);
-      if (target) URL.revokeObjectURL(target.previewUrl);
+      if (target) {
+        URL.revokeObjectURL(target.previewUrl);
+        if (target.posterPreviewUrl) URL.revokeObjectURL(target.posterPreviewUrl);
+      }
       return prev.filter((p) => p.id !== id);
     });
   }, []);
 
   const clearReview = useCallback(() => {
     setPhotos((prev) => {
-      prev.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+      prev.forEach((p) => {
+        URL.revokeObjectURL(p.previewUrl);
+        if (p.posterPreviewUrl) URL.revokeObjectURL(p.posterPreviewUrl);
+      });
       return [];
     });
     setError(null);
@@ -874,10 +960,15 @@ export default function PhotoUploadGrid({
                 <div className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={photo.previewUrl}
+                  src={photo.posterPreviewUrl || photo.previewUrl}
                   alt=""
                   className="aspect-square w-full object-cover"
                 />
+                {photo.mediaType === "VIDEO" && (
+                  <span className="pointer-events-none absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">
+                    Vídeo{formatDurationMs(photo.durationMs) ? ` · ${formatDurationMs(photo.durationMs)}` : ""}
+                  </span>
+                )}
 
                 {/* Selection overlay */}
                 <button
@@ -918,6 +1009,7 @@ export default function PhotoUploadGrid({
                 </div>
 
                 {/* Transport markers */}
+                {photo.mediaType !== "VIDEO" && (
                 <div className="absolute left-2 top-2 flex flex-col gap-1">
                   <button
                     type="button"
@@ -944,6 +1036,7 @@ export default function PhotoUploadGrid({
                     Vuelta
                   </button>
                 </div>
+                )}
 
                 {/* Remove button */}
                 <button

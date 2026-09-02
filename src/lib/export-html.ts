@@ -82,6 +82,12 @@ export interface ExportPhoto {
   longitude: number | null;
   /** Explicit place link for guía categories (preferred over GPS proximity). */
   placeId?: string | null;
+  mediaType?: "IMAGE" | "VIDEO";
+  durationMs?: number | null;
+  /** Relative path inside ZIP for original video (not embedded in single HTML). */
+  videoPath?: string | null;
+  /** Disk URL for poster still (videos) or original image. */
+  exportSourceUrl?: string;
   exifDateTime: Date | null;
   alias: string;
   isTransportStart: boolean;
@@ -1768,6 +1774,7 @@ export function buildMapPhotoList(
   return allPhotos.map((photo) => {
     const selected = selectedById.get(photo.id);
     if (selected) return selected;
+    const isVideo = photo.mediaType === "VIDEO";
     return {
       id: photo.id,
       url: photo.url,
@@ -1776,6 +1783,13 @@ export function buildMapPhotoList(
       latitude: photo.latitude,
       longitude: photo.longitude,
       placeId: photo.placeId ?? null,
+      mediaType: isVideo ? "VIDEO" : "IMAGE",
+      durationMs: photo.durationMs ?? null,
+      videoPath: null,
+      exportSourceUrl:
+        isVideo && photo.posterFilename
+          ? `/uploads/${photo.travelId}/${photo.posterFilename}`
+          : photo.url,
       exifDateTime: photo.exifDateTime,
       alias: photo.user.alias,
       isTransportStart: photo.isTransportStart,
@@ -1791,6 +1805,8 @@ export async function loadPhotoFiles(
   return Promise.all(
     selected.map(async (photo, index) => {
       const { localPath, thumbPath } = exportPhotoPaths(index);
+      const isVideo = photo.mediaType === "VIDEO";
+      const videoExt = path.extname(photo.filename) || ".mp4";
       const resolved = await resolvePhotoExifFromFile({
         url: photo.url,
         exifDateTime: photo.exifDateTime,
@@ -1805,6 +1821,15 @@ export async function loadPhotoFiles(
         latitude: resolved.latitude,
         longitude: resolved.longitude,
         placeId: photo.placeId ?? null,
+        mediaType: isVideo ? ("VIDEO" as const) : ("IMAGE" as const),
+        durationMs: photo.durationMs ?? null,
+        videoPath: isVideo
+          ? `videos/${String(index + 1).padStart(3, "0")}${videoExt}`
+          : null,
+        exportSourceUrl:
+          isVideo && photo.posterFilename
+            ? `/uploads/${photo.travelId}/${photo.posterFilename}`
+            : photo.url,
         exifDateTime: resolved.dateTime,
         alias: photo.user.alias,
         isTransportStart: photo.isTransportStart,
@@ -1881,17 +1906,31 @@ async function runWithConcurrency<T>(
 async function prepareExportPhotoBuffers(
   travelId: string,
   photos: ExportPhoto[],
-  onPhotoProgress?: (current: number, total: number) => void
+  onPhotoProgress?: (current: number, total: number) => void,
+  options?: { includeVideoOriginals?: boolean }
 ): Promise<Map<string, Buffer>> {
   const files = new Map<string, Buffer>();
   const total = photos.length;
   let completed = 0;
+  const includeVideoOriginals = options?.includeVideoOriginals ?? false;
 
   await runWithConcurrency(photos, EXPORT_PHOTO_CONCURRENCY, async (photo) => {
-    const set = await getOrCreateExportImageSet(travelId, photo.id, photo.url);
-    if (!set) return;
-    files.set(photo.localPath, set.display);
-    files.set(photo.thumbPath, set.thumb);
+    const sourceUrl = photo.exportSourceUrl ?? photo.url;
+    const set = await getOrCreateExportImageSet(travelId, photo.id, sourceUrl);
+    if (set) {
+      files.set(photo.localPath, set.display);
+      files.set(photo.thumbPath, set.thumb);
+    }
+
+    if (
+      includeVideoOriginals &&
+      photo.mediaType === "VIDEO" &&
+      photo.videoPath
+    ) {
+      const videoBuf = await readPhotoBuffer(photo.url);
+      if (videoBuf) files.set(photo.videoPath, videoBuf);
+    }
+
     completed += 1;
     onPhotoProgress?.(completed, total);
   });
@@ -2029,13 +2068,18 @@ export async function buildExportZip(
     message: total > 0 ? `Optimizando fotos (0/${total})…` : "Empaquetando…",
   });
 
-  const photoFiles = await prepareExportPhotoBuffers(ctx.travel.id, ctx.photos, (current, photoTotal) => {
-    emit({
-      step: "pack",
-      status: "running",
-      message: `Optimizando fotos (${current}/${photoTotal})…`,
-    });
-  });
+  const photoFiles = await prepareExportPhotoBuffers(
+    ctx.travel.id,
+    ctx.photos,
+    (current, photoTotal) => {
+      emit({
+        step: "pack",
+        status: "running",
+        message: `Optimizando fotos (${current}/${photoTotal})…`,
+      });
+    },
+    { includeVideoOriginals: true }
+  );
 
   for (const [filePath, buffer] of photoFiles) {
     zip.file(filePath, buffer, { compression: "STORE" });
@@ -2064,13 +2108,18 @@ export async function buildSingleFileHtml(
     message: total > 0 ? `Optimizando fotos (0/${total})…` : "Preparando fotos…",
   });
 
-  const photoFiles = await prepareExportPhotoBuffers(ctx.travel.id, ctx.photos, (current, photoTotal) => {
-    emit({
-      step: "pack",
-      status: "running",
-      message: `Optimizando fotos (${current}/${photoTotal})…`,
-    });
-  });
+  const photoFiles = await prepareExportPhotoBuffers(
+    ctx.travel.id,
+    ctx.photos,
+    (current, photoTotal) => {
+      emit({
+        step: "pack",
+        status: "running",
+        message: `Optimizando fotos (${current}/${photoTotal})…`,
+      });
+    },
+    { includeVideoOriginals: false }
+  );
   emit({ step: "pack", status: "done" });
 
   emit({

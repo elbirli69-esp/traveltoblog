@@ -16,6 +16,10 @@ const MIME: Record<string, string> = {
   ".png": "image/png",
   ".webp": "image/webp",
   ".gif": "image/gif",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".m4v": "video/x-m4v",
 };
 
 function mimeFromExt(ext: string): string {
@@ -41,6 +45,16 @@ export async function GET(
 
     const ext = path.extname(photo.filename) || path.extname(photo.url) || ".jpg";
     let contentType = mimeFromExt(ext);
+
+    if (photo.mediaType === "VIDEO") {
+      return new NextResponse(new Uint8Array(buffer), {
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=86400",
+          "Accept-Ranges": "bytes",
+        },
+      });
+    }
 
     if (isHeicFilename(photo.filename) || isHeicFilename(photo.url)) {
       const normalized = await normalizeImageForStorage(buffer, ext);

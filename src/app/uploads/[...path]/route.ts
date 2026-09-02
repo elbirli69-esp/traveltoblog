@@ -13,6 +13,12 @@ const MIME_BY_EXT: Record<string, string> = {
   ".heic": "image/heic",
   ".heif": "image/heif",
   ".avif": "image/avif",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".m4v": "video/x-m4v",
+  ".avi": "video/x-msvideo",
+  ".mkv": "video/x-matroska",
 };
 
 function contentTypeFor(filePath: string): string {

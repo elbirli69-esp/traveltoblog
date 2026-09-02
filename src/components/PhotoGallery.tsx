@@ -22,6 +22,8 @@ export interface GalleryPhoto {
   latitude: number | null;
   longitude: number | null;
   placeId?: string | null;
+  mediaType?: "IMAGE" | "VIDEO";
+  durationMs?: number | null;
   selected: boolean;
   isTransportStart: boolean;
   isTransportEnd: boolean;
@@ -296,6 +298,7 @@ export default function PhotoGallery({
             const badges: string[] = [];
             if (photo.isTransportStart) badges.push("Ida");
             if (photo.isTransportEnd) badges.push("Vuelta");
+            if (photo.mediaType === "VIDEO") badges.push("Vídeo");
             if (isValidGps(photo.latitude, photo.longitude)) badges.push("GPS");
             if (photo.placeId) badges.push("Lugar");
 
@@ -327,6 +330,8 @@ export default function PhotoGallery({
                     photoId={photo.id}
                     url={photo.url}
                     variant={isExpanded ? "full" : "thumb"}
+                    mediaType={photo.mediaType ?? "IMAGE"}
+                    durationMs={photo.durationMs}
                     loading="lazy"
                     className="aspect-[4/3] w-full object-cover"
                   />
@@ -362,6 +367,8 @@ export default function PhotoGallery({
                 {isExpanded && (
                   <div className="space-y-4 border-t border-divider px-4 py-4">
                     <div className="flex flex-wrap gap-2">
+                      {photo.mediaType !== "VIDEO" && (
+                        <>
                       <button
                         type="button"
                         disabled={transportBusy === photo.id}
@@ -392,6 +399,8 @@ export default function PhotoGallery({
                       >
                         {photo.isTransportEnd ? "Quitar Vuelta" : "Marcar Vuelta"}
                       </button>
+                        </>
+                      )}
                       <button
                         type="button"
                         disabled={
@@ -400,7 +409,11 @@ export default function PhotoGallery({
                         onClick={() => deletePhoto(photo)}
                         className="callout callout-error px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
                       >
-                        {deleteBusy === photo.id ? "Eliminando…" : "Eliminar foto"}
+                        {deleteBusy === photo.id
+                          ? "Eliminando…"
+                          : photo.mediaType === "VIDEO"
+                            ? "Eliminar vídeo"
+                            : "Eliminar foto"}
                       </button>
                     </div>
 

@@ -13,6 +13,9 @@ export interface ExportWarningsInput {
     latitude: number | null;
     longitude: number | null;
     exifDateTime: Date | null;
+    mediaType?: "IMAGE" | "VIDEO";
+    /** Approximate original file size when known (videos). */
+    fileSizeBytes?: number | null;
   }[];
   notes: {
     type: string;
@@ -82,6 +85,21 @@ export function buildExportWarnings(input: ExportWarningsInput): ExportWarning[]
       level: "info",
       message: `${photoCount} fotos seleccionadas. Las re-exportaciones reutilizan imágenes optimizadas en caché.`,
     });
+  }
+
+  const videos = input.photos.filter((p) => p.mediaType === "VIDEO");
+  if (videos.length > 0) {
+    const totalVideoBytes = videos.reduce((sum, p) => sum + (p.fileSizeBytes ?? 0), 0);
+    warnings.push({
+      level: "info",
+      message: `${videos.length} vídeo${videos.length === 1 ? "" : "s"}: el ZIP incluye el original en videos/; el HTML único solo incrusta la miniatura (poster).`,
+    });
+    if (totalVideoBytes >= 200 * 1024 * 1024) {
+      warnings.push({
+        level: "warning",
+        message: `Los vídeos suman ~${(totalVideoBytes / (1024 * 1024)).toFixed(0)} MB: el ZIP puede ser muy pesado para enviar por móvil.`,
+      });
+    }
   }
 
   return warnings;

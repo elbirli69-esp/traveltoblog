@@ -1,15 +1,8 @@
 import exifr from "exifr";
 import type { ExifMetadata } from "@/types";
-
-const IMAGE_EXT = /\.(jpe?g|png|gif|webp|heic|heif|avif|tiff?)$/i;
+export { isImageFile, isVideoFile, isMediaFile } from "@/lib/media-types";
 
 const EMPTY_EXIF: ExifMetadata = { dateTime: null, latitude: null, longitude: null };
-
-/** Acepta imágenes aunque el navegador no rellene file.type (común en móvil). */
-export function isImageFile(file: File): boolean {
-  if (file.type.startsWith("image/")) return true;
-  return IMAGE_EXT.test(file.name);
-}
 
 type ExifSource = Blob | ArrayBuffer | Buffer;
 
