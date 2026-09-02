@@ -9,6 +9,7 @@ import { resolveTravelType } from "@/lib/export/detect-travel-type";
 import { getTypologyProfile } from "@/lib/export/typologies/registry";
 import { simplifyIfNeeded } from "@/lib/export/polyline";
 import { distanceMeters } from "@/lib/geo";
+import { isValidGps } from "@/lib/exif";
 import { resolvePhotoExifFromFile } from "@/lib/photo-gps";
 import {
   buildFlightsSectionHtml,
@@ -51,11 +52,15 @@ export interface MapPoint {
   lng: number;
   label: string;
   photoPath: string | null;
+  /** Extra thumbs for place popups (nearby or assigned photos). */
+  photoPaths?: string[];
   date: string;
   emoji?: string;
   kind?: "photo" | "place" | "flight-out" | "flight-in";
   dayKey?: string;
   dayLabel?: string;
+  placeId?: string;
+  placeType?: string;
 }
 
 export interface ExportMapDayGroup {
@@ -110,7 +115,9 @@ export function buildFlightMapPoints(photos: ExportPhoto[]): MapPoint[] {
   const points: MapPoint[] = [];
 
   const outbound = photos.find(
-    (p) => p.isTransportStart && p.latitude != null && p.longitude != null
+    (p) =>
+      p.isTransportStart &&
+      isValidGps(p.latitude, p.longitude)
   );
   if (outbound) {
     points.push({
@@ -125,7 +132,9 @@ export function buildFlightMapPoints(photos: ExportPhoto[]): MapPoint[] {
   }
 
   const inbound = photos.find(
-    (p) => p.isTransportEnd && p.latitude != null && p.longitude != null
+    (p) =>
+      p.isTransportEnd &&
+      isValidGps(p.latitude, p.longitude)
   );
   if (inbound) {
     points.push({
@@ -148,8 +157,7 @@ export function buildPhotoRoutePoints(photos: ExportPhoto[]): MapPoint[] {
       (p) =>
         !p.isTransportStart &&
         !p.isTransportEnd &&
-        p.latitude != null &&
-        p.longitude != null
+        isValidGps(p.latitude, p.longitude)
     )
     .sort(
       (a, b) =>
@@ -220,16 +228,56 @@ export interface ExportGpsTrack {
   startedAt: Date;
 }
 
-export function buildPlaceMapPoints(places: ExportPlace[]): MapPoint[] {
-  return places.map((p) => ({
-    lat: p.latitude,
-    lng: p.longitude,
-    label: `${p.name}${p.comment ? ` — ${p.comment}` : ""} (${p.alias})`,
-    photoPath: null,
-    date: (p.visitedAt ? new Date(p.visitedAt) : new Date()).toISOString(),
-    emoji: placeEmojiFromType(p.type),
-    kind: "place" as const,
-  }));
+export function buildPlaceMapPoints(
+  places: ExportPlace[],
+  photos: ExportPhoto[] = []
+): MapPoint[] {
+  const photoCandidates = photos
+    .filter(
+      (p) =>
+        !p.isTransportStart &&
+        !p.isTransportEnd &&
+        isValidGps(p.latitude, p.longitude)
+    )
+    .map((p) => ({
+      id: p.id,
+      latitude: p.latitude!,
+      longitude: p.longitude!,
+      thumbPath: p.thumbPath,
+      alias: p.alias,
+    }));
+
+  return places
+    .filter((p) => isValidGps(p.latitude, p.longitude))
+    .map((p) => {
+      const nearby = photoCandidates
+        .map((photo) => ({
+          ...photo,
+          distanceM: distanceMeters(
+            p.latitude,
+            p.longitude,
+            photo.latitude,
+            photo.longitude
+          ),
+        }))
+        .filter((photo) => photo.distanceM <= 250)
+        .sort((a, b) => a.distanceM - b.distanceM);
+
+      const photoPaths = nearby.slice(0, 4).map((photo) => photo.thumbPath);
+
+      return {
+        lat: p.latitude,
+        lng: p.longitude,
+        label: `${p.name}${p.comment ? ` — ${p.comment}` : ""} (${p.alias})`,
+        photoPath: photoPaths[0] ?? null,
+        photoPaths: photoPaths.length ? photoPaths : undefined,
+        date: (p.visitedAt ? new Date(p.visitedAt) : new Date()).toISOString(),
+        emoji: placeEmojiFromType(p.type),
+        kind: "place" as const,
+        placeId: p.id,
+        placeType: p.type,
+      };
+    });
 }
 
 function placeEmojiFromType(type: string): string {
@@ -252,7 +300,7 @@ export function mergeMapPoints(photos: ExportPhoto[], places: ExportPlace[]): Ma
   return [
     ...buildFlightMapPoints(photos),
     ...buildPhotoRoutePoints(photos),
-    ...buildPlaceMapPoints(places),
+    ...buildPlaceMapPoints(places, photos),
   ];
 }
 
@@ -496,6 +544,17 @@ export function mapExportStyles(): string {
   font-weight: 800;
   box-shadow: 0 4px 14px rgba(45,212,191,.45);
   border: 2px solid rgba(255,255,255,.85);
+}
+.place-pin-wrap { background: none; border: none; }
+.place-pin {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: rgba(255,255,255,.95);
+  font-size: 18px;
+  line-height: 1;
+  box-shadow: 0 4px 16px rgba(0,0,0,.28);
+  border: 2px solid rgba(245,158,11,.75);
 }
 @media (max-width: 900px) {
   .map-explorer-body { grid-template-columns: 1fr; min-height: auto; }
@@ -892,12 +951,13 @@ function buildDayTimelineSection(markdown: string, photos: ExportPhoto[]): strin
 }
 
 function boundsFromPoints(pts: MapPoint[]): [[number, number], [number, number]] | null {
-  if (!pts.length) return null;
+  const valid = pts.filter((p) => isValidGps(p.lat, p.lng));
+  if (!valid.length) return null;
   let minLat = Infinity;
   let maxLat = -Infinity;
   let minLng = Infinity;
   let maxLng = -Infinity;
-  for (const p of pts) {
+  for (const p of valid) {
     minLat = Math.min(minLat, p.lat);
     maxLat = Math.max(maxLat, p.lat);
     minLng = Math.min(minLng, p.lng);
@@ -1019,120 +1079,164 @@ function buildMapScript(
 
   return `
 (function () {
-  var points = ${data};
-  var dayGroups = ${groupsData};
-  if (!points.length || typeof L === "undefined") return;
-
-  delete L.Icon.Default.prototype._getIconUrl;
-  L.Icon.Default.mergeOptions({
-    iconUrl: "${assetPrefix}/marker-icon.png",
-    iconRetinaUrl: "${assetPrefix}/marker-icon-2x.png",
-    shadowUrl: "${assetPrefix}/marker-shadow.png"
-  });
-
-  var map = L.map("map", { scrollWheelZoom: true, zoomControl: true });
-  window.__travelMap = map;
-  function refreshMap() {
-    map.invalidateSize(true);
-    if (bounds && bounds.isValid()) map.fitBounds(bounds.pad(0.18));
-  }
-  window.__refreshTravelMap = refreshMap;
-  window.addEventListener("load", function () { setTimeout(refreshMap, 150); });
-  document.addEventListener("visibilitychange", function () {
-    if (!document.hidden) refreshMap();
-  });
-  ${tileLayerScript}
-
-  var flightOut = points.find(function (p) { return p.kind === "flight-out"; });
-  var flightIn = points.find(function (p) { return p.kind === "flight-in"; });
-  var photoPoints = points.filter(function (p) { return p.kind === "photo"; });
-  var bounds = L.latLngBounds(points.map(function (p) { return [p.lat, p.lng]; }));
-  map.fitBounds(bounds.pad(0.18));
-
-  var dayColorIndex = {};
-  var colorIdx = 0;
-  photoPoints.forEach(function (p) {
-    if (p.dayKey && dayColorIndex[p.dayKey] === undefined) {
-      dayColorIndex[p.dayKey] = dayColors[colorIdx % dayColors.length];
-      colorIdx += 1;
-    }
-  });
-
-  Object.keys(dayColorIndex).forEach(function (dayKey) {
-    var seg = photoPoints.filter(function (p) { return p.dayKey === dayKey; }).map(function (p) { return [p.lat, p.lng]; });
-    if (seg.length > 1) {
-      L.polyline(seg, { color: dayColorIndex[dayKey], weight: 4, opacity: 0.92, lineJoin: "round" }).addTo(map);
-    }
-  });
-
-  if (photoPoints.length > 1 && Object.keys(dayColorIndex).length === 0) {
-    L.polyline(photoPoints.map(function (p) { return [p.lat, p.lng]; }), { color: "#2dd4bf", weight: 4, opacity: 0.9, lineJoin: "round" }).addTo(map);
-  }
-
-  if (flightOut && flightIn) {
-    L.polyline(
-      [[flightOut.lat, flightOut.lng], [flightIn.lat, flightIn.lng]],
-      { color: "#818cf8", weight: 3, opacity: 0.85, dashArray: "10 8" }
-    ).addTo(map);
-  }
-
-  var photoIndex = 0;
-  var markersByDay = {};
-
-  points.forEach(function (p) {
-    var marker;
-    if (p.kind === "photo") {
-      photoIndex += 1;
-      var pinColor = p.dayKey && dayColorIndex[p.dayKey] ? dayColorIndex[p.dayKey] : "#2dd4bf";
-      var icon = L.divIcon({
-        html: '<div class="route-pin" style="background:linear-gradient(135deg,' + pinColor + ',#0d9488)">' + photoIndex + '</div>',
-        className: "route-pin-wrap",
-        iconSize: [28, 28],
-        iconAnchor: [14, 14]
-      });
-      marker = L.marker([p.lat, p.lng], { icon: icon }).addTo(map);
-      if (p.dayKey) {
-        if (!markersByDay[p.dayKey]) markersByDay[p.dayKey] = [];
-        markersByDay[p.dayKey].push(marker);
-      }
-    } else if (p.emoji) {
-      var size = (p.kind === "flight-out" || p.kind === "flight-in") ? "28" : "24";
-      var emojiIcon = L.divIcon({
-        html: '<div style="font-size:' + size + 'px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">' + p.emoji + '</div>',
-        className: "",
-        iconSize: [0, 0],
-        iconAnchor: [14, 14]
-      });
-      marker = L.marker([p.lat, p.lng], { icon: emojiIcon }).addTo(map);
-    } else {
-      marker = L.marker([p.lat, p.lng]).addTo(map);
-    }
-    var popup = "<strong>" + escapeHtml(p.label) + "</strong>";
-    if (p.photoPath) {
-      popup += '<br><img src="' + escapeHtml(p.photoPath) + '" alt="" style="max-width:220px;margin-top:8px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.3)">';
-    }
-    popup += '<br><small style="color:#78716c">' + new Date(p.date).toLocaleString("es-ES") + "</small>";
-    marker.bindPopup(popup, { maxWidth: 260 });
-  });
-
-  function flyToGroup(group) {
-    if (!group || !group.bounds) return;
-    var b = L.latLngBounds(group.bounds);
-    map.flyToBounds(b, { padding: [52, 52], duration: 1.15, maxZoom: group.id === "all" ? 12 : 15 });
-  }
-
-  document.querySelectorAll(".map-day-item").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      var dayId = btn.getAttribute("data-day");
-      document.querySelectorAll(".map-day-item").forEach(function (el) { el.classList.remove("active"); });
-      btn.classList.add("active");
-      var group = dayGroups.find(function (g) { return g.id === dayId; });
-      flyToGroup(group);
+  function initTravelMap() {
+    var points = ${data}.filter(function (p) {
+      return typeof p.lat === "number" && typeof p.lng === "number" && isFinite(p.lat) && isFinite(p.lng);
     });
-  });
+    var dayGroups = ${groupsData};
+    var mapEl = document.getElementById("map");
+    if (!points.length || typeof L === "undefined" || !mapEl) return;
 
-  function escapeHtml(s) {
-    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    delete L.Icon.Default.prototype._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconUrl: "${assetPrefix}/marker-icon.png",
+      iconRetinaUrl: "${assetPrefix}/marker-icon-2x.png",
+      shadowUrl: "${assetPrefix}/marker-shadow.png"
+    });
+
+    var map = L.map(mapEl, { scrollWheelZoom: true, zoomControl: true });
+    window.__travelMap = map;
+    var bounds = null;
+
+    function resolveAsset(path) {
+      if (!path) return "";
+      if (window.__resolveExportAsset) return window.__resolveExportAsset(path);
+      return path;
+    }
+
+    function fitAllPoints() {
+      if (!points.length) return;
+      if (points.length === 1) {
+        map.setView([points[0].lat, points[0].lng], 14);
+        return;
+      }
+      bounds = L.latLngBounds(points.map(function (p) { return [p.lat, p.lng]; }));
+      if (bounds.isValid()) map.fitBounds(bounds.pad(0.18));
+    }
+
+    function refreshMap() {
+      map.invalidateSize(true);
+      fitAllPoints();
+    }
+    window.__refreshTravelMap = refreshMap;
+    window.addEventListener("load", function () { setTimeout(refreshMap, 150); });
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) refreshMap();
+    });
+    ${tileLayerScript}
+
+    var flightOut = points.find(function (p) { return p.kind === "flight-out"; });
+    var flightIn = points.find(function (p) { return p.kind === "flight-in"; });
+    var photoPoints = points.filter(function (p) { return p.kind === "photo"; });
+    fitAllPoints();
+
+    var dayColorIndex = {};
+    var colorIdx = 0;
+    photoPoints.forEach(function (p) {
+      if (p.dayKey && dayColorIndex[p.dayKey] === undefined) {
+        dayColorIndex[p.dayKey] = dayColors[colorIdx % dayColors.length];
+        colorIdx += 1;
+      }
+    });
+
+    Object.keys(dayColorIndex).forEach(function (dayKey) {
+      var seg = photoPoints.filter(function (p) { return p.dayKey === dayKey; }).map(function (p) { return [p.lat, p.lng]; });
+      if (seg.length > 1) {
+        L.polyline(seg, { color: dayColorIndex[dayKey], weight: 4, opacity: 0.92, lineJoin: "round" }).addTo(map);
+      }
+    });
+
+    if (photoPoints.length > 1 && Object.keys(dayColorIndex).length === 0) {
+      L.polyline(photoPoints.map(function (p) { return [p.lat, p.lng]; }), { color: "#2dd4bf", weight: 4, opacity: 0.9, lineJoin: "round" }).addTo(map);
+    }
+
+    if (flightOut && flightIn) {
+      L.polyline(
+        [[flightOut.lat, flightOut.lng], [flightIn.lat, flightIn.lng]],
+        { color: "#818cf8", weight: 3, opacity: 0.85, dashArray: "10 8" }
+      ).addTo(map);
+    }
+
+    var photoIndex = 0;
+    var markersByDay = {};
+
+    function buildPopup(p) {
+      var popup = "<strong>" + escapeHtml(p.label) + "</strong>";
+      var thumbs = Array.isArray(p.photoPaths) && p.photoPaths.length ? p.photoPaths : (p.photoPath ? [p.photoPath] : []);
+      thumbs.forEach(function (src) {
+        var resolved = resolveAsset(src);
+        if (!resolved) return;
+        popup += '<br><img src="' + escapeHtml(resolved) + '" alt="" style="max-width:220px;margin-top:8px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.3)">';
+      });
+      popup += '<br><small style="color:#78716c">' + new Date(p.date).toLocaleString("es-ES") + "</small>";
+      return popup;
+    }
+
+    points.forEach(function (p) {
+      var marker;
+      if (p.kind === "photo") {
+        photoIndex += 1;
+        var pinColor = p.dayKey && dayColorIndex[p.dayKey] ? dayColorIndex[p.dayKey] : "#2dd4bf";
+        var icon = L.divIcon({
+          html: '<div class="route-pin" style="background:linear-gradient(135deg,' + pinColor + ',#0d9488)">' + photoIndex + '</div>',
+          className: "route-pin-wrap",
+          iconSize: [28, 28],
+          iconAnchor: [14, 14]
+        });
+        marker = L.marker([p.lat, p.lng], { icon: icon, zIndexOffset: 100 }).addTo(map);
+        if (p.dayKey) {
+          if (!markersByDay[p.dayKey]) markersByDay[p.dayKey] = [];
+          markersByDay[p.dayKey].push(marker);
+        }
+      } else if (p.kind === "place" && p.emoji) {
+        var placeIcon = L.divIcon({
+          html: '<div class="place-pin">' + p.emoji + '</div>',
+          className: "place-pin-wrap",
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        });
+        marker = L.marker([p.lat, p.lng], { icon: placeIcon, zIndexOffset: 500 }).addTo(map);
+      } else if (p.emoji) {
+        var size = (p.kind === "flight-out" || p.kind === "flight-in") ? "28" : "24";
+        var emojiIcon = L.divIcon({
+          html: '<div style="font-size:' + size + 'px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">' + p.emoji + '</div>',
+          className: "",
+          iconSize: [0, 0],
+          iconAnchor: [14, 14]
+        });
+        marker = L.marker([p.lat, p.lng], { icon: emojiIcon }).addTo(map);
+      } else {
+        marker = L.marker([p.lat, p.lng]).addTo(map);
+      }
+      marker.bindPopup(function () { return buildPopup(p); }, { maxWidth: 280 });
+    });
+
+    function flyToGroup(group) {
+      if (!group || !group.bounds) return;
+      var b = L.latLngBounds(group.bounds);
+      if (!b.isValid()) return;
+      map.flyToBounds(b, { padding: [52, 52], duration: 1.15, maxZoom: group.id === "all" ? 12 : 15 });
+    }
+
+    document.querySelectorAll(".map-day-item").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var dayId = btn.getAttribute("data-day");
+        document.querySelectorAll(".map-day-item").forEach(function (el) { el.classList.remove("active"); });
+        btn.classList.add("active");
+        var group = dayGroups.find(function (g) { return g.id === dayId; });
+        flyToGroup(group);
+      });
+    });
+
+    function escapeHtml(s) {
+      return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initTravelMap);
+  } else {
+    initTravelMap();
   }
 })();
 `;
@@ -1256,13 +1360,16 @@ export function buildExportHtml(ctx: ExportContext): string {
   const timelineEvents = buildExportTimelineEvents(ctx);
   const markdown = travel.journalMarkdown ?? buildFallbackMarkdown(travel, users, photos);
   const mapPoints = mergeMapPoints(photos, places);
-  const photoGpsCount = photos.filter((p) => p.latitude != null && p.longitude != null).length;
+  const photoGpsCount = photos.filter((p) => isValidGps(p.latitude, p.longitude)).length;
+  const placeCount = places.filter((p) => isValidGps(p.latitude, p.longitude)).length;
   const mapLead =
-    photoGpsCount === 0 && photos.length > 0
-      ? "Las fotos no tienen GPS en los metadatos; se muestran lugares y vuelos marcados."
-      : photoGpsCount < photos.length
-        ? `${photoGpsCount} de ${photos.length} fotos con ubicación GPS. Pulsa un día para hacer zoom en ese tramo.`
-        : "Pulsa un día para hacer zoom en ese tramo del recorrido";
+    photoGpsCount === 0 && placeCount > 0
+      ? `${placeCount} lugar${placeCount === 1 ? "" : "es"} marcado${placeCount === 1 ? "" : "s"} en el mapa. Pulsa un pin para ver fotos y notas.`
+      : photoGpsCount === 0 && photos.length > 0
+        ? "Las fotos no tienen GPS en los metadatos; se muestran lugares y vuelos marcados."
+        : photoGpsCount < photos.length
+          ? `${photoGpsCount} de ${photos.length} fotos con ubicación GPS. Pulsa un día o «Lugares» para hacer zoom.`
+          : "Pulsa un día o «Lugares» para hacer zoom en ese tramo del recorrido";
   const urlToLocal = new Map(photos.map((p) => [p.url, p.localPath]));
   const rawHtml = markdownToHtml(rewriteMarkdownImagePaths(markdown, urlToLocal));
   const contentHtml =
@@ -1664,6 +1771,7 @@ async function inlineMapAssetsInHtml(
   const mapPoints = mergeMapPoints(ctx.photos, ctx.places ?? []).map((p) => ({
     ...p,
     photoPath: p.photoPath ? registry[p.photoPath] ?? p.photoPath : null,
+    photoPaths: p.photoPaths?.map((path) => registry[path] ?? path),
   }));
 
   const iconScript = `delete L.Icon.Default.prototype._getIconUrl;
