@@ -93,12 +93,18 @@ export interface ExportContext {
   >;
   users: User[];
   photos: ExportPhoto[];
+  /** All travel photos with GPS for the interactive map (may exceed `photos` when only a subset is exported). */
+  mapPhotos?: ExportPhoto[];
   places?: ExportPlace[];
   notes?: ExportNote[];
   gpsTracks?: ExportGpsTrack[];
   template: ExportTemplateId;
   typology?: ExportTypologyId;
   includeGpsTrail?: boolean;
+}
+
+export function getExportMapPhotos(ctx: ExportContext): ExportPhoto[] {
+  return ctx.mapPhotos ?? ctx.photos;
 }
 
 const TEMPLATE_LABELS: Record<ExportTemplateId, string> = {
@@ -1486,18 +1492,22 @@ export function buildExportHtml(ctx: ExportContext): string {
   const profile = getTypologyProfile(resolvedType);
   const timelineEvents = buildExportTimelineEvents(ctx);
   const markdown = travel.journalMarkdown ?? buildFallbackMarkdown(travel, users, photos);
-  const mapPoints = mergeMapPoints(photos, places);
-  const routeCoords = buildCombinedRouteCoords(photos, places);
-  const photoGpsCount = photos.filter((p) => isValidGps(p.latitude, p.longitude)).length;
+  const mapPhotos = getExportMapPhotos(ctx);
+  const mapPoints = mergeMapPoints(mapPhotos, places);
+  const routeCoords = buildCombinedRouteCoords(mapPhotos, places);
+  const mapPhotoGpsCount = mapPhotos.filter((p) => isValidGps(p.latitude, p.longitude)).length;
+  const selectedPhotoGpsCount = photos.filter((p) => isValidGps(p.latitude, p.longitude)).length;
   const placeCount = places.filter((p) => isValidGps(p.latitude, p.longitude)).length;
   const mapLead =
-    photoGpsCount === 0 && placeCount > 0
+    mapPhotoGpsCount === 0 && placeCount > 0
       ? `${placeCount} lugar${placeCount === 1 ? "" : "es"} marcado${placeCount === 1 ? "" : "s"} en el mapa. Pulsa un pin para ver fotos y notas.`
-      : photoGpsCount === 0 && photos.length > 0
+      : mapPhotoGpsCount === 0 && photos.length > 0
         ? "Las fotos no tienen GPS en los metadatos; se muestran lugares y vuelos marcados."
-        : photoGpsCount < photos.length
-          ? `${photoGpsCount} de ${photos.length} fotos con ubicación GPS. Pulsa un día o «Lugares» para hacer zoom.`
-          : "Pulsa un día o «Lugares» para hacer zoom en ese tramo del recorrido";
+        : mapPhotoGpsCount > selectedPhotoGpsCount && photos.length < mapPhotos.length
+          ? `${mapPhotoGpsCount} fotos con ubicación GPS en el mapa (${photos.length} incluidas en la crónica). Pulsa un día o «Lugares» para hacer zoom.`
+          : mapPhotoGpsCount < photos.length
+            ? `${mapPhotoGpsCount} de ${photos.length} fotos con ubicación GPS. Pulsa un día o «Lugares» para hacer zoom.`
+            : "Pulsa un día o «Lugares» para hacer zoom en ese tramo del recorrido";
   const urlToLocal = new Map(photos.map((p) => [p.url, p.localPath]));
   const rawHtml = markdownToHtml(rewriteMarkdownImagePaths(markdown, urlToLocal));
   const contentHtml =
@@ -1728,6 +1738,29 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+export function buildMapPhotoList(
+  allPhotos: (Photo & { user: User })[],
+  selectedPhotos: ExportPhoto[]
+): ExportPhoto[] {
+  const selectedById = new Map(selectedPhotos.map((p) => [p.id, p]));
+  return allPhotos.map((photo) => {
+    const selected = selectedById.get(photo.id);
+    if (selected) return selected;
+    return {
+      id: photo.id,
+      url: photo.url,
+      localPath: `map/${photo.id}.webp`,
+      thumbPath: `map/${photo.id}-thumb.webp`,
+      latitude: photo.latitude,
+      longitude: photo.longitude,
+      exifDateTime: photo.exifDateTime,
+      alias: photo.user.alias,
+      isTransportStart: photo.isTransportStart,
+      isTransportEnd: photo.isTransportEnd,
+    };
+  });
+}
+
 export async function loadPhotoFiles(
   photos: (Photo & { user: User })[]
 ): Promise<ExportPhoto[]> {
@@ -1792,7 +1825,7 @@ async function getLeafletAssets(): Promise<Record<string, Buffer>> {
 }
 
 function exportHasMap(ctx: ExportContext): boolean {
-  return mergeMapPoints(ctx.photos, ctx.places ?? []).length > 0;
+  return mergeMapPoints(getExportMapPhotos(ctx), ctx.places ?? []).length > 0;
 }
 
 /** Fix Leaflet CSS image paths for zip bundle layout */
@@ -1896,7 +1929,8 @@ async function inlineMapAssetsInHtml(
 </style>`
   );
 
-  const mapPoints = mergeMapPoints(ctx.photos, ctx.places ?? []).map((p) => {
+  const mapPhotos = getExportMapPhotos(ctx);
+  const mapPoints = mergeMapPoints(mapPhotos, ctx.places ?? []).map((p) => {
     if (!registry) return p;
     return {
       ...p,
@@ -1913,7 +1947,7 @@ L.Icon.Default.mergeOptions({
 });`;
 
   const mapDayGroups = buildMapDayGroups(mapPoints);
-  const routeCoords = buildCombinedRouteCoords(ctx.photos, ctx.places ?? []);
+  const routeCoords = buildCombinedRouteCoords(mapPhotos, ctx.places ?? []);
   const mapScriptBody = buildMapScript(
     mapPoints,
     mapDayGroups,
