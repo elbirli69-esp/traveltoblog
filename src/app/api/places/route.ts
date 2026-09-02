@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PlaceType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { autoLinkPhotosForTravel } from "@/lib/photo-place-auto-link";
 import { PLACE_TYPES } from "@/lib/places";
 
 export async function POST(request: NextRequest) {
@@ -80,6 +81,8 @@ export async function POST(request: NextRequest) {
       where: { id: travelId },
       data: { updatedAt: new Date() },
     });
+
+    await autoLinkPhotosForTravel(travelId);
 
     return NextResponse.json({ place });
   } catch (error) {

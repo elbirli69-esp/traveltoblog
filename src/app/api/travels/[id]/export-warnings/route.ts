@@ -15,12 +15,16 @@ export async function GET(
         startDate: true,
         endDate: true,
         journalMarkdown: true,
+        _count: { select: { places: true } },
         photos: {
           where: { selected: true },
           select: {
             latitude: true,
             longitude: true,
             exifDateTime: true,
+            placeId: true,
+            isTransportStart: true,
+            isTransportEnd: true,
             mediaType: true,
             filename: true,
           },
@@ -42,6 +46,7 @@ export async function GET(
       startDate: travel.startDate,
       endDate: travel.endDate,
       journalMarkdown: travel.journalMarkdown,
+      placeCount: travel._count.places,
       photos: travel.photos,
       notes: travel.notes,
     });
