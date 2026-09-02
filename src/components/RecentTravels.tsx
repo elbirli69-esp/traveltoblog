@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   getSessionFromStorage,
-  getTravelHistory,
   saveSession,
   type TravelHistoryEntry,
 } from "@/lib/utils";
+import {
+  pruneDeletedTravelHistory,
+  TRAVEL_DELETED_EVENT,
+} from "@/lib/travel-local-cleanup";
 
 function formatWhen(iso: string): string {
   const date = new Date(iso);
@@ -25,8 +28,34 @@ export default function RecentTravels() {
   const [activeTravelId, setActiveTravelId] = useState<string | null>(null);
 
   useEffect(() => {
-    setHistory(getTravelHistory());
-    setActiveTravelId(getSessionFromStorage()?.travelId ?? null);
+    let cancelled = false;
+
+    const refresh = async () => {
+      const pruned = await pruneDeletedTravelHistory();
+      if (cancelled) return;
+      setHistory(pruned);
+      setActiveTravelId(getSessionFromStorage()?.travelId ?? null);
+    };
+
+    void refresh();
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    const onDeleted = (event: Event) => {
+      const travelId = (event as CustomEvent<{ travelId: string }>).detail?.travelId;
+      if (!travelId) return;
+      setHistory((prev) => prev.filter((item) => item.travelId !== travelId));
+      setActiveTravelId((current) => (current === travelId ? null : current));
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener(TRAVEL_DELETED_EVENT, onDeleted);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener(TRAVEL_DELETED_EVENT, onDeleted);
+    };
   }, []);
 
   if (history.length === 0) return null;

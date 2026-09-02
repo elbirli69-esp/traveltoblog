@@ -29,6 +29,10 @@ import GpsTrailRecorder from "@/components/GpsTrailRecorder";
 import type { TimelineEvent } from "@/lib/timeline";
 import type { PlaceType } from "@prisma/client";
 import { getSessionFromStorage, rememberTravel, touchTravelHistory } from "@/lib/utils";
+import {
+  clearLocalTravelData,
+  isTravelNotFoundResponse,
+} from "@/lib/travel-local-cleanup";
 import { isoToDateKey } from "@/lib/travel-dates";
 import {
   consumePendingShareId,
@@ -128,6 +132,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
   const [activeTimelineEventId, setActiveTimelineEventId] = useState<string | null>(null);
   const [showPastGuide, setShowPastGuide] = useState(false);
+  const [travelNotFound, setTravelNotFound] = useState(false);
   const deepLinkHandled = useRef<string | null>(null);
   const tripNoteRef = useRef<HTMLDivElement>(null);
 
@@ -138,8 +143,15 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
 
   const loadTravel = useCallback(async () => {
     if (!travelId) return;
-    const res = await fetch(`/api/travels/${travelId}`);
+    const res = await fetch(`/api/travels/${travelId}`, { cache: "no-store" });
+    if (isTravelNotFoundResponse(res)) {
+      await clearLocalTravelData(travelId);
+      setTravel(null);
+      setTravelNotFound(true);
+      return;
+    }
     if (res.ok) {
+      setTravelNotFound(false);
       const data = await res.json();
       setTravel(data.travel);
       const currentSession = getSessionFromStorage();
@@ -247,6 +259,20 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
     applyAddMemory(add as AddMemoryKind, date);
     window.history.replaceState({}, "", `/travel/${travelId}`);
   }, [travelId, session, searchParams, applyAddMemory]);
+
+  if (travelNotFound) {
+    return (
+      <main className="mx-auto max-w-lg px-4 py-10 text-center">
+        <p className="mb-2 text-lg font-semibold text-fg">Este viaje ya no existe</p>
+        <p className="mb-6 text-sm text-fg-secondary">
+          Fue eliminado por el creador. Lo hemos quitado también de la lista de este dispositivo.
+        </p>
+        <Link href="/" className="btn-primary px-6 py-2 text-sm">
+          Volver al inicio
+        </Link>
+      </main>
+    );
+  }
 
   if (!travelId || !travel) {
     return (
