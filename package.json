@@ -31,6 +31,7 @@
     "leaflet": "^1.9.4",
     "mapbox-gl": "^3.29.0",
     "marked": "^18.0.11",
+    "mediabunny": "^1.55.5",
     "nanoid": "^5.1.5",
     "next": "^15.2.4",
     "openai": "^4.89.0",

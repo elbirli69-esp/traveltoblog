@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import ExportHtmlPanel from "@/components/ExportHtmlPanel";
 import ExportPdfPanel from "@/components/ExportPdfPanel";
+import ExportReelPanel from "@/components/ExportReelPanel";
 import TravelWorkspaceNav from "@/components/TravelWorkspaceNav";
 
 export default async function ExportPage({
@@ -46,7 +47,7 @@ export default async function ExportPage({
       <header className="border-b border-[var(--border)] pb-6">
         <h1 className="heading-page">{travel.title}</h1>
         <p className="mt-2 text-sm text-fg-secondary">
-          Exporta el viaje como HTML interactivo o PDF para imprenta.
+          Exporta el viaje como HTML interactivo, Reel de Instagram o PDF para imprenta.
         </p>
       </header>
 
@@ -60,6 +61,19 @@ export default async function ExportPage({
           travelId={travel.id}
           hasJournal={Boolean(travel.journalMarkdown)}
           hasGpsPhotos={hasGpsPhotos}
+        />
+      </section>
+
+      <section className="surface p-6">
+        <h2 className="heading-section mb-1 text-accent-cyan">Reel para Instagram</h2>
+        <p className="mb-5 text-sm text-fg-secondary">
+          ZIP independiente con un vídeo resumen vertical listo para publicar como Reel (sin
+          mezclar con el ZIP del HTML).
+        </p>
+        <ExportReelPanel
+          travelId={travel.id}
+          travelTitle={travel.title}
+          photoCount={travel._count.photos}
         />
       </section>
 
