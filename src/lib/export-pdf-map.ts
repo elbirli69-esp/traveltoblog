@@ -6,10 +6,12 @@ import {
   buildMapboxStaticUrl,
   buildRouteNodesFromPhotosAndPlaces,
   coalesceRouteNodes,
+  encodePolyline,
   resolveSegmentedRoute,
   simplifyWaypoints,
   type MapRouteBuildMode,
 } from "@/lib/mapbox-route";
+import { encodeGpsTrailsForStaticMap, type GpsTrackForMap } from "@/lib/gps-track-map";
 import { coalesceMapPoints, type ReelMapPoint } from "@/lib/export-reel-map";
 import type { PdfPhotoAsset } from "@/lib/export-pdf-types";
 
@@ -73,21 +75,29 @@ export function pdfMapPointsFromPhotosAndPlaces(
   }));
 }
 
-/** Landscape Mapbox static image with road + flight route overlays. */
+/** Landscape Mapbox static image with road + flight + optional GPS trail overlays. */
 export function buildPdfMapStaticUrl(
   markerWaypoints: { lng: number; lat: number }[],
   roadPolylines: string[],
   flightPolylines: string[],
-  roadColors?: string[]
+  roadColors?: string[],
+  trailPolylines: string[] = []
 ): string | null {
   if (!MAPBOX_TOKEN) return null;
-  if (roadPolylines.length === 0 && flightPolylines.length === 0) return null;
+  if (
+    roadPolylines.length === 0 &&
+    flightPolylines.length === 0 &&
+    trailPolylines.length === 0
+  ) {
+    return null;
+  }
 
   const overlays = buildMapboxStaticOverlaysSegmented(
     markerWaypoints,
     roadPolylines,
     flightPolylines,
-    roadColors
+    roadColors,
+    trailPolylines
   );
   return buildMapboxStaticUrl(
     mapboxStylePath(MAPBOX_STYLE_LIGHT),
@@ -101,35 +111,41 @@ export function buildPdfMapStaticUrl(
 export async function fetchPdfMapImage(
   photos: PdfPhotoAsset[],
   workDir: string,
-  places: PdfMapPlaceInput[] = []
+  places: PdfMapPlaceInput[] = [],
+  gpsTracks: GpsTrackForMap[] = []
 ): Promise<PdfMapBuildResult | null> {
   const nodes = coalesceRouteNodes(buildPdfRouteNodes(photos, places));
-  if (nodes.length < 2) return null;
+  const trailPolylines = encodeGpsTrailsForStaticMap(gpsTracks, encodePolyline);
+  if (nodes.length < 2 && trailPolylines.length === 0) return null;
 
-  const segmented = await resolveSegmentedRoute(nodes);
-  if (!segmented) return null;
+  const segmented =
+    nodes.length >= 2 ? await resolveSegmentedRoute(nodes) : null;
+  if (!segmented && trailPolylines.length === 0) return null;
 
   const markerPoints = reelPointsToWaypoints(
     coalesceMapPoints(pdfMapPointsFromPhotosAndPlaces(photos, places))
   );
   const markerWaypoints = simplifyWaypoints(markerPoints, 8);
-  const roadColors = segmented.coloredRoads.map((r) => r.color);
+  const roadColors = segmented?.coloredRoads.map((r) => r.color) ?? [];
+  const roadPolylines = segmented?.roadPolylines ?? [];
+  const flightPolylines = segmented?.flightPolylines ?? [];
 
   let url = buildPdfMapStaticUrl(
     markerWaypoints,
-    segmented.roadPolylines,
-    segmented.flightPolylines,
-    roadColors
+    roadPolylines,
+    flightPolylines,
+    roadColors,
+    trailPolylines
   );
 
-  if (!url && segmented.roadPolylines.length > 1) {
-    const { encodePolyline } = await import("@/lib/mapbox-route");
+  if (!url && roadPolylines.length > 1) {
     const merged = encodePolyline(markerWaypoints);
     url = buildPdfMapStaticUrl(
       markerWaypoints,
       [merged],
-      segmented.flightPolylines,
-      roadColors.slice(0, 1)
+      flightPolylines,
+      roadColors.slice(0, 1),
+      trailPolylines
     );
   }
 
@@ -138,9 +154,9 @@ export async function fetchPdfMapImage(
   return downloadMapImage(
     url,
     workDir,
-    nodes.length,
-    segmented.mode,
-    segmented.dayLegend
+    Math.max(nodes.length, trailPolylines.length),
+    segmented?.mode ?? "direct",
+    segmented?.dayLegend ?? []
   );
 }
 

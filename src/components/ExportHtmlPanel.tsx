@@ -327,15 +327,21 @@ export default function ExportHtmlPanel({
         </div>
       </div>
 
-      <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-secondary">
+      <label className="flex cursor-pointer items-start gap-2 text-sm text-fg-secondary">
         <input
           type="checkbox"
           checked={includeGpsTrail}
           onChange={(e) => setIncludeGpsTrail(e.target.checked)}
           disabled={busy}
-          className="accent-theme"
+          className="mt-0.5 accent-theme"
         />
-        Incluir recorridos GPS grabados en el export
+        <span>
+          Incluir recorridos GPS grabados en el export
+          <span className="mt-0.5 block text-xs text-fg-tertiary">
+            Aparecen en la cronología y como línea punteada en el mapa (también si el track tiene
+            «En export» activado en Cronología).
+          </span>
+        </span>
       </label>
 
       <div>

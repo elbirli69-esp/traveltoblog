@@ -18,12 +18,15 @@ interface TravelTimelineProps {
   travelId: string;
   activeEventId?: string | null;
   onEventSelect?: (event: TimelineEvent) => void;
+  /** Increment to reload after GPS trails or other timeline sources change. */
+  refreshSignal?: number;
 }
 
 export default function TravelTimeline({
   travelId,
   activeEventId,
   onEventSelect,
+  refreshSignal = 0,
 }: TravelTimelineProps) {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [days, setDays] = useState<{ dayKey: string; label: string; eventCount: number }[]>([]);
@@ -49,6 +52,11 @@ export default function TravelTimeline({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (refreshSignal === 0) return;
+    void load();
+  }, [refreshSignal, load]);
 
   if (loading) {
     return <p className="text-sm text-fg-secondary">Cargando cronología…</p>;

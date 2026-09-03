@@ -486,6 +486,14 @@ export function buildFlightPathOverlay(encodedPolyline: string): string {
   });
 }
 
+export function buildGpsTrailPathOverlay(encodedPolyline: string): string {
+  return buildPathOverlay(encodedPolyline, {
+    width: 3,
+    color: "64748b",
+    opacity: 0.85,
+  });
+}
+
 export function buildRouteMarkerOverlays(waypoints: MapRouteWaypoint[]): string {
   if (waypoints.length === 0) return "";
   const start = waypoints[0]!;
@@ -508,13 +516,15 @@ export function buildRouteMarkerOverlays(waypoints: MapRouteWaypoint[]): string 
 export function buildSegmentedPathOverlays(
   roadPolylines: string[],
   flightPolylines: string[],
-  roadColors?: string[]
+  roadColors?: string[],
+  trailPolylines: string[] = []
 ): string {
   return [
     ...roadPolylines.map((polyline, i) =>
       buildRoutePathOverlay(polyline, roadColors?.[i] ?? DAY_ROUTE_COLORS[0])
     ),
     ...flightPolylines.map(buildFlightPathOverlay),
+    ...trailPolylines.map(buildGpsTrailPathOverlay),
   ].join(",");
 }
 
@@ -531,9 +541,15 @@ export function buildMapboxStaticOverlaysSegmented(
   markerWaypoints: MapRouteWaypoint[],
   roadPolylines: string[],
   flightPolylines: string[],
-  roadColors?: string[]
+  roadColors?: string[],
+  trailPolylines: string[] = []
 ): string {
-  const paths = buildSegmentedPathOverlays(roadPolylines, flightPolylines, roadColors);
+  const paths = buildSegmentedPathOverlays(
+    roadPolylines,
+    flightPolylines,
+    roadColors,
+    trailPolylines
+  );
   const markers = buildRouteMarkerOverlays(markerWaypoints);
   return markers ? `${markers},${paths}` : paths;
 }

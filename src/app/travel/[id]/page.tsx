@@ -515,6 +515,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
               travelId={travelId}
               activeEventId={activeTimelineEventId}
               onEventSelect={handleTimelineEvent}
+              refreshSignal={refreshKey}
             />
             <GpsTrailRecorder
               travelId={travelId}
