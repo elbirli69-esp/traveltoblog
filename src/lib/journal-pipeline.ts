@@ -19,6 +19,7 @@ export type JournalPipelineStep =
   | "captions"
   | "conclusion"
   | "assemble"
+  | "refine"
   | "complete";
 
 export interface JournalPipelineEvent {
@@ -73,6 +74,113 @@ export const JOURNAL_STYLE_LABELS: Record<
       "Se ciñe a lo que escribisteis. Solo reescribe mejor, sin inventar hechos ni añadir escenas.",
   },
 };
+
+export interface JournalPipelineOptions {
+  /** When set, refine this markdown instead of generating from scratch. */
+  existingMarkdown?: string | null;
+}
+
+const MAX_EXISTING_MARKDOWN_CHARS = 60_000;
+
+function getRefineSystemPrompt(style: JournalStyle): { system: string; temperature: number } {
+  const base = `Eres un editor de crónicas de viaje colaborativas.
+Te dan la crónica Markdown YA ESCRITA (puede incluir ediciones humanas) y el contexto actualizado del viaje (notas, fotos, lugares, vuelos).
+
+Tu tarea: devolver UNA única crónica Markdown completa REFINADA.
+
+REGLAS DE REFINAMIENTO:
+- Parte de la crónica existente: conserva el tono, la estructura y las formulaciones que ya funcionan.
+- Incorpora notas, fotos o lugares NUEVOS que falten en el texto.
+- Corrige solo lo contradictorio, vacío o claramente peor que el contexto nuevo.
+- NO tires el texto para reescribirlo de cero si no hace falta.
+- PRESERVA todas las imágenes Markdown existentes (![alt](url)) y sus URLs; puedes mejorar el alt/caption.
+- Añade imágenes de fotos nuevas del contexto si aún no están en la crónica, con caption breve.
+- Mantén el título (# …), secciones por día y conclusión.
+- Responde SOLO con el Markdown final, sin explicaciones ni fences \`\`\`.`;
+
+  if (style === "factual") {
+    return {
+      system: `${base}
+ESTILO FIEL A LAS NOTAS:
+- No inventes hechos, emociones ni escenas no documentadas.
+- Prefiere pulir y completar con material real del contexto.`,
+      temperature: 0.35,
+    };
+  }
+
+  return {
+    system: `${base}
+ESTILO NARRATIVO:
+- Puedes enriquecer atmósfera y ritmo, sin contradecir notas ni ediciones humanas claras.`,
+    temperature: 0.7,
+  };
+}
+
+function stripMarkdownFences(text: string): string {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:markdown|md)?\s*([\s\S]*?)```$/i);
+  return (fenced?.[1] ?? trimmed).trim();
+}
+
+function buildRefineUserPayload(
+  ctx: EnhancedJournalContext,
+  existingMarkdown: string
+): string {
+  const clipped =
+    existingMarkdown.length > MAX_EXISTING_MARKDOWN_CHARS
+      ? `${existingMarkdown.slice(0, MAX_EXISTING_MARKDOWN_CHARS)}\n\n…[crónica truncada por longitud]`
+      : existingMarkdown;
+
+  return JSON.stringify(
+    {
+      cronica_actual: clipped,
+      contexto_viaje: {
+        titulo: ctx.title,
+        participantes: ctx.participants,
+        fechas: ctx.dateRange,
+        vuelos: ctx.flights,
+        notas_viaje: ctx.tripNotes,
+        lugares: ctx.places,
+        dias: ctx.days.map((d) => ({
+          date: d.date,
+          notas_dia: d.dayNotes,
+          fotos: d.photos.map((p) => ({
+            url: p.url,
+            autor: p.author,
+            comentarios: p.comments,
+            ida: p.isTransportStart,
+            vuelta: p.isTransportEnd,
+            fecha: p.exifDateTime,
+          })),
+        })),
+      },
+    },
+    null,
+    2
+  );
+}
+
+export async function refineJournalMarkdown(
+  ai: OpenAI,
+  model: string,
+  ctx: EnhancedJournalContext,
+  existingMarkdown: string,
+  style: JournalStyle = "narrative"
+): Promise<string> {
+  const { system, temperature } = getRefineSystemPrompt(style);
+  const raw = await callAi(
+    ai,
+    model,
+    system,
+    buildRefineUserPayload(ctx, existingMarkdown),
+    temperature
+  );
+  const refined = stripMarkdownFences(raw);
+  if (!refined || refined.length < 40) {
+    throw new Error("La IA devolvió una crónica vacía al refinar");
+  }
+  return refined;
+}
 
 interface JournalPromptConfig {
   intro: { system: string; temperature: number };
@@ -556,15 +664,40 @@ export function buildLocalJournalMarkdown(ctx: EnhancedJournalContext): string {
 export async function runJournalPipeline(
   ctx: EnhancedJournalContext,
   onProgress?: PipelineProgressCallback,
-  style: JournalStyle = "narrative"
+  style: JournalStyle = "narrative",
+  options: JournalPipelineOptions = {}
 ): Promise<string> {
   const emit = (event: JournalPipelineEvent) => onProgress?.(event);
+  const existingMarkdown = options.existingMarkdown?.trim() || null;
 
   try {
     const ai = createAiClient();
     const { model } = getAiConfig();
 
     emit({ step: "context", status: "done", message: "Datos del viaje preparados" });
+
+    if (existingMarkdown) {
+      emit({
+        step: "refine",
+        status: "running",
+        message: "Refinando la crónica existente…",
+      });
+      const markdown = await refineJournalMarkdown(
+        ai,
+        model,
+        ctx,
+        existingMarkdown,
+        style
+      );
+      emit({ step: "refine", status: "done" });
+      emit({
+        step: "complete",
+        status: "done",
+        markdown,
+        message: "Crónica refinada a partir del texto anterior",
+      });
+      return markdown;
+    }
 
     emit({ step: "intro", status: "running", message: "Escribiendo introducción…" });
     const intro = await generateIntroduction(ai, model, ctx, style);
@@ -590,6 +723,13 @@ export async function runJournalPipeline(
     return markdown;
   } catch (error) {
     if (!isAiUnreachableError(error)) throw error;
+
+    // Refining without AI must not wipe the user's chronicle with a local template.
+    if (existingMarkdown) {
+      throw new Error(
+        "Sin conexión a la IA; se mantiene tu crónica actual. Reintenta cuando haya red."
+      );
+    }
 
     console.warn("IA no disponible, usando crónica local:", error);
     emit({

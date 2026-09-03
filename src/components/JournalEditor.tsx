@@ -72,7 +72,7 @@ export default function JournalEditor({
           </p>
           {generatedAt && (
             <p className="mt-0.5 text-xs text-fg-tertiary">
-              Generado el{" "}
+              Última generación / refinamiento IA:{" "}
               {new Intl.DateTimeFormat("es-ES", {
                 dateStyle: "long",
                 timeStyle: "short",

@@ -14,6 +14,7 @@ interface JournalWorkspaceProps {
   endDate: string | null;
   journalMarkdown: string | null;
   journalGeneratedAt: string | null;
+  journalMarkdownPrevious?: string | null;
   photos: {
     exifDateTime: string | null;
     isTransportStart: boolean;
@@ -30,6 +31,7 @@ export default function JournalWorkspace({
   endDate,
   journalMarkdown,
   journalGeneratedAt,
+  journalMarkdownPrevious = null,
   photos,
   dayNotes,
   tripNoteCount,
@@ -47,16 +49,17 @@ export default function JournalWorkspace({
       <header className="mb-6 border-b border-[var(--border)] pb-6">
         <h1 className="heading-page">{title}</h1>
         <p className="mt-2 text-sm text-fg-secondary">
-          Genera y edita la crónica del viaje con IA. Las notas, fotos y fechas del viaje son la
-          materia prima.
+          Genera y edita la crónica del viaje con IA. Puedes refinarla en varias pasadas: cada vez
+          parte de lo ya escrito.
         </p>
       </header>
 
       <section className="surface mb-8 p-6">
         <h2 className="heading-section mb-2 text-accent-cyan">Generar crónica</h2>
         <p className="mb-4 text-sm text-fg-secondary">
-          Elige el estilo y genera un artículo en varios pasos: introducción, resumen por día,
-          leyendas de fotos y conclusión.
+          {journalMarkdown
+            ? "Refina la crónica existente: la IA conserva tus ediciones e incorpora notas y fotos nuevas."
+            : "Primera generación en varios pasos: introducción, resumen por día, leyendas y conclusión."}
         </p>
         <JournalReadinessChecklist
           startDate={startDate}
@@ -69,6 +72,7 @@ export default function JournalWorkspace({
         <GenerateJournalButton
           travelId={travelId}
           hasExistingJournal={Boolean(journalMarkdown)}
+          hasPreviousJournal={Boolean(journalMarkdownPrevious)}
         />
       </section>
 
