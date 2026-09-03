@@ -28,19 +28,61 @@ export interface RoutePlaceInput {
 
 export type MapRouteBuildMode = "segmented" | "directions" | "direct";
 
+/** Shared palette for chronological day coloring (app, HTML, PDF). */
+export const DAY_ROUTE_COLORS = [
+  "#2dd4bf",
+  "#f59e0b",
+  "#818cf8",
+  "#f472b6",
+  "#34d399",
+  "#fb7185",
+  "#38bdf8",
+  "#a78bfa",
+  "#fb923c",
+  "#4ade80",
+] as const;
+
+export const FLIGHT_ROUTE_COLOR = "#818cf8";
+
+export interface RouteDayLegendEntry {
+  dayKey: string | null;
+  dayIndex: number;
+  color: string;
+  label: string;
+}
+
+export interface ColoredRouteRun {
+  waypoints: MapRouteWaypoint[];
+  dayKey: string | null;
+  dayIndex: number;
+  color: string;
+  label: string;
+}
+
+export interface ColoredRoutePolyline extends Omit<ColoredRouteRun, "waypoints"> {
+  polyline: string;
+}
+
+export interface ColoredRouteSegment extends Omit<ColoredRouteRun, "waypoints"> {
+  coordinates: MapRouteWaypoint[];
+}
+
 export interface SegmentedRouteResult {
-  /** Encoded polylines for road overlays (Mapbox Directions). */
+  /** Encoded polylines for road overlays (Mapbox Directions), day-colored. */
   roadPolylines: string[];
+  coloredRoads: ColoredRoutePolyline[];
   /** Encoded polylines for flight/transport legs (straight). */
   flightPolylines: string[];
+  dayLegend: RouteDayLegendEntry[];
   mode: MapRouteBuildMode;
 }
 
 export interface SegmentedRouteGeometry {
-  /** Road-following segments (lat/lng pairs). */
-  roadSegments: MapRouteWaypoint[][];
+  /** Road-following segments (lat/lng) with day color metadata. */
+  roadSegments: ColoredRouteSegment[];
   /** Straight flight/transport legs (lat/lng pairs). */
   flightLegs: MapRouteWaypoint[][];
+  dayLegend: RouteDayLegendEntry[];
   mode: MapRouteBuildMode;
 }
 
@@ -218,26 +260,128 @@ export function simplifyWaypoints(
   return result;
 }
 
+export function routeDayColor(dayIndex: number): string {
+  return DAY_ROUTE_COLORS[((dayIndex % DAY_ROUTE_COLORS.length) + DAY_ROUTE_COLORS.length) % DAY_ROUTE_COLORS.length]!;
+}
+
+/** Hex without # for Mapbox Static path overlays. */
+export function routeColorHex(color: string): string {
+  return color.replace(/^#/, "");
+}
+
+export function dayKeyFromAt(at: string | null | undefined): string | null {
+  if (!at) return null;
+  const key = at.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : null;
+}
+
+export function formatRouteDayLabel(dayKey: string | null, dayIndex: number): string {
+  if (!dayKey) return dayIndex >= 0 ? `Sin fecha` : "Sin fecha";
+  try {
+    const date = new Date(`${dayKey}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return `Día ${dayIndex + 1}`;
+    const formatted = new Intl.DateTimeFormat("es-ES", {
+      day: "numeric",
+      month: "short",
+    }).format(date);
+    return `Día ${dayIndex + 1} · ${formatted}`;
+  } catch {
+    return `Día ${dayIndex + 1}`;
+  }
+}
+
+function buildDayIndexMap(nodes: MapRouteNode[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const node of nodes) {
+    const key = dayKeyFromAt(node.at);
+    if (!key || map.has(key)) continue;
+    map.set(key, map.size);
+  }
+  return map;
+}
+
+export function buildDayLegend(nodes: MapRouteNode[]): RouteDayLegendEntry[] {
+  const dayIndexMap = buildDayIndexMap(nodes);
+  const entries: RouteDayLegendEntry[] = [...dayIndexMap.entries()].map(
+    ([dayKey, dayIndex]) => ({
+      dayKey,
+      dayIndex,
+      color: routeDayColor(dayIndex),
+      label: formatRouteDayLabel(dayKey, dayIndex),
+    })
+  );
+  if (nodes.some((n) => !dayKeyFromAt(n.at) && !isTransportKind(n.kind))) {
+    const dayIndex = dayIndexMap.size;
+    entries.push({
+      dayKey: null,
+      dayIndex,
+      color: routeDayColor(dayIndex),
+      label: "Sin fecha",
+    });
+  }
+  return entries;
+}
+
 function isTransportKind(kind: MapRouteNodeKind): boolean {
   return kind === "transport-out" || kind === "transport-in";
 }
 
 /** Split timeline into consecutive ground runs (between transport markers). */
 export function splitGroundRuns(nodes: MapRouteNode[]): MapRouteWaypoint[][] {
-  const runs: MapRouteWaypoint[][] = [];
+  return splitGroundRunsByDay(nodes).map((run) => run.waypoints);
+}
+
+/**
+ * Split ground timeline by calendar day (and transport markers).
+ * Prepends the previous ground point when the day changes so the line stays continuous.
+ */
+export function splitGroundRunsByDay(nodes: MapRouteNode[]): ColoredRouteRun[] {
+  const dayIndexMap = buildDayIndexMap(nodes);
+  const undatedIndex = dayIndexMap.size;
+  const runs: ColoredRouteRun[] = [];
   let current: MapRouteWaypoint[] = [];
+  let currentDayKey: string | null | undefined = undefined;
+  let lastGround: MapRouteWaypoint | null = null;
+
+  const metaFor = (dayKey: string | null) => {
+    const dayIndex = dayKey == null ? undatedIndex : (dayIndexMap.get(dayKey) ?? 0);
+    return {
+      dayKey,
+      dayIndex,
+      color: routeDayColor(dayIndex),
+      label: formatRouteDayLabel(dayKey, dayIndex < 0 ? 0 : dayIndex),
+    };
+  };
 
   const flush = () => {
-    if (current.length >= 2) runs.push(current);
+    if (current.length >= 2 && currentDayKey !== undefined) {
+      runs.push({
+        waypoints: current,
+        ...metaFor(currentDayKey),
+      });
+    }
     current = [];
   };
 
   for (const node of nodes) {
     if (isTransportKind(node.kind)) {
       flush();
+      currentDayKey = undefined;
+      lastGround = null;
       continue;
     }
-    current.push({ lng: node.lng, lat: node.lat });
+
+    const dayKey = dayKeyFromAt(node.at);
+    const point = { lng: node.lng, lat: node.lat };
+
+    if (currentDayKey !== undefined && dayKey !== currentDayKey) {
+      flush();
+      if (lastGround) current = [lastGround];
+    }
+
+    currentDayKey = dayKey;
+    current.push(point);
+    lastGround = point;
   }
   flush();
   return runs;
@@ -330,14 +474,14 @@ export function buildPathOverlay(
   return `path-${width}+${color}-${opacity}(${enc})`;
 }
 
-export function buildRoutePathOverlay(encodedPolyline: string): string {
-  return buildPathOverlay(encodedPolyline);
+export function buildRoutePathOverlay(encodedPolyline: string, color = "0a84ff"): string {
+  return buildPathOverlay(encodedPolyline, { color: routeColorHex(color) });
 }
 
 export function buildFlightPathOverlay(encodedPolyline: string): string {
   return buildPathOverlay(encodedPolyline, {
     width: 4,
-    color: "818cf8",
+    color: routeColorHex(FLIGHT_ROUTE_COLOR),
     opacity: 0.9,
   });
 }
@@ -351,11 +495,11 @@ export function buildRouteMarkerOverlays(waypoints: MapRouteWaypoint[]): string 
     `pin-s-b+e63946(${end.lng.toFixed(5)},${end.lat.toFixed(5)})`,
   ];
 
-  if (waypoints.length <= 8) {
-    for (let i = 1; i < waypoints.length - 1; i++) {
-      const p = waypoints[i]!;
-      markers.push(`pin-s+0a84ff(${p.lng.toFixed(5)},${p.lat.toFixed(5)})`);
-    }
+  const maxNumbered = Math.min(waypoints.length - 1, 9);
+  for (let i = 1; i < maxNumbered; i++) {
+    const p = waypoints[i]!;
+    const color = routeColorHex(routeDayColor(i - 1));
+    markers.push(`pin-s-${i}+${color}(${p.lng.toFixed(5)},${p.lat.toFixed(5)})`);
   }
 
   return markers.join(",");
@@ -363,10 +507,13 @@ export function buildRouteMarkerOverlays(waypoints: MapRouteWaypoint[]): string 
 
 export function buildSegmentedPathOverlays(
   roadPolylines: string[],
-  flightPolylines: string[]
+  flightPolylines: string[],
+  roadColors?: string[]
 ): string {
   return [
-    ...roadPolylines.map(buildRoutePathOverlay),
+    ...roadPolylines.map((polyline, i) =>
+      buildRoutePathOverlay(polyline, roadColors?.[i] ?? DAY_ROUTE_COLORS[0])
+    ),
     ...flightPolylines.map(buildFlightPathOverlay),
   ].join(",");
 }
@@ -383,9 +530,10 @@ export function buildMapboxStaticOverlays(
 export function buildMapboxStaticOverlaysSegmented(
   markerWaypoints: MapRouteWaypoint[],
   roadPolylines: string[],
-  flightPolylines: string[]
+  flightPolylines: string[],
+  roadColors?: string[]
 ): string {
-  const paths = buildSegmentedPathOverlays(roadPolylines, flightPolylines);
+  const paths = buildSegmentedPathOverlays(roadPolylines, flightPolylines, roadColors);
   const markers = buildRouteMarkerOverlays(markerWaypoints);
   return markers ? `${markers},${paths}` : paths;
 }
@@ -414,11 +562,22 @@ export function buildDirectRouteGeometry(
 ): SegmentedRouteGeometry | null {
   if (nodes.length < 2) return null;
 
-  const roadSegments = splitGroundRuns(nodes);
+  const dayRuns = splitGroundRunsByDay(nodes);
   const flightLegs = buildFlightLegs(nodes);
-  if (roadSegments.length === 0 && flightLegs.length === 0) return null;
+  if (dayRuns.length === 0 && flightLegs.length === 0) return null;
 
-  return { roadSegments, flightLegs, mode: "direct" };
+  return {
+    roadSegments: dayRuns.map((run) => ({
+      coordinates: run.waypoints,
+      dayKey: run.dayKey,
+      dayIndex: run.dayIndex,
+      color: run.color,
+      label: run.label,
+    })),
+    flightLegs,
+    dayLegend: buildDayLegend(nodes),
+    mode: "direct",
+  };
 }
 
 /** Ground runs via Directions; transport legs as straight encoded polylines. */
@@ -427,25 +586,28 @@ export async function resolveSegmentedRoute(
 ): Promise<SegmentedRouteResult | null> {
   if (nodes.length < 2) return null;
 
-  const groundRuns = splitGroundRuns(nodes);
+  const dayRuns = splitGroundRunsByDay(nodes);
   const flightLegs = buildFlightLegs(nodes);
 
-  const roadPolylines: string[] = [];
+  const coloredRoads: ColoredRoutePolyline[] = [];
   let usedDirections = false;
 
-  for (const run of groundRuns) {
-    const directions = await fetchMapboxDirectionsPolyline(run);
-    if (directions) {
-      roadPolylines.push(directions);
-      usedDirections = true;
-      continue;
-    }
-    roadPolylines.push(encodePolyline(run));
+  for (const run of dayRuns) {
+    const directions = await fetchMapboxDirectionsPolyline(run.waypoints);
+    const polyline = directions ?? encodePolyline(run.waypoints);
+    if (directions) usedDirections = true;
+    coloredRoads.push({
+      polyline,
+      dayKey: run.dayKey,
+      dayIndex: run.dayIndex,
+      color: run.color,
+      label: run.label,
+    });
   }
 
   const flightPolylines = flightLegs.map((leg) => encodePolyline(leg));
 
-  if (roadPolylines.length === 0 && flightPolylines.length === 0) return null;
+  if (coloredRoads.length === 0 && flightPolylines.length === 0) return null;
 
   const mode: MapRouteBuildMode =
     usedDirections && flightPolylines.length > 0
@@ -454,7 +616,13 @@ export async function resolveSegmentedRoute(
         ? "directions"
         : "direct";
 
-  return { roadPolylines, flightPolylines, mode };
+  return {
+    roadPolylines: coloredRoads.map((r) => r.polyline),
+    coloredRoads,
+    flightPolylines,
+    dayLegend: buildDayLegend(nodes),
+    mode,
+  };
 }
 
 /** Lat/lng segments for Leaflet or Mapbox GL (decoded from Directions polylines). */
@@ -465,8 +633,15 @@ export async function resolveSegmentedRouteGeometry(
   if (!segmented) return null;
 
   return {
-    roadSegments: segmented.roadPolylines.map((polyline) => decodePolyline(polyline)),
+    roadSegments: segmented.coloredRoads.map((road) => ({
+      coordinates: decodePolyline(road.polyline),
+      dayKey: road.dayKey,
+      dayIndex: road.dayIndex,
+      color: road.color,
+      label: road.label,
+    })),
     flightLegs: segmented.flightPolylines.map((polyline) => decodePolyline(polyline)),
+    dayLegend: segmented.dayLegend,
     mode: segmented.mode,
   };
 }

@@ -168,6 +168,7 @@ export async function preparePdfAssets(
     mapImagePath: mapResult?.relativePath ?? null,
     mapRouteMode: mapResult?.routeMode ?? null,
     mapPointCount: mapResult?.pointCount ?? 0,
+    mapDayLegend: mapResult?.dayLegend ?? [],
     workDir,
   };
 }

@@ -7,9 +7,10 @@ import {
   resolveSegmentedRoute,
   resolveSegmentedRouteGeometry,
   splitGroundRuns,
+  splitGroundRunsByDay,
 } from "../src/lib/mapbox-route.ts";
 
-// Trip without ida/vuelta: only ground photos + a place
+// Trip without ida/vuelta spanning two days
 const groundOnlyNodes = coalesceRouteNodes(
   buildRouteNodesFromPhotosAndPlaces(
     [
@@ -28,6 +29,11 @@ const groundOnlyNodes = coalesceRouteNodes(
         longitude: -3.71,
         exifDateTime: "2024-06-03T11:00:00Z",
       },
+      {
+        latitude: 40.41,
+        longitude: -3.705,
+        exifDateTime: "2024-06-03T16:00:00Z",
+      },
     ],
     [
       {
@@ -43,19 +49,26 @@ assert.equal(groundOnlyNodes.every((n) => n.kind === "ground"), true);
 assert.equal(buildFlightLegs(groundOnlyNodes).length, 0, "no flights without transport markers");
 
 const groundRuns = splitGroundRuns(groundOnlyNodes);
-assert.equal(groundRuns.length, 1, "single ground run for whole trip");
-assert.ok(groundRuns[0].length >= 3, "photos + place in one run");
+assert.equal(groundRuns.length, 2, "one ground run per calendar day");
+
+const dayRuns = splitGroundRunsByDay(groundOnlyNodes);
+assert.equal(dayRuns.length, 2, "two colored day runs");
+assert.notEqual(dayRuns[0].color, dayRuns[1].color, "days use different colors");
+assert.ok(dayRuns[0].label.includes("Día 1"));
+assert.ok(dayRuns[1].label.includes("Día 2"));
 
 const direct = buildDirectRouteGeometry(groundOnlyNodes);
 assert.ok(direct, "direct geometry without flights");
 assert.equal(direct.flightLegs.length, 0);
-assert.equal(direct.roadSegments.length, 1);
+assert.equal(direct.roadSegments.length, 2);
+assert.equal(direct.dayLegend.length, 2);
 assert.equal(direct.mode, "direct");
 
 const segmented = await resolveSegmentedRoute(groundOnlyNodes);
 assert.ok(segmented, "segmented route without flights");
 assert.equal(segmented.flightPolylines.length, 0);
-assert.equal(segmented.roadPolylines.length, 1);
+assert.equal(segmented.roadPolylines.length, 2);
+assert.equal(segmented.coloredRoads.length, 2);
 assert.ok(
   segmented.mode === "directions" || segmented.mode === "direct",
   `mode should be directions or direct, got ${segmented.mode}`
@@ -64,7 +77,8 @@ assert.ok(
 const geometry = await resolveSegmentedRouteGeometry(groundOnlyNodes);
 assert.ok(geometry, "decoded geometry");
 assert.equal(geometry.flightLegs.length, 0);
-assert.ok(geometry.roadSegments[0].length >= 2);
+assert.ok(geometry.roadSegments[0].coordinates.length >= 2);
+assert.ok(geometry.roadSegments[0].color);
 
 // Optional ida only (no vuelta): still get ground + one flight leg
 const idaOnly = coalesceRouteNodes(
@@ -98,6 +112,7 @@ assert.equal(idaGeometry.roadSegments.length, 1);
 
 console.log("map-routes ok", {
   groundOnly: segmented.mode,
+  dayColors: dayRuns.map((r) => r.color),
   idaOnly: idaGeometry.mode,
-  roadPoints: geometry.roadSegments[0].length,
+  roadPoints: geometry.roadSegments[0].coordinates.length,
 });

@@ -262,6 +262,29 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       color: ${t.textMuted};
     }
 
+    .map-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2.5mm 4mm;
+      margin-top: 3mm;
+      justify-content: center;
+    }
+
+    .map-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 1.5mm;
+      font-size: 7.5pt;
+      color: ${t.textMuted};
+    }
+
+    .map-legend-item i {
+      display: inline-block;
+      width: 6mm;
+      height: 1.2mm;
+      border-radius: 1mm;
+    }
+
     /* —— Day divider —— */
     .page-divider {
       display: table;

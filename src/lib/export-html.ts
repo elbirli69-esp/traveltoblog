@@ -10,11 +10,10 @@ import { getTypologyProfile } from "@/lib/export/typologies/registry";
 import { simplifyIfNeeded } from "@/lib/export/polyline";
 import { distanceMeters } from "@/lib/geo";
 import {
-  buildFlightLegs,
+  buildDirectRouteGeometry,
   buildRouteNodesFromPhotosAndPlaces,
   coalesceRouteNodes,
   resolveSegmentedRouteGeometry,
-  splitGroundRuns,
   type SegmentedRouteGeometry,
 } from "@/lib/mapbox-route";
 import { isValidGps, sanitizeGpsPair } from "@/lib/exif";
@@ -392,18 +391,28 @@ export async function prepareExportMapRouteGeometry(
 }
 
 type LeafletRouteSegments = {
-  roadSegments: [number, number][][];
+  roadSegments: {
+    coords: [number, number][];
+    color: string;
+    dayKey: string | null;
+    label: string;
+  }[];
   flightLegs: [number, number][][];
+  dayLegend: { dayKey: string | null; dayIndex: number; color: string; label: string }[];
 };
 
 function toLeafletRouteSegments(geometry: SegmentedRouteGeometry): LeafletRouteSegments {
   return {
-    roadSegments: geometry.roadSegments.map((seg) =>
-      seg.map((p) => [p.lat, p.lng] as [number, number])
-    ),
+    roadSegments: geometry.roadSegments.map((seg) => ({
+      coords: seg.coordinates.map((p) => [p.lat, p.lng] as [number, number]),
+      color: seg.color,
+      dayKey: seg.dayKey,
+      label: seg.label,
+    })),
     flightLegs: geometry.flightLegs.map((leg) =>
       leg.map((p) => [p.lat, p.lng] as [number, number])
     ),
+    dayLegend: geometry.dayLegend,
   };
 }
 
@@ -412,14 +421,9 @@ function fallbackLeafletRouteSegments(
   places: ExportPlace[]
 ): LeafletRouteSegments {
   const nodes = buildExportRouteNodes(photos, places);
-  return {
-    roadSegments: splitGroundRuns(nodes).map((run) =>
-      run.map((p) => [p.lat, p.lng] as [number, number])
-    ),
-    flightLegs: buildFlightLegs(nodes).map((leg) =>
-      leg.map((p) => [p.lat, p.lng] as [number, number])
-    ),
-  };
+  const direct = buildDirectRouteGeometry(nodes);
+  if (direct) return toLeafletRouteSegments(direct);
+  return { roadSegments: [], flightLegs: [], dayLegend: [] };
 }
 
 function resolveLeafletRouteSegments(
@@ -1175,7 +1179,23 @@ function buildMapSidebarHtml(dayGroups: ExportMapDayGroup[]): string {
   return `<aside class="map-sidebar" aria-label="Días del viaje">${items}</aside>`;
 }
 
-function buildFullscreenMapSection(dayGroups: ExportMapDayGroup[], mapLead: string): string {
+function buildMapDayLegendHtml(dayLegend: LeafletRouteSegments["dayLegend"]): string {
+  if (dayLegend.length === 0) {
+    return `<span><i class="legend-line"></i> Ruta por carretera</span>`;
+  }
+  return dayLegend
+    .map(
+      (entry) =>
+        `<span><i class="legend-line" style="background:${escapeHtml(entry.color)}"></i> ${escapeHtml(entry.label)}</span>`
+    )
+    .join("");
+}
+
+function buildFullscreenMapSection(
+  dayGroups: ExportMapDayGroup[],
+  mapLead: string,
+  dayLegend: LeafletRouteSegments["dayLegend"] = []
+): string {
   return `
 <section class="map-explorer reveal" id="mapa">
   <div class="map-explorer-header">
@@ -1184,9 +1204,9 @@ function buildFullscreenMapSection(dayGroups: ExportMapDayGroup[], mapLead: stri
       <p class="map-lead">${escapeHtml(mapLead)}</p>
     </div>
     <div class="map-legend">
-      <span><i class="legend-line"></i> Ruta por carretera</span>
+      ${buildMapDayLegendHtml(dayLegend)}
       <span><i class="legend-dash"></i> Vuelos</span>
-      <span>📍 Lugares</span>
+      <span>📍 Lugares · nº = orden</span>
     </div>
   </div>
   <div class="map-explorer-body">
@@ -1196,16 +1216,19 @@ function buildFullscreenMapSection(dayGroups: ExportMapDayGroup[], mapLead: stri
 </section>`;
 }
 
-function buildCompactMapSection(mapLead: string): string {
+function buildCompactMapSection(
+  mapLead: string,
+  dayLegend: LeafletRouteSegments["dayLegend"] = []
+): string {
   return `
 <section class="map-section reveal" id="mapa">
   <div class="map-section-inner">
     <h2>Mapa del viaje</h2>
     <p class="map-lead">${escapeHtml(mapLead)}</p>
     <div class="map-legend">
-      <span><i class="legend-line"></i> Ruta por carretera</span>
+      ${buildMapDayLegendHtml(dayLegend)}
       <span><i class="legend-dash"></i> Vuelo ida/vuelta</span>
-      <span>📍 Lugares</span>
+      <span>📍 Lugares · nº = orden</span>
     </div>
     <div id="map"></div>
   </div>
@@ -1303,8 +1326,10 @@ function buildMapScript(
 
     var roadSegments = ${roadData};
     roadSegments.forEach(function (seg) {
-      if (seg.length > 1) {
-        L.polyline(seg, { color: "#2dd4bf", weight: 4, opacity: 0.92, lineJoin: "round" }).addTo(map);
+      var coords = seg.coords || seg;
+      var color = seg.color || "#2dd4bf";
+      if (coords.length > 1) {
+        L.polyline(coords, { color: color, weight: 4, opacity: 0.92, lineJoin: "round" }).addTo(map);
       }
     });
 
@@ -1658,8 +1683,8 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide)}`
   const mapDayGroups = hasMap ? buildMapDayGroups(mapPoints) : [];
   const mapBlock = hasMap
     ? isVisual || isMagazine
-      ? buildFullscreenMapSection(mapDayGroups, mapLead)
-      : buildCompactMapSection(mapLead)
+      ? buildFullscreenMapSection(mapDayGroups, mapLead, routeSegments.dayLegend)
+      : buildCompactMapSection(mapLead, routeSegments.dayLegend)
     : "";
 
   const galleryBlock = isVisual || isMagazine
