@@ -258,8 +258,8 @@ export function buildFlightLegs(nodes: MapRouteNode[]): MapRouteWaypoint[][] {
   return legs;
 }
 
-/** Fetch road-following route geometry from Mapbox Directions API. */
-export async function fetchMapboxDirectionsPolyline(
+/** Fetch road-following route geometry from Mapbox Directions API (server-side). */
+export async function fetchMapboxDirectionsPolylineDirect(
   waypoints: MapRouteWaypoint[],
   profile: "driving" | "walking" = "driving"
 ): Promise<string | null> {
@@ -267,6 +267,8 @@ export async function fetchMapboxDirectionsPolyline(
   if (!token || waypoints.length < 2) return null;
 
   const simplified = simplifyWaypoints(waypoints);
+  if (simplified.length < 2) return null;
+
   const coordPath = simplified.map((p) => `${p.lng},${p.lat}`).join(";");
   const url =
     `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordPath}` +
@@ -284,6 +286,37 @@ export async function fetchMapboxDirectionsPolyline(
   } catch {
     return null;
   }
+}
+
+/**
+ * Fetch Directions polyline.
+ * In the browser uses `/api/mapbox/directions` (same-origin proxy).
+ * On the server calls Mapbox directly.
+ */
+export async function fetchMapboxDirectionsPolyline(
+  waypoints: MapRouteWaypoint[],
+  profile: "driving" | "walking" = "driving"
+): Promise<string | null> {
+  if (waypoints.length < 2) return null;
+  const simplified = simplifyWaypoints(waypoints);
+  if (simplified.length < 2) return null;
+
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/mapbox/directions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ waypoints: simplified, profile }),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { polyline?: string | null };
+      return data.polyline && data.polyline.length > 0 ? data.polyline : null;
+    } catch {
+      return null;
+    }
+  }
+
+  return fetchMapboxDirectionsPolylineDirect(simplified, profile);
 }
 
 export function buildPathOverlay(
@@ -373,6 +406,19 @@ export function buildMapboxStaticUrl(
 
   if (base.length > STATIC_URL_MAX_LEN) return null;
   return base;
+}
+
+/** Straight-line geometry (no Directions). Works with or without ida/vuelta. */
+export function buildDirectRouteGeometry(
+  nodes: MapRouteNode[]
+): SegmentedRouteGeometry | null {
+  if (nodes.length < 2) return null;
+
+  const roadSegments = splitGroundRuns(nodes);
+  const flightLegs = buildFlightLegs(nodes);
+  if (roadSegments.length === 0 && flightLegs.length === 0) return null;
+
+  return { roadSegments, flightLegs, mode: "direct" };
 }
 
 /** Ground runs via Directions; transport legs as straight encoded polylines. */

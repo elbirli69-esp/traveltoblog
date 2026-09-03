@@ -12,6 +12,7 @@ import {
 } from "@/lib/flights";
 import { computeMapCenter, placeEmoji, isGeolocationSecureContext } from "@/lib/places";
 import {
+  buildDirectRouteGeometry,
   buildRouteNodesFromPhotosAndPlaces,
   coalesceRouteNodes,
   resolveSegmentedRouteGeometry,
@@ -120,8 +121,13 @@ export default function TravelPlacesMap({
       return;
     }
 
+    // Show straight segments immediately (works without ida/vuelta).
+    const direct = buildDirectRouteGeometry(nodes);
+    setRouteGeometry(direct);
+
+    // Upgrade ground runs to road-following via same-origin Directions proxy.
     void resolveSegmentedRouteGeometry(nodes).then((geometry) => {
-      if (!cancelled) setRouteGeometry(geometry);
+      if (!cancelled && geometry) setRouteGeometry(geometry);
     });
 
     return () => {
