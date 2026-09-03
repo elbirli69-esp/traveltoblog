@@ -157,8 +157,14 @@ export default function PhotoGallery({
   pageRef.current = page;
 
   const loadPage = useCallback(
-    async (nextPage: number, focusId?: string | null) => {
-      setLoading(true);
+    async (
+      nextPage: number,
+      focusId?: string | null,
+      opts?: { silent?: boolean }
+    ) => {
+      // Silent refresh keeps the grid mounted so scroll / expanded photo stay put
+      // (e.g. after adding a note — otherwise height collapses to "Cargando…").
+      if (!opts?.silent) setLoading(true);
       setLoadError(null);
       try {
         const params = new URLSearchParams({
@@ -177,7 +183,7 @@ export default function PhotoGallery({
       } catch {
         setLoadError("No se pudieron cargar las fotos");
       } finally {
-        setLoading(false);
+        if (!opts?.silent) setLoading(false);
       }
     },
     [travelId]
@@ -189,7 +195,7 @@ export default function PhotoGallery({
 
   useEffect(() => {
     if (refreshSignal === 0) return;
-    void loadPage(pageRef.current);
+    void loadPage(pageRef.current, null, { silent: true });
   }, [refreshSignal, loadPage]);
 
   useEffect(() => {
