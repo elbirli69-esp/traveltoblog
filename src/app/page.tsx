@@ -1,6 +1,7 @@
 import Link from "next/link";
 import CreateTravelForm from "@/components/CreateTravelForm";
 import RecentTravels from "@/components/RecentTravels";
+import PendingShareBanner from "@/components/PendingShareBanner";
 
 export default function HomePage() {
   return (
@@ -14,6 +15,8 @@ export default function HomePage() {
           Diario colaborativo de viajes con fotos, notas e IA
         </p>
       </header>
+
+      <PendingShareBanner />
 
       <RecentTravels />
 
