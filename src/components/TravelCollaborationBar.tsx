@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   clearLocalTravelData,
@@ -15,6 +15,23 @@ interface TravelCollaborationBarProps {
   onTravelDeleted?: () => void;
 }
 
+const POLL_MS = 15_000;
+const APPLY_NOTICE_MS = 6_000;
+
+function isUserEditing(): boolean {
+  if (typeof document === "undefined") return false;
+  const el = document.activeElement as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  return el.isContentEditable;
+}
+
+function isRemoteNewer(remote: string, local: string | null): boolean {
+  if (!local) return false;
+  return new Date(remote).getTime() > new Date(local).getTime();
+}
+
 export default function TravelCollaborationBar({
   travelId,
   participantCount,
@@ -24,8 +41,18 @@ export default function TravelCollaborationBar({
 }: TravelCollaborationBarProps) {
   const router = useRouter();
   const [isOnline, setIsOnline] = useState(true);
-  const [remoteUpdatedAt, setRemoteUpdatedAt] = useState<string | null>(null);
-  const [hasRemoteUpdates, setHasRemoteUpdates] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [justSynced, setJustSynced] = useState(false);
+  const inFlightRef = useRef(false);
+  const lastAppliedRemoteRef = useRef<string | null>(null);
+  const noticeTimerRef = useRef<number | null>(null);
+  const editDeferRef = useRef<number | null>(null);
+  const onRefreshRef = useRef(onRefresh);
+  onRefreshRef.current = onRefresh;
+  const onTravelDeletedRef = useRef(onTravelDeleted);
+  onTravelDeletedRef.current = onTravelDeleted;
+  const lastUpdatedRef = useRef(lastUpdated);
+  lastUpdatedRef.current = lastUpdated;
 
   useEffect(() => {
     const syncOnline = () => setIsOnline(navigator.onLine);
@@ -38,50 +65,97 @@ export default function TravelCollaborationBar({
     };
   }, []);
 
-  const checkRemote = useCallback(async () => {
-    if (!navigator.onLine) return;
-    try {
-      const res = await fetch(`/api/travels/${travelId}?meta=1`, { cache: "no-store" });
-      if (isTravelNotFoundResponse(res)) {
-        await clearLocalTravelData(travelId);
-        onTravelDeleted?.();
-        router.replace("/");
-        return;
-      }
-      if (!res.ok) return;
-      const data = (await res.json()) as { updatedAt?: string };
-      if (!data.updatedAt) return;
+  const applyRemote = useCallback(() => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    setRefreshing(true);
+    onRefreshRef.current();
+    window.setTimeout(() => {
+      inFlightRef.current = false;
+      setRefreshing(false);
+    }, 800);
 
-      setRemoteUpdatedAt(data.updatedAt);
+    setJustSynced(true);
+    if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = window.setTimeout(() => {
+      setJustSynced(false);
+      noticeTimerRef.current = null;
+    }, APPLY_NOTICE_MS);
+  }, []);
 
-      if (lastUpdated && new Date(data.updatedAt).getTime() > new Date(lastUpdated).getTime()) {
-        setHasRemoteUpdates(true);
+  const checkRemote = useCallback(
+    async (opts?: { force?: boolean }) => {
+      if (!navigator.onLine) return;
+      try {
+        const res = await fetch(`/api/travels/${travelId}?meta=1`, { cache: "no-store" });
+        if (isTravelNotFoundResponse(res)) {
+          await clearLocalTravelData(travelId);
+          onTravelDeletedRef.current?.();
+          router.replace("/");
+          return;
+        }
+        if (!res.ok) return;
+        const data = (await res.json()) as { updatedAt?: string };
+        if (!data.updatedAt) return;
+
+        if (!isRemoteNewer(data.updatedAt, lastUpdatedRef.current)) return;
+        if (lastAppliedRemoteRef.current === data.updatedAt) return;
+
+        if (!opts?.force && isUserEditing()) {
+          if (editDeferRef.current) window.clearTimeout(editDeferRef.current);
+          editDeferRef.current = window.setTimeout(() => {
+            editDeferRef.current = null;
+            void checkRemote();
+          }, 4_000);
+          return;
+        }
+
+        lastAppliedRemoteRef.current = data.updatedAt;
+        applyRemote();
+      } catch {
+        /* ignore poll errors */
       }
-    } catch {
-      /* ignore poll errors */
-    }
-  }, [travelId, lastUpdated, onTravelDeleted, router]);
+    },
+    [travelId, router, applyRemote]
+  );
 
   useEffect(() => {
-    checkRemote();
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") checkRemote();
-    }, 30_000);
-    return () => clearInterval(interval);
+    lastAppliedRemoteRef.current = null;
+  }, [lastUpdated]);
+
+  useEffect(() => {
+    void checkRemote();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void checkRemote();
+    }, POLL_MS);
+    return () => window.clearInterval(interval);
   }, [checkRemote]);
 
   useEffect(() => {
-    if (lastUpdated && remoteUpdatedAt) {
-      setHasRemoteUpdates(
-        new Date(remoteUpdatedAt).getTime() > new Date(lastUpdated).getTime()
-      );
-    }
-  }, [lastUpdated, remoteUpdatedAt]);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void checkRemote();
+    };
+    const onOnline = () => void checkRemote();
+    const onFocus = () => void checkRemote();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [checkRemote]);
+
+  useEffect(() => {
+    return () => {
+      if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
+      if (editDeferRef.current) window.clearTimeout(editDeferRef.current);
+    };
+  }, []);
 
   const handleRefresh = () => {
-    setHasRemoteUpdates(false);
-    onRefresh();
-    checkRemote();
+    applyRemote();
   };
 
   const formattedUpdate =
@@ -107,16 +181,18 @@ export default function TravelCollaborationBar({
       </div>
 
       <div className="flex items-center gap-2">
-        {hasRemoteUpdates && isOnline && (
-          <span className="text-xs font-medium text-accent-cyan">Hay novedades del grupo</span>
+        {justSynced && isOnline && (
+          <span className="text-xs font-medium text-accent-cyan">
+            {refreshing ? "Actualizando el grupo…" : "Sincronizado con el grupo"}
+          </span>
         )}
         <button
           type="button"
           onClick={handleRefresh}
-          disabled={!isOnline}
+          disabled={!isOnline || refreshing}
           className="btn-secondary px-3 py-1 text-xs disabled:opacity-50"
         >
-          Actualizar
+          {refreshing ? "Actualizando…" : "Actualizar"}
         </button>
       </div>
     </div>
