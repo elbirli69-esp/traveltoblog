@@ -14,6 +14,23 @@ function parseJournalStyle(value: unknown): JournalStyle {
   return value === "factual" ? "factual" : "narrative";
 }
 
+async function persistGeneratedJournal(
+  travelId: string,
+  markdown: string,
+  previousMarkdown: string | null
+) {
+  await prisma.travel.update({
+    where: { id: travelId },
+    data: {
+      journalMarkdown: markdown,
+      journalGeneratedAt: new Date(),
+      ...(previousMarkdown?.trim()
+        ? { journalMarkdownPrevious: previousMarkdown }
+        : {}),
+    },
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -64,6 +81,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Viaje no encontrado" }, { status: 404 });
     }
 
+    const existingMarkdown = travel.journalMarkdown?.trim() || null;
     const ctx = buildEnhancedJournalContext(
       travel,
       travel.users,
@@ -81,23 +99,25 @@ export async function POST(request: NextRequest) {
           };
 
           try {
-            const markdown = await runJournalPipeline(ctx, send, journalStyle);
-            await prisma.travel.update({
-              where: { id: travelId },
-              data: {
-                journalMarkdown: markdown,
-                journalGeneratedAt: new Date(),
-              },
+            const markdown = await runJournalPipeline(ctx, send, journalStyle, {
+              existingMarkdown,
             });
+            await persistGeneratedJournal(travelId, markdown, existingMarkdown);
           } catch (error) {
             console.error("Journal pipeline stream", error);
-            if (isAiUnreachableError(error)) {
+            if (existingMarkdown) {
+              send({
+                step: "error",
+                status: "error",
+                message:
+                  error instanceof Error
+                    ? error.message
+                    : "No se pudo refinar la crónica; se mantiene el texto actual.",
+              });
+            } else if (isAiUnreachableError(error)) {
               try {
                 const markdown = buildLocalJournalMarkdown(ctx);
-                await prisma.travel.update({
-                  where: { id: travelId },
-                  data: { journalMarkdown: markdown, journalGeneratedAt: new Date() },
-                });
+                await persistGeneratedJournal(travelId, markdown, null);
                 send({
                   step: "complete",
                   status: "done",
@@ -134,21 +154,23 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const markdown = await runJournalPipeline(ctx, undefined, journalStyle);
-
-    await prisma.travel.update({
-      where: { id: travelId },
-      data: {
-        journalMarkdown: markdown,
-        journalGeneratedAt: new Date(),
-      },
+    const markdown = await runJournalPipeline(ctx, undefined, journalStyle, {
+      existingMarkdown,
     });
 
-    return NextResponse.json({ markdown });
+    await persistGeneratedJournal(travelId, markdown, existingMarkdown);
+
+    return NextResponse.json({
+      markdown,
+      refined: Boolean(existingMarkdown),
+    });
   } catch (error) {
     console.error("POST /api/generate-journal", error);
     return NextResponse.json(
-      { error: "Error al generar el diario" },
+      {
+        error:
+          error instanceof Error ? error.message : "Error al generar el diario",
+      },
       { status: 500 }
     );
   }
