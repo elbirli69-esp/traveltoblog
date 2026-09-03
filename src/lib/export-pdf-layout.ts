@@ -250,10 +250,16 @@ function renderMap(
   ).length;
   const routeHint =
     ctx.mapRouteMode === "segmented"
-      ? "Carretera entre paradas · vuelos en línea directa (ida/vuelta)"
+      ? "Color por día · carretera entre paradas · vuelos en línea directa"
       : ctx.mapRouteMode === "directions"
-        ? "Ruta por carretera (Mapbox Directions)"
-        : "Ruta cronológica entre paradas";
+        ? "Color por día · ruta por carretera"
+        : "Color por día · ruta cronológica";
+  const legend = (ctx.mapDayLegend ?? [])
+    .map(
+      (entry) =>
+        `<span class="map-legend-item"><i style="background:${escapeHtml(entry.color)}"></i>${escapeHtml(entry.label)}</span>`
+    )
+    .join("");
 
   return `
   <section class="page page-map" style="width:${width};height:${height}">
@@ -264,7 +270,8 @@ function renderMap(
         <div class="map-frame">
           <img src="${escapeHtml(ctx.mapImagePath)}" alt="Mapa de la ruta" />
         </div>
-        <p class="map-caption">${gpsCount} paradas · ${routeHint}</p>
+        ${legend ? `<div class="map-legend">${legend}</div>` : ""}
+        <p class="map-caption">${gpsCount} paradas · A→B · ${routeHint}</p>
       </div>
     </div>
     ${renderPageFooter(page.pageNumber, totalPages)}

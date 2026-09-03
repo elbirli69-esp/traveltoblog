@@ -28,6 +28,7 @@ export interface PdfMapBuildResult {
   relativePath: string;
   pointCount: number;
   routeMode: MapRouteBuildMode;
+  dayLegend: { dayKey: string | null; dayIndex: number; color: string; label: string }[];
 }
 
 function mapboxStylePath(styleUrl: string): string {
@@ -76,7 +77,8 @@ export function pdfMapPointsFromPhotosAndPlaces(
 export function buildPdfMapStaticUrl(
   markerWaypoints: { lng: number; lat: number }[],
   roadPolylines: string[],
-  flightPolylines: string[]
+  flightPolylines: string[],
+  roadColors?: string[]
 ): string | null {
   if (!MAPBOX_TOKEN) return null;
   if (roadPolylines.length === 0 && flightPolylines.length === 0) return null;
@@ -84,7 +86,8 @@ export function buildPdfMapStaticUrl(
   const overlays = buildMapboxStaticOverlaysSegmented(
     markerWaypoints,
     roadPolylines,
-    flightPolylines
+    flightPolylines,
+    roadColors
   );
   return buildMapboxStaticUrl(
     mapboxStylePath(MAPBOX_STYLE_LIGHT),
@@ -110,29 +113,43 @@ export async function fetchPdfMapImage(
     coalesceMapPoints(pdfMapPointsFromPhotosAndPlaces(photos, places))
   );
   const markerWaypoints = simplifyWaypoints(markerPoints, 8);
+  const roadColors = segmented.coloredRoads.map((r) => r.color);
 
   let url = buildPdfMapStaticUrl(
     markerWaypoints,
     segmented.roadPolylines,
-    segmented.flightPolylines
+    segmented.flightPolylines,
+    roadColors
   );
 
   if (!url && segmented.roadPolylines.length > 1) {
     const { encodePolyline } = await import("@/lib/mapbox-route");
     const merged = encodePolyline(markerWaypoints);
-    url = buildPdfMapStaticUrl(markerWaypoints, [merged], segmented.flightPolylines);
+    url = buildPdfMapStaticUrl(
+      markerWaypoints,
+      [merged],
+      segmented.flightPolylines,
+      roadColors.slice(0, 1)
+    );
   }
 
   if (!url) return null;
 
-  return downloadMapImage(url, workDir, nodes.length, segmented.mode);
+  return downloadMapImage(
+    url,
+    workDir,
+    nodes.length,
+    segmented.mode,
+    segmented.dayLegend
+  );
 }
 
 async function downloadMapImage(
   url: string,
   workDir: string,
   pointCount: number,
-  routeMode: MapRouteBuildMode
+  routeMode: MapRouteBuildMode,
+  dayLegend: PdfMapBuildResult["dayLegend"]
 ): Promise<PdfMapBuildResult | null> {
   try {
     const res = await fetch(url);
@@ -146,7 +163,7 @@ async function downloadMapImage(
     await mkdir(mapDir, { recursive: true });
     const relative = "map/route.png";
     await writeFile(path.join(workDir, relative), buffer);
-    return { relativePath: relative, pointCount, routeMode };
+    return { relativePath: relative, pointCount, routeMode, dayLegend };
   } catch (error) {
     console.warn("PDF map download failed", error);
     return null;
@@ -168,6 +185,7 @@ export async function buildPdfMapStaticUrlFromPhotos(
   return buildPdfMapStaticUrl(
     markerWaypoints,
     segmented.roadPolylines,
-    segmented.flightPolylines
+    segmented.flightPolylines,
+    segmented.coloredRoads.map((r) => r.color)
   );
 }

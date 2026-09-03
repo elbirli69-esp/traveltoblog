@@ -15,7 +15,10 @@ import {
   buildDirectRouteGeometry,
   buildRouteNodesFromPhotosAndPlaces,
   coalesceRouteNodes,
+  dayKeyFromAt,
   resolveSegmentedRouteGeometry,
+  routeDayColor,
+  type RouteDayLegendEntry,
   type SegmentedRouteGeometry,
 } from "@/lib/mapbox-route";
 import {
@@ -270,36 +273,47 @@ export default function TravelPlacesMap({
 
       const bounds: [number, number][] = [];
 
-      const roadCoords = (routeGeometry?.roadSegments ?? []).map((segment) =>
-        segment.map((point) => [point.lng, point.lat] as [number, number])
-      );
-      const flightCoords = (routeGeometry?.flightLegs ?? []).map((leg) =>
-        leg.map((point) => [point.lng, point.lat] as [number, number])
-      );
+      const roadFeatures = (routeGeometry?.roadSegments ?? [])
+        .filter((segment) => segment.coordinates.length > 1)
+        .map((segment) => ({
+          type: "Feature" as const,
+          properties: {
+            color: segment.color,
+            dayKey: segment.dayKey,
+            label: segment.label,
+          },
+          geometry: {
+            type: "LineString" as const,
+            coordinates: segment.coordinates.map(
+              (point) => [point.lng, point.lat] as [number, number]
+            ),
+          },
+        }));
 
-      const roadFeature = {
-        type: "Feature" as const,
-        properties: {},
-        geometry: {
-          type: "MultiLineString" as const,
-          coordinates: roadCoords.filter((segment) => segment.length > 1),
-        },
+      const roadCollection = {
+        type: "FeatureCollection" as const,
+        features: roadFeatures,
       };
+
       if (map.getSource("photo-route")) {
-        (map.getSource("photo-route") as GeoJSONSource).setData(roadFeature);
-      } else if (roadFeature.geometry.coordinates.length > 0) {
-        map.addSource("photo-route", { type: "geojson", data: roadFeature });
+        (map.getSource("photo-route") as GeoJSONSource).setData(roadCollection);
+      } else if (roadFeatures.length > 0) {
+        map.addSource("photo-route", { type: "geojson", data: roadCollection });
         map.addLayer({
           id: "photo-route-line",
           type: "line",
           source: "photo-route",
           paint: {
-            "line-color": accentMint,
-            "line-width": 3,
-            "line-opacity": 0.75,
+            "line-color": ["get", "color"],
+            "line-width": 3.5,
+            "line-opacity": 0.88,
           },
         });
       }
+
+      const flightCoords = (routeGeometry?.flightLegs ?? []).map((leg) =>
+        leg.map((point) => [point.lng, point.lat] as [number, number])
+      );
 
       const flightFeature = {
         type: "Feature" as const,
@@ -326,23 +340,42 @@ export default function TravelPlacesMap({
         });
       }
 
-      for (const photo of routePhotos) {
+      const chronoPhotos = [...routePhotos].sort((a, b) => {
+        const aAt = a.exifDateTime ? new Date(a.exifDateTime).getTime() : Number.POSITIVE_INFINITY;
+        const bAt = b.exifDateTime ? new Date(b.exifDateTime).getTime() : Number.POSITIVE_INFINITY;
+        return aAt - bAt;
+      });
+
+      chronoPhotos.forEach((photo, index) => {
         bounds.push([photo.longitude!, photo.latitude!]);
         const isSelected = photo.id === selectedPhotoId;
+        const dayKey = dayKeyFromAt(photo.exifDateTime);
+        const dayIndex = dayKey
+          ? (routeGeometry?.dayLegend.find((d) => d.dayKey === dayKey)?.dayIndex ?? index)
+          : index;
+        const pinColor = routeDayColor(dayIndex);
         const el = document.createElement("div");
-        el.style.width = isSelected ? "14px" : "10px";
-        el.style.height = isSelected ? "14px" : "10px";
+        el.textContent = String(index + 1);
+        el.style.width = isSelected ? "22px" : "20px";
+        el.style.height = isSelected ? "22px" : "20px";
         el.style.borderRadius = "50%";
-        el.style.background = isSelected ? accentMint : fgTertiary;
-        el.style.border = isSelected ? `2px solid ${accentCyan}` : `1px solid ${fgTertiary}`;
+        el.style.background = pinColor;
+        el.style.color = "#0b1220";
+        el.style.fontSize = "10px";
+        el.style.fontWeight = "700";
+        el.style.display = "flex";
+        el.style.alignItems = "center";
+        el.style.justifyContent = "center";
+        el.style.border = isSelected ? `2px solid ${accentCyan}` : "2px solid rgba(255,255,255,.85)";
+        el.style.boxShadow = "0 1px 4px rgba(0,0,0,.35)";
         el.style.cursor = "pointer";
-        el.title = "Ver foto";
+        el.title = `Parada ${index + 1}`;
         el.addEventListener("click", (ev) => {
           ev.stopPropagation();
           handlersRef.current.onPhotoClick?.(photo.id);
         });
         const popup = new mapboxgl.Popup({ offset: 12, closeButton: false }).setHTML(
-          `<div style="max-width:140px"><img src="${escapeHtml(photo.url)}" alt="" style="width:100%;border-radius:6px;display:block"/><small>${escapeHtml(photo.user.alias)}</small></div>`
+          `<div style="max-width:140px"><img src="${escapeHtml(photo.url)}" alt="" style="width:100%;border-radius:6px;display:block"/><small>#${index + 1} · ${escapeHtml(photo.user.alias)}</small></div>`
         );
         markersRef.current.push(
           new mapboxgl.Marker({ element: el })
@@ -350,8 +383,9 @@ export default function TravelPlacesMap({
             .setPopup(popup)
             .addTo(map)
         );
-      }
+      });
 
+      // Place markers continue below
       const addFlight = (
         leg: NonNullable<typeof outbound>,
         emoji: string
@@ -461,7 +495,7 @@ export default function TravelPlacesMap({
   }, []);
 
   const hasFlightLine = (routeGeometry?.flightLegs.length ?? 0) > 0;
-  const hasRoadRoute = (routeGeometry?.roadSegments.length ?? 0) > 0;
+  const dayLegend: RouteDayLegendEntry[] = routeGeometry?.dayLegend ?? [];
 
   if (mapError) {
     return (
@@ -485,7 +519,16 @@ export default function TravelPlacesMap({
           Cargando mapa Mapbox…
         </div>
       )}
-      <div className="pointer-events-none absolute left-3 top-3 space-y-1 rounded-lg border border-[var(--border)] bg-[var(--card-elevated)]/90 px-2.5 py-2 text-[10px] font-medium text-fg-secondary backdrop-blur-sm">
+      <div className="pointer-events-none absolute left-3 top-3 max-w-[200px] space-y-1 rounded-lg border border-[var(--border)] bg-[var(--card-elevated)]/90 px-2.5 py-2 text-[10px] font-medium text-fg-secondary backdrop-blur-sm">
+        {dayLegend.map((entry) => (
+          <span key={`${entry.dayKey ?? "none"}-${entry.dayIndex}`} className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-0.5 w-4 shrink-0 rounded-full"
+              style={{ background: entry.color }}
+            />
+            {entry.label}
+          </span>
+        ))}
         {outbound && (
           <span className="flex items-center gap-1">
             {FLIGHT_OUT_EMOJI} Ida{outbound.hasGps ? "" : " (sin GPS)"}
@@ -502,16 +545,12 @@ export default function TravelPlacesMap({
             Trayecto aéreo
           </span>
         )}
-        {hasRoadRoute && (
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-0.5 w-4 border-t-2 border-[var(--accent-mint)]" />
-            Ruta por carretera
-          </span>
-        )}
         {routePhotos.length > 0 && (
           <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-full bg-[var(--foreground-tertiary)]" />
-            Fotos GPS (toca)
+            <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--accent-mint)] text-[8px] font-bold text-[var(--background)]">
+              1
+            </span>
+            Paradas en orden
           </span>
         )}
       </div>

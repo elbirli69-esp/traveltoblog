@@ -52,6 +52,8 @@ export interface PdfExportContext {
   /** How the PDF route line was generated. */
   mapRouteMode?: "segmented" | "directions" | "direct" | null;
   mapPointCount?: number;
+  /** Day color legend for the map page. */
+  mapDayLegend?: { dayKey: string | null; dayIndex: number; color: string; label: string }[];
 }
 
 export const PDF_TEMPLATES: { id: PdfTemplate; name: string; description: string }[] = [
