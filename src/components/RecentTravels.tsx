@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   getSessionFromStorage,
   saveSession,
@@ -11,6 +12,7 @@ import {
   pruneDeletedTravelHistory,
   TRAVEL_DELETED_EVENT,
 } from "@/lib/travel-local-cleanup";
+import { peekPendingShareId, travelUrlWithShare } from "@/lib/share-client";
 
 function formatWhen(iso: string): string {
   const date = new Date(iso);
@@ -24,8 +26,10 @@ function formatWhen(iso: string): string {
 }
 
 export default function RecentTravels() {
+  const router = useRouter();
   const [history, setHistory] = useState<TravelHistoryEntry[]>([]);
   const [activeTravelId, setActiveTravelId] = useState<string | null>(null);
+  const [pendingShare, setPendingShare] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,6 +39,7 @@ export default function RecentTravels() {
       if (cancelled) return;
       setHistory(pruned);
       setActiveTravelId(getSessionFromStorage()?.travelId ?? null);
+      setPendingShare(Boolean(peekPendingShareId()));
     };
 
     void refresh();
@@ -67,6 +72,9 @@ export default function RecentTravels() {
       travelId: entry.travelId,
     });
     setActiveTravelId(entry.travelId);
+    if (pendingShare) {
+      router.push(travelUrlWithShare(entry.travelId));
+    }
   };
 
   return (
@@ -101,8 +109,11 @@ export default function RecentTravels() {
                 ) : (
                   <span className="tag-mint px-3 py-1.5 text-xs">Sesión activa</span>
                 )}
-                <Link href={`/travel/${entry.travelId}`} className="btn-primary px-3 py-1.5 text-xs">
-                  Abrir
+                <Link
+                  href={travelUrlWithShare(entry.travelId)}
+                  className="btn-primary px-3 py-1.5 text-xs"
+                >
+                  {pendingShare ? "Añadir fotos" : "Abrir"}
                 </Link>
               </div>
             </li>
