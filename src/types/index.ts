@@ -29,7 +29,15 @@ export interface TravelDateRange {
   end: Date | null;
 }
 
-export interface PendingPhoto {
+export interface PendingSyncMeta {
+  /** Default pending when missing (older IndexedDB rows). */
+  syncStatus?: "pending" | "error";
+  lastError?: string | null;
+  attempts?: number;
+  lastAttemptAt?: string | null;
+}
+
+export interface PendingPhoto extends PendingSyncMeta {
   localId: string;
   travelId: string;
   userId: string;
@@ -51,7 +59,7 @@ export interface PendingPhoto {
   createdAt: string;
 }
 
-export interface PendingNote {
+export interface PendingNote extends PendingSyncMeta {
   localId: string;
   travelId: string;
   userId: string;
@@ -66,7 +74,7 @@ export interface PendingNote {
   createdAt: string;
 }
 
-export interface PendingPlace {
+export interface PendingPlace extends PendingSyncMeta {
   localId: string;
   travelId: string;
   userId: string;
