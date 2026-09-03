@@ -5,7 +5,11 @@ import {
   Output,
   canEncodeVideo,
 } from "mediabunny";
-import type { ReelFramePlan, ReelManifest } from "@/lib/export-reel";
+import type {
+  ReelFramePlan,
+  ReelManifest,
+  ReelTransition,
+} from "@/lib/export-reel";
 import { REEL_BITRATE, REEL_HEIGHT, REEL_WIDTH } from "@/lib/export-reel";
 import { projectMapPoint, type ReelMapPlan } from "@/lib/export-reel-map";
 
@@ -96,82 +100,62 @@ function drawScrim(ctx: CanvasRenderingContext2D, width: number, height: number)
   ctx.fillRect(0, 0, width, height);
 }
 
-function paintPhotoClip(
+function roundedRectPath(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
-  frameMeta: ReelFramePlan,
-  t: number,
-  index: number,
-  width: number,
-  height: number,
-  map: ReelMapPlan | null,
-  mapImg: HTMLImageElement | null
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
 ) {
-  const zoomFrom = frameMeta.kenBurns === "in" ? 1.0 : 1.12;
-  const zoomTo = frameMeta.kenBurns === "in" ? 1.1 : 1.0;
-  const scale = zoomFrom + (zoomTo - zoomFrom) * easeInOut(t);
-  const panX = frameMeta.kenBurns === "in" ? -0.07 + t * 0.14 : 0.07 - t * 0.14;
-  const panY = index % 2 === 0 ? -0.05 + t * 0.09 : 0.05 - t * 0.09;
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
 
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, width, height);
-
-  if (frameMeta.layout === "mapInset" && map && mapImg) {
-    // Photo top 62%, mini-map bottom strip with highlight
-    const photoH = Math.round(height * 0.62);
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, width, photoH);
-    ctx.clip();
-    drawCover(ctx, img, width, photoH, scale, panX, panY);
-    ctx.restore();
-
-    const mapTop = photoH;
-    const mapH = height - photoH;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, mapTop, width, mapH);
-    ctx.clip();
-    ctx.translate(0, mapTop);
-    drawCover(ctx, mapImg, width, mapH, 1.05, 0, 0);
-    // Reproject roughly into the strip: use full canvas projection then scale Y
-    paintMapOverlays(
-      ctx,
-      map,
-      1,
-      width,
-      mapH,
-      { scaleY: mapH / height, offsetY: 0 },
-      true
-    );
-    ctx.restore();
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
-    ctx.fillRect(0, photoH - 2, width, 4);
-  } else {
-    drawCover(ctx, img, width, height, scale, panX, panY);
-  }
-
-  drawScrim(ctx, width, height);
-
-  const overlayLines: { text: string; size: number; weight?: string }[] = [];
-  if (frameMeta.caption) {
-    overlayLines.push({ text: frameMeta.caption, size: 34, weight: "600" });
-  } else if (frameMeta.placeName) {
-    overlayLines.push({ text: frameMeta.placeName, size: 40, weight: "700" });
-  }
-  if (frameMeta.dayNote) {
-    overlayLines.push({ text: frameMeta.dayNote, size: 26, weight: "500" });
-  } else if (frameMeta.dayLabel && !frameMeta.caption) {
-    overlayLines.push({ text: frameMeta.dayLabel, size: 26, weight: "500" });
-  } else if (frameMeta.placeName && frameMeta.caption) {
-    overlayLines.push({ text: frameMeta.placeName, size: 24, weight: "500" });
-  }
-
-  if (overlayLines.length > 0) {
-    const y =
-      frameMeta.layout === "mapInset" ? height * 0.52 : height * 0.76;
-    drawSafeText(ctx, overlayLines.slice(0, 3), y, width);
-  }
+function drawPlacePinBadge(
+  ctx: CanvasRenderingContext2D,
+  placeName: string,
+  x: number,
+  y: number,
+  pulse = 1
+) {
+  ctx.save();
+  const label = placeName.length > 28 ? `${placeName.slice(0, 27)}…` : placeName;
+  ctx.font = `700 28px "Segoe UI", system-ui, sans-serif`;
+  const tw = Math.min(ctx.measureText(label).width + 56, 520);
+  const th = 52;
+  const r = 18;
+  // Drop pin head
+  ctx.fillStyle = "#f97316";
+  ctx.beginPath();
+  ctx.arc(x, y - 18 * pulse, 14 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x, y - 4 * pulse);
+  ctx.lineTo(x - 9 * pulse, y + 16 * pulse);
+  ctx.lineTo(x + 9 * pulse, y + 16 * pulse);
+  ctx.closePath();
+  ctx.fill();
+  // Label chip
+  const bx = x - tw / 2;
+  const by = y + 28;
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  roundedRectPath(ctx, bx, by, tw, th, r);
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, x, by + th / 2, tw - 24);
+  ctx.restore();
 }
 
 function paintMapOverlays(
@@ -181,7 +165,8 @@ function paintMapOverlays(
   width: number,
   height: number,
   transform?: { scaleY: number; offsetY: number },
-  allVisible = false
+  allVisible = false,
+  highlight?: { lat: number; lng: number; label?: string | null } | null
 ) {
   const scaleY = transform?.scaleY ?? 1;
   const offsetY = transform?.offsetY ?? 0;
@@ -202,10 +187,16 @@ function paintMapOverlays(
       map.imageWidth,
       map.imageHeight
     );
-    return { x: pt.x, y: pt.y * scaleY + offsetY, label: p.label, kind: p.kind };
+    return {
+      x: pt.x,
+      y: pt.y * scaleY + offsetY,
+      label: p.label,
+      kind: p.kind,
+      lat: p.lat,
+      lng: p.lng,
+    };
   });
 
-  // Route polyline up to routeT
   if (projected.length >= 2) {
     const routeCount = Math.max(
       2,
@@ -221,7 +212,6 @@ function paintMapOverlays(
       if (i === 0) ctx.moveTo(p.x, p.y);
       else ctx.lineTo(p.x, p.y);
     }
-    // Partial segment
     if (routeCount < projected.length && routeT < 1) {
       const segT = routeT * (projected.length - 1) - (routeCount - 1);
       const a = projected[routeCount - 1];
@@ -233,23 +223,240 @@ function paintMapOverlays(
     ctx.stroke();
   }
 
+  let highlightIdx = -1;
+  if (highlight) {
+    let best = Infinity;
+    for (let i = 0; i < projected.length; i++) {
+      const p = projected[i]!;
+      const d =
+        Math.hypot(p.lat - highlight.lat, p.lng - highlight.lng) * 111_000;
+      if (d < best) {
+        best = d;
+        highlightIdx = i;
+      }
+    }
+    if (best > 2500) highlightIdx = -1;
+  }
+
   for (let i = 0; i < visible; i++) {
-    const p = projected[i];
+    const p = projected[i]!;
     const appear =
       allVisible || progress * count >= i + 0.15
         ? 1
         : Math.max(0, (progress * count - i) / 0.15);
+    const isHi = i === highlightIdx;
     ctx.save();
     ctx.globalAlpha = appear;
-    ctx.fillStyle = p.kind === "place" ? "#f97316" : "#06b6d4";
+    ctx.fillStyle = isHi ? "#f97316" : p.kind === "place" ? "#f97316" : "#06b6d4";
     ctx.beginPath();
-    ctx.arc(p.x, p.y, p.kind === "place" ? 14 : 11, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, isHi ? 18 : p.kind === "place" ? 14 : 11, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 3;
+    ctx.lineWidth = isHi ? 4 : 3;
     ctx.stroke();
+    if (isHi && (highlight?.label || p.label)) {
+      const label = highlight?.label || p.label || "";
+      ctx.font = `700 22px "Segoe UI", system-ui, sans-serif`;
+      const tw = Math.min(ctx.measureText(label).width + 28, width * 0.7);
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect(p.x - tw / 2, p.y + 22, tw, 36);
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, p.x, p.y + 40, tw - 12);
+    }
     ctx.restore();
   }
+
+  // If no nearby map point, still drop a pin at projected highlight coords
+  if (highlight && highlightIdx < 0) {
+    const pt = projectMapPoint(
+      highlight.lat,
+      highlight.lng,
+      map.center,
+      map.zoom,
+      width,
+      height / scaleY,
+      map.imageWidth,
+      map.imageHeight
+    );
+    const x = pt.x;
+    const y = pt.y * scaleY + offsetY;
+    ctx.fillStyle = "#f97316";
+    ctx.beginPath();
+    ctx.arc(x, y, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    if (highlight.label) {
+      ctx.font = `700 22px "Segoe UI", system-ui, sans-serif`;
+      const tw = Math.min(ctx.measureText(highlight.label).width + 28, width * 0.7);
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect(x - tw / 2, y + 22, tw, 36);
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(highlight.label, x, y + 40, tw - 12);
+    }
+  }
+}
+
+function paintPhotoClip(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  frameMeta: ReelFramePlan,
+  t: number,
+  index: number,
+  width: number,
+  height: number,
+  map: ReelMapPlan | null,
+  mapImg: HTMLImageElement | null
+) {
+  const zoomFrom = frameMeta.kenBurns === "in" ? 1.0 : 1.12;
+  const zoomTo = frameMeta.kenBurns === "in" ? 1.1 : 1.0;
+  const scale = zoomFrom + (zoomTo - zoomFrom) * easeInOut(t);
+  const panX = frameMeta.kenBurns === "in" ? -0.07 + t * 0.14 : 0.07 - t * 0.14;
+  const panY = index % 2 === 0 ? -0.05 + t * 0.09 : 0.05 - t * 0.09;
+  const treatment = frameMeta.treatment ?? "clean";
+  const highlight =
+    frameMeta.latitude != null && frameMeta.longitude != null
+      ? {
+          lat: frameMeta.latitude,
+          lng: frameMeta.longitude,
+          label: frameMeta.placeName,
+        }
+      : null;
+
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, width, height);
+
+  if (treatment === "mapFocus" && map && mapImg) {
+    const pulse = 1 + Math.sin(t * Math.PI * 2) * 0.06;
+    drawCover(ctx, mapImg, width, height, 1.08 + t * 0.04, 0, 0);
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
+    ctx.fillRect(0, 0, width, height);
+    paintMapOverlays(ctx, map, 1, width, height, undefined, true, highlight);
+    // Small photo inset
+    const insetW = Math.round(width * 0.38);
+    const insetH = Math.round(height * 0.22);
+    const insetX = width - insetW - 36;
+    const insetY = height - insetH - 120;
+    ctx.save();
+    roundedRectPath(ctx, insetX, insetY, insetW, insetH, 18);
+    ctx.clip();
+    drawCover(ctx, img, insetW, insetH, 1.05, 0, 0);
+    ctx.restore();
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    ctx.lineWidth = 4;
+    roundedRectPath(ctx, insetX, insetY, insetW, insetH, 18);
+    ctx.stroke();
+    if (frameMeta.placeName) {
+      drawPlacePinBadge(ctx, frameMeta.placeName, width / 2, height * 0.22, pulse);
+    }
+    if (frameMeta.dayLabel) {
+      drawSafeText(
+        ctx,
+        [{ text: frameMeta.dayLabel, size: 24, weight: "500" }],
+        height * 0.34,
+        width
+      );
+    }
+    return;
+  }
+
+  if (treatment === "mapInset" && map && mapImg) {
+    const photoH = Math.round(height * 0.58);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, width, photoH);
+    ctx.clip();
+    drawCover(ctx, img, width, photoH, scale, panX, panY);
+    ctx.restore();
+
+    const mapTop = photoH;
+    const mapH = height - photoH;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, mapTop, width, mapH);
+    ctx.clip();
+    ctx.translate(0, mapTop);
+    drawCover(ctx, mapImg, width, mapH, 1.05, 0, 0);
+    paintMapOverlays(
+      ctx,
+      map,
+      1,
+      width,
+      mapH,
+      { scaleY: mapH / height, offsetY: 0 },
+      true,
+      highlight
+    );
+    ctx.restore();
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillRect(0, photoH - 2, width, 4);
+    drawScrim(ctx, width, photoH);
+    const lines: { text: string; size: number; weight?: string }[] = [];
+    if (frameMeta.placeName) {
+      lines.push({ text: frameMeta.placeName, size: 36, weight: "700" });
+    }
+    if (frameMeta.caption) {
+      lines.push({ text: frameMeta.caption, size: 26, weight: "500" });
+    } else if (frameMeta.dayLabel) {
+      lines.push({ text: frameMeta.dayLabel, size: 24, weight: "500" });
+    }
+    if (lines.length) drawSafeText(ctx, lines.slice(0, 2), photoH * 0.78, width);
+    return;
+  }
+
+  drawCover(ctx, img, width, height, scale, panX, panY);
+  drawScrim(ctx, width, height);
+
+  if (treatment === "placePin" && frameMeta.placeName) {
+    const pulse = 1 + Math.sin(easeInOut(t) * Math.PI) * 0.08;
+    drawPlacePinBadge(ctx, frameMeta.placeName, width / 2, height * 0.72, pulse);
+    if (frameMeta.dayNote) {
+      drawSafeText(
+        ctx,
+        [{ text: frameMeta.dayNote, size: 24, weight: "500" }],
+        height * 0.86,
+        width
+      );
+    } else if (frameMeta.caption) {
+      drawSafeText(
+        ctx,
+        [{ text: frameMeta.caption, size: 26, weight: "500" }],
+        height * 0.86,
+        width
+      );
+    }
+    return;
+  }
+
+  if (treatment === "story") {
+    const lines: { text: string; size: number; weight?: string }[] = [];
+    if (frameMeta.caption) {
+      lines.push({ text: frameMeta.caption, size: 36, weight: "600" });
+    }
+    if (frameMeta.dayNote) {
+      lines.push({ text: frameMeta.dayNote, size: 26, weight: "500" });
+    } else if (frameMeta.placeName) {
+      lines.push({ text: frameMeta.placeName, size: 26, weight: "500" });
+    } else if (frameMeta.dayLabel) {
+      lines.push({ text: frameMeta.dayLabel, size: 24, weight: "500" });
+    }
+    if (lines.length) drawSafeText(ctx, lines.slice(0, 3), height * 0.74, width);
+    return;
+  }
+
+  // clean — minimal chrome
+  const lines: { text: string; size: number; weight?: string }[] = [];
+  if (frameMeta.dayNote) {
+    lines.push({ text: frameMeta.dayNote, size: 26, weight: "500" });
+  } else if (frameMeta.dayLabel && index % 2 === 0) {
+    lines.push({ text: frameMeta.dayLabel, size: 24, weight: "500" });
+  }
+  if (lines.length) drawSafeText(ctx, lines, height * 0.82, width);
 }
 
 function paintMapIntro(
@@ -267,7 +474,6 @@ function paintMapIntro(
   ctx.fillStyle = "#0b1020";
   ctx.fillRect(0, 0, width, height);
   drawCover(ctx, mapImg, width, height, scale, 0, 0.02 * (1 - t));
-  // Darken for text readability
   ctx.fillStyle = `rgba(0,0,0,${0.18 + t * 0.12})`;
   ctx.fillRect(0, 0, width, height);
   paintMapOverlays(ctx, map, progress, width, height);
@@ -285,6 +491,56 @@ function paintMapIntro(
     height * 0.18,
     width
   );
+}
+
+function blendTransition(
+  ctx: CanvasRenderingContext2D,
+  layerA: HTMLCanvasElement,
+  layerB: HTMLCanvasElement,
+  u: number,
+  type: ReelTransition,
+  width: number,
+  height: number
+) {
+  const e = easeInOut(u);
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, width, height);
+
+  if (type === "slideLeft") {
+    ctx.drawImage(layerA, -e * width, 0);
+    ctx.drawImage(layerB, (1 - e) * width, 0);
+    return;
+  }
+  if (type === "slideUp") {
+    ctx.drawImage(layerA, 0, -e * height);
+    ctx.drawImage(layerB, 0, (1 - e) * height);
+    return;
+  }
+  if (type === "zoomSoft") {
+    ctx.save();
+    ctx.globalAlpha = 1 - e;
+    const sA = 1 + e * 0.08;
+    ctx.translate(width / 2, height / 2);
+    ctx.scale(sA, sA);
+    ctx.drawImage(layerA, -width / 2, -height / 2);
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = e;
+    const sB = 1.06 - e * 0.06;
+    ctx.translate(width / 2, height / 2);
+    ctx.scale(sB, sB);
+    ctx.drawImage(layerB, -width / 2, -height / 2);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  // fade
+  ctx.globalAlpha = 1 - e;
+  ctx.drawImage(layerA, 0, 0);
+  ctx.globalAlpha = e;
+  ctx.drawImage(layerB, 0, 0);
+  ctx.globalAlpha = 1;
 }
 
 async function canvasToJpegBlob(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -507,6 +763,7 @@ export async function encodeInstagramReelMp4(
 
     if (nextImg && nextMeta) {
       const fadeFrames = Math.max(1, Math.round(crossfade * fps));
+      const transition = meta.transitionOut ?? "fade";
       for (let f = 0; f < fadeFrames; f++) {
         const u = fadeFrames === 1 ? 1 : f / (fadeFrames - 1);
         const tA = 0.85 + u * 0.15;
@@ -523,13 +780,7 @@ export async function encodeInstagramReelMp4(
           mapPlan,
           mapImg
         );
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, width, height);
-        ctx.globalAlpha = 1 - u;
-        ctx.drawImage(layerA, 0, 0);
-        ctx.globalAlpha = u;
-        ctx.drawImage(layerB, 0, 0);
-        ctx.globalAlpha = 1;
+        blendTransition(ctx, layerA, layerB, u, transition, width, height);
         const timestamp = frameIndex / fps;
         await videoSource.add(timestamp, 1 / fps);
         reportEncode(`Transición ${i + 1}→${i + 2}`);

@@ -80,6 +80,16 @@ export interface ReelDayNoteInput {
 
 export type ReelLayout = "full" | "mapInset";
 
+/** Visual treatment per clip — rotated for variety. */
+export type ReelTreatment =
+  | "clean"
+  | "story"
+  | "placePin"
+  | "mapInset"
+  | "mapFocus";
+
+export type ReelTransition = "fade" | "slideLeft" | "slideUp" | "zoomSoft";
+
 export interface ReelFramePlan {
   photoId: string;
   dayKey: string | null;
@@ -94,7 +104,11 @@ export interface ReelFramePlan {
   hero: boolean;
   durationSeconds: number;
   layout: ReelLayout;
+  treatment: ReelTreatment;
+  transitionOut: ReelTransition;
   kenBurns: "in" | "out";
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface ReelManifest {
@@ -149,8 +163,85 @@ export function resolveFrameCaption(photo: ReelPhotoInput): string | null {
   return null;
 }
 
+const TRANSITIONS: ReelTransition[] = ["fade", "slideLeft", "slideUp", "zoomSoft"];
+
+function pickTransition(index: number, treatment: ReelTreatment): ReelTransition {
+  if (treatment === "mapFocus" || treatment === "mapInset") {
+    return index % 2 === 0 ? "slideUp" : "fade";
+  }
+  if (treatment === "story") return index % 2 === 0 ? "fade" : "zoomSoft";
+  return TRANSITIONS[index % TRANSITIONS.length]!;
+}
+
 /**
- * Pick a diverse set of stills for an Instagram-ready travel reel.
+ * Assign varied treatments so consecutive clips don't look the same.
+ * Prefers story when caption exists, map/pin when place+GPS, clean otherwise.
+ */
+export function assignReelTreatments(
+  frames: ReelFramePlan[],
+  hasMap: boolean
+): ReelFramePlan[] {
+  const recent: ReelTreatment[] = [];
+  let mapFocusUsed = 0;
+
+  return frames.map((frame, i) => {
+    const hasCaption = Boolean(frame.caption);
+    const hasPlace = Boolean(frame.placeName);
+    const hasGps = frame.latitude != null && frame.longitude != null;
+    const canMap = hasMap && hasGps;
+
+    const candidates: ReelTreatment[] = [];
+    if (hasCaption) candidates.push("story");
+    if (hasPlace) candidates.push("placePin");
+    if (canMap && hasPlace) {
+      candidates.push("mapInset");
+      if (mapFocusUsed < Math.ceil(frames.length / 5) + 1) {
+        candidates.push("mapFocus");
+      }
+    }
+    if (!hasCaption || i % 4 === 3) candidates.push("clean");
+    if (candidates.length === 0) candidates.push("clean");
+
+    const preferred = candidates.filter((t) => !recent.includes(t));
+    const pool = preferred.length > 0 ? preferred : candidates;
+    // Bias: rotate through pool by index for stability in tests
+    let treatment = pool[i % pool.length]!;
+    // Prefer story on captioned heroes
+    if (frame.hero && hasCaption && !recent.includes("story")) {
+      treatment = "story";
+    }
+    // Prefer mapFocus occasionally for place+GPS
+    if (
+      canMap &&
+      hasPlace &&
+      i > 0 &&
+      i % 5 === 3 &&
+      !recent.includes("mapFocus")
+    ) {
+      treatment = "mapFocus";
+    }
+
+    if (treatment === "mapFocus") mapFocusUsed += 1;
+
+    recent.push(treatment);
+    if (recent.length > 2) recent.shift();
+
+    return {
+      ...frame,
+      treatment,
+      layout: treatment === "mapInset" ? "mapInset" : "full",
+      transitionOut: pickTransition(i, treatment),
+      durationSeconds:
+        treatment === "mapFocus"
+          ? Math.max(frame.durationSeconds, frame.hero ? 2.1 : 1.45)
+          : treatment === "story"
+            ? Math.max(frame.durationSeconds, frame.hero ? 2.0 : 1.25)
+            : frame.durationSeconds,
+    };
+  });
+}
+
+/**
  * Prefers non-transport photos with places/captions, spreads across days.
  */
 export function selectReelFrames(
@@ -223,7 +314,6 @@ export function selectReelFrames(
       const caption = resolveFrameCaption(candidate);
       let dayNote: string | null = null;
       if (realDay && notesByDay.has(realDay) && !usedDayNotes.has(realDay)) {
-        // Attach day note every ~2–3 clips max once per day
         if (frames.length % 3 === 1 || !caption) {
           dayNote = notesByDay.get(realDay) ?? null;
           usedDayNotes.add(realDay);
@@ -240,13 +330,16 @@ export function selectReelFrames(
         hero: false,
         durationSeconds: 1.2,
         layout: "full",
+        treatment: "clean",
+        transitionOut: "fade",
         kenBurns: frames.length % 2 === 0 ? "in" : "out",
+        latitude: candidate.latitude ?? null,
+        longitude: candidate.longitude ?? null,
       });
     }
     pass += 1;
   }
 
-  // Mark 2–3 hero beats (prefer captioned / place frames, spaced out)
   const heroBudget = durationSeconds <= 15 ? 2 : 3;
   const heroCandidates = frames
     .map((f, i) => ({
@@ -272,13 +365,14 @@ export function selectReelFrames(
     if (frames.length > 4) heroes.add(Math.floor(frames.length / 2));
   }
 
-  return frames.map((f, i) => ({
+  const withHeroes = frames.map((f, i) => ({
     ...f,
     hero: heroes.has(i),
     durationSeconds: heroes.has(i) ? 2.0 : 1.15,
-    layout: hasMap && i > 0 && i % 3 === 2 ? "mapInset" : "full",
-    kenBurns: i % 2 === 0 ? "in" : "out",
+    kenBurns: (i % 2 === 0 ? "in" : "out") as "in" | "out",
   }));
+
+  return assignReelTreatments(withHeroes, hasMap);
 }
 
 function collectMapPoints(
@@ -402,6 +496,7 @@ export function reelReadmeText(manifest: ReelManifest): string {
   const mapLine = manifest.map
     ? `- Incluye intro con mapa (${manifest.map.points.length} puntos GPS/lugares).\n`
     : "";
+  const treatments = [...new Set(manifest.frames.map((f) => f.treatment))].join(", ");
   return `Reel listo para Instagram
 ===========================
 
@@ -409,6 +504,7 @@ Archivo: instagram-reel.mp4
 Formato: MP4 H.264, ${manifest.width}×${manifest.height} (9:16), ${manifest.fps} fps
 Duración objetivo: ~${manifest.durationSeconds} s
 Audio: sin pista (añade música trending en Instagram → más alcance)
+Tratamientos visuales: ${treatments || "variados"}
 ${mapLine}
 Cómo publicar
 -------------

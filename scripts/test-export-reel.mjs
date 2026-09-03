@@ -34,6 +34,12 @@ assert.ok(!frames.some((f) => f.photoId === "p0"));
 assert.ok(frames.some((f) => f.caption));
 assert.ok(frames.some((f) => f.hero));
 assert.ok(frames.some((f) => f.durationSeconds >= 1.6));
+assert.ok(frames.every((f) => f.treatment && f.transitionOut));
+const treatmentSet = new Set(frames.map((f) => f.treatment));
+assert.ok(
+  treatmentSet.size >= 2,
+  `expected treatment variety, got ${[...treatmentSet].join(",")}`
+);
 
 const manifest = buildReelManifest({
   title: "Lisboa",
@@ -78,5 +84,7 @@ console.log("export-reel ok", {
   frames15: manifest.frames.length,
   mapPoints: manifest.map?.points.length,
   heroes: manifest.frames.filter((f) => f.hero).length,
+  treatments: [...new Set(manifest.frames.map((f) => f.treatment))],
+  transitions: [...new Set(manifest.frames.map((f) => f.transitionOut))],
   avgClip: manifest.secondsPerClip.toFixed(2),
 });
