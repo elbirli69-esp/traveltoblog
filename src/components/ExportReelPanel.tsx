@@ -123,8 +123,9 @@ export default function ExportReelPanel({
       <p className="text-sm text-fg-secondary">
         Genera un MP4 vertical 1080×1920 (9:16, H.264, sin audio) pensado para publicarlo
         directamente como <span className="font-medium text-fg">Reel de Instagram</span>.
-        Alterna clips con descripción, pin de lugar, mapa con pin activo y fotos limpias, con
-        transiciones variadas. ZIP aparte del HTML; la música se añade en Instagram.
+        Alterna clips con descripción tipográfica (cita / tarjeta / acento), pin de lugar, mapa
+        con pin activo y fotos limpias, con transiciones variadas. ZIP aparte del HTML; la música
+        se añade en Instagram.
       </p>
 
       {photoCount > 0 && (

@@ -34,12 +34,16 @@ assert.ok(!frames.some((f) => f.photoId === "p0"));
 assert.ok(frames.some((f) => f.caption));
 assert.ok(frames.some((f) => f.hero));
 assert.ok(frames.some((f) => f.durationSeconds >= 1.6));
-assert.ok(frames.every((f) => f.treatment && f.transitionOut));
+assert.ok(frames.every((f) => f.treatment && f.transitionOut && f.captionStyle));
 const treatmentSet = new Set(frames.map((f) => f.treatment));
 assert.ok(
   treatmentSet.size >= 2,
   `expected treatment variety, got ${[...treatmentSet].join(",")}`
 );
+const captionStyles = new Set(
+  frames.filter((f) => f.treatment === "story").map((f) => f.captionStyle)
+);
+assert.ok(captionStyles.size >= 1);
 
 const manifest = buildReelManifest({
   title: "Lisboa",

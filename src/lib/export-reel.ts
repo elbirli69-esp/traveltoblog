@@ -90,6 +90,9 @@ export type ReelTreatment =
 
 export type ReelTransition = "fade" | "slideLeft" | "slideUp" | "zoomSoft";
 
+/** How story captions are painted (not subtitle bars). */
+export type ReelCaptionStyle = "pullQuote" | "glassCard" | "sideAccent";
+
 export interface ReelFramePlan {
   photoId: string;
   dayKey: string | null;
@@ -106,6 +109,7 @@ export interface ReelFramePlan {
   layout: ReelLayout;
   treatment: ReelTreatment;
   transitionOut: ReelTransition;
+  captionStyle: ReelCaptionStyle;
   kenBurns: "in" | "out";
   latitude: number | null;
   longitude: number | null;
@@ -164,6 +168,7 @@ export function resolveFrameCaption(photo: ReelPhotoInput): string | null {
 }
 
 const TRANSITIONS: ReelTransition[] = ["fade", "slideLeft", "slideUp", "zoomSoft"];
+const CAPTION_STYLES: ReelCaptionStyle[] = ["pullQuote", "glassCard", "sideAccent"];
 
 function pickTransition(index: number, treatment: ReelTreatment): ReelTransition {
   if (treatment === "mapFocus" || treatment === "mapInset") {
@@ -171,6 +176,10 @@ function pickTransition(index: number, treatment: ReelTreatment): ReelTransition
   }
   if (treatment === "story") return index % 2 === 0 ? "fade" : "zoomSoft";
   return TRANSITIONS[index % TRANSITIONS.length]!;
+}
+
+function pickCaptionStyle(index: number): ReelCaptionStyle {
+  return CAPTION_STYLES[index % CAPTION_STYLES.length]!;
 }
 
 /**
@@ -231,6 +240,7 @@ export function assignReelTreatments(
       treatment,
       layout: treatment === "mapInset" ? "mapInset" : "full",
       transitionOut: pickTransition(i, treatment),
+      captionStyle: pickCaptionStyle(i + (treatment === "story" ? 1 : 0)),
       durationSeconds:
         treatment === "mapFocus"
           ? Math.max(frame.durationSeconds, frame.hero ? 2.1 : 1.45)
@@ -332,6 +342,7 @@ export function selectReelFrames(
         layout: "full",
         treatment: "clean",
         transitionOut: "fade",
+        captionStyle: "glassCard",
         kenBurns: frames.length % 2 === 0 ? "in" : "out",
         latitude: candidate.latitude ?? null,
         longitude: candidate.longitude ?? null,

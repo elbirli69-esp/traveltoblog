@@ -6,6 +6,7 @@ import {
   canEncodeVideo,
 } from "mediabunny";
 import type {
+  ReelCaptionStyle,
   ReelFramePlan,
   ReelManifest,
   ReelTransition,
@@ -87,6 +88,171 @@ function drawSafeText(
     ctx.fillText(line.text, width / 2, cursorY, width - padX * 2 - 24);
     cursorY += th + 10;
   }
+  ctx.restore();
+}
+
+function wrapCanvasText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines = 4
+): string[] {
+  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (words.length === 0) return [];
+  const lines: string[] = [];
+  let current = "";
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i]!;
+    const next = current ? `${current} ${word}` : word;
+    if (ctx.measureText(next).width <= maxWidth) {
+      current = next;
+      continue;
+    }
+    if (current) lines.push(current);
+    current = word;
+    if (lines.length >= maxLines - 1) {
+      const rest = [word, ...words.slice(i + 1)].join(" ");
+      let last = rest;
+      while (last.length > 1 && ctx.measureText(`${last}…`).width > maxWidth) {
+        last = last.slice(0, -1).trimEnd();
+      }
+      lines.push(ctx.measureText(rest).width <= maxWidth ? rest : `${last}…`);
+      return lines.slice(0, maxLines);
+    }
+  }
+  if (current) lines.push(current);
+  return lines.slice(0, maxLines);
+}
+
+/** Visual story caption — pull quote / glass card / side accent (not subtitle bars). */
+function drawStoryCaption(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  style: ReelCaptionStyle,
+  width: number,
+  height: number,
+  t: number,
+  meta?: string | null
+) {
+  const appear = Math.min(1, easeInOut(Math.max(0, (t - 0.08) / 0.35)));
+  if (appear <= 0.01 || !text.trim()) return;
+
+  ctx.save();
+  ctx.globalAlpha = appear;
+
+  if (style === "pullQuote") {
+    const boxW = width * 0.82;
+    const x = (width - boxW) / 2;
+    const y = height * 0.58;
+    ctx.fillStyle = "rgba(255,255,255,0.14)";
+    ctx.font = `700 120px Georgia, "Times New Roman", serif`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("“", x - 8, y - 28);
+
+    ctx.font = `600 42px Georgia, "Times New Roman", serif`;
+    const lines = wrapCanvasText(ctx, text, boxW - 24, 4);
+    let cursorY = y + 70;
+    ctx.fillStyle = "#fff";
+    ctx.shadowColor = "rgba(0,0,0,0.55)";
+    ctx.shadowBlur = 18;
+    for (const line of lines) {
+      ctx.fillText(line, x + 12, cursorY, boxW - 24);
+      cursorY += 52;
+    }
+    ctx.shadowBlur = 0;
+    // Accent underline
+    ctx.fillStyle = "#2dd4bf";
+    ctx.fillRect(x + 12, cursorY + 10, Math.min(120, boxW * 0.28), 5);
+    if (meta) {
+      ctx.font = `600 22px "Segoe UI", system-ui, sans-serif`;
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.fillText(meta, x + 12, cursorY + 36, boxW - 24);
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (style === "sideAccent") {
+    const pad = Math.round(width * 0.08);
+    const boxW = width * 0.78;
+    const x = pad;
+    const y = height * 0.62;
+    ctx.font = `600 38px "Segoe UI", system-ui, sans-serif`;
+    const lines = wrapCanvasText(ctx, text, boxW - 40, 4);
+    const blockH = lines.length * 48 + (meta ? 40 : 16);
+    // Accent bar
+    ctx.fillStyle = "#f97316";
+    ctx.fillRect(x, y, 8, blockH);
+    // Soft panel
+    ctx.fillStyle = "rgba(0,0,0,0.42)";
+    roundedRectPath(ctx, x + 18, y - 8, boxW, blockH + 16, 16);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    let cursorY = y + 8;
+    for (const line of lines) {
+      ctx.fillText(line, x + 36, cursorY, boxW - 48);
+      cursorY += 48;
+    }
+    if (meta) {
+      ctx.font = `600 22px "Segoe UI", system-ui, sans-serif`;
+      ctx.fillStyle = "#2dd4bf";
+      ctx.fillText(meta, x + 36, cursorY + 4, boxW - 48);
+    }
+    ctx.restore();
+    return;
+  }
+
+  // glassCard
+  const boxW = width * 0.86;
+  const x = (width - boxW) / 2;
+  ctx.font = `600 36px "Segoe UI", system-ui, sans-serif`;
+  const lines = wrapCanvasText(ctx, text, boxW - 64, 4);
+  const blockH = lines.length * 46 + (meta ? 44 : 28);
+  const y = height * 0.68 - blockH / 2;
+  ctx.fillStyle = "rgba(12, 18, 32, 0.62)";
+  roundedRectPath(ctx, x, y, boxW, blockH, 28);
+  ctx.fill();
+  // Top accent
+  ctx.fillStyle = "#2dd4bf";
+  roundedRectPath(ctx, x + 28, y + 14, 64, 6, 3);
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  let cursorY = y + 36;
+  for (const line of lines) {
+    ctx.fillText(line, x + 32, cursorY, boxW - 64);
+    cursorY += 46;
+  }
+  if (meta) {
+    ctx.font = `600 22px "Segoe UI", system-ui, sans-serif`;
+    ctx.fillStyle = "rgba(255,255,255,0.8)";
+    ctx.fillText(meta, x + 32, cursorY + 2, boxW - 64);
+  }
+  ctx.restore();
+}
+
+function drawMetaChip(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  width: number,
+  y: number
+) {
+  if (!text.trim()) return;
+  ctx.save();
+  ctx.font = `600 22px "Segoe UI", system-ui, sans-serif`;
+  const tw = Math.min(ctx.measureText(text).width + 36, width * 0.7);
+  const x = (width - tw) / 2;
+  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  roundedRectPath(ctx, x, y - 18, tw, 36, 18);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, width / 2, y, tw - 20);
   ctx.restore();
 }
 
@@ -396,16 +562,21 @@ function paintPhotoClip(
     ctx.fillStyle = "rgba(255,255,255,0.35)";
     ctx.fillRect(0, photoH - 2, width, 4);
     drawScrim(ctx, width, photoH);
-    const lines: { text: string; size: number; weight?: string }[] = [];
-    if (frameMeta.placeName) {
-      lines.push({ text: frameMeta.placeName, size: 36, weight: "700" });
-    }
     if (frameMeta.caption) {
-      lines.push({ text: frameMeta.caption, size: 26, weight: "500" });
+      drawStoryCaption(
+        ctx,
+        frameMeta.caption,
+        frameMeta.captionStyle ?? "glassCard",
+        width,
+        photoH + mapH * 0.15,
+        t,
+        frameMeta.placeName
+      );
+    } else if (frameMeta.placeName) {
+      drawPlacePinBadge(ctx, frameMeta.placeName, width / 2, photoH * 0.78, 1);
     } else if (frameMeta.dayLabel) {
-      lines.push({ text: frameMeta.dayLabel, size: 24, weight: "500" });
+      drawMetaChip(ctx, frameMeta.dayLabel, width, photoH * 0.82);
     }
-    if (lines.length) drawSafeText(ctx, lines.slice(0, 2), photoH * 0.78, width);
     return;
   }
 
@@ -414,49 +585,47 @@ function paintPhotoClip(
 
   if (treatment === "placePin" && frameMeta.placeName) {
     const pulse = 1 + Math.sin(easeInOut(t) * Math.PI) * 0.08;
-    drawPlacePinBadge(ctx, frameMeta.placeName, width / 2, height * 0.72, pulse);
-    if (frameMeta.dayNote) {
-      drawSafeText(
+    drawPlacePinBadge(ctx, frameMeta.placeName, width / 2, height * 0.7, pulse);
+    if (frameMeta.caption) {
+      drawStoryCaption(
         ctx,
-        [{ text: frameMeta.dayNote, size: 24, weight: "500" }],
-        height * 0.86,
-        width
+        frameMeta.caption,
+        "sideAccent",
+        width,
+        height,
+        t,
+        frameMeta.dayLabel
       );
-    } else if (frameMeta.caption) {
-      drawSafeText(
-        ctx,
-        [{ text: frameMeta.caption, size: 26, weight: "500" }],
-        height * 0.86,
-        width
-      );
+    } else if (frameMeta.dayNote) {
+      drawStoryCaption(ctx, frameMeta.dayNote, "sideAccent", width, height, t, null);
     }
     return;
   }
 
   if (treatment === "story") {
-    const lines: { text: string; size: number; weight?: string }[] = [];
-    if (frameMeta.caption) {
-      lines.push({ text: frameMeta.caption, size: 36, weight: "600" });
-    }
-    if (frameMeta.dayNote) {
-      lines.push({ text: frameMeta.dayNote, size: 26, weight: "500" });
+    const body = frameMeta.caption || frameMeta.dayNote;
+    if (body) {
+      drawStoryCaption(
+        ctx,
+        body,
+        frameMeta.captionStyle ?? "pullQuote",
+        width,
+        height,
+        t,
+        frameMeta.placeName || frameMeta.dayLabel
+      );
     } else if (frameMeta.placeName) {
-      lines.push({ text: frameMeta.placeName, size: 26, weight: "500" });
-    } else if (frameMeta.dayLabel) {
-      lines.push({ text: frameMeta.dayLabel, size: 24, weight: "500" });
+      drawPlacePinBadge(ctx, frameMeta.placeName, width / 2, height * 0.72, 1);
     }
-    if (lines.length) drawSafeText(ctx, lines.slice(0, 3), height * 0.74, width);
     return;
   }
 
   // clean — minimal chrome
-  const lines: { text: string; size: number; weight?: string }[] = [];
   if (frameMeta.dayNote) {
-    lines.push({ text: frameMeta.dayNote, size: 26, weight: "500" });
+    drawStoryCaption(ctx, frameMeta.dayNote, "sideAccent", width, height, t, null);
   } else if (frameMeta.dayLabel && index % 2 === 0) {
-    lines.push({ text: frameMeta.dayLabel, size: 24, weight: "500" });
+    drawMetaChip(ctx, frameMeta.dayLabel, width, height * 0.84);
   }
-  if (lines.length) drawSafeText(ctx, lines, height * 0.82, width);
 }
 
 function paintMapIntro(
