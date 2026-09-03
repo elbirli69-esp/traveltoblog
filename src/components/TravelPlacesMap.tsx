@@ -266,10 +266,8 @@ export default function TravelPlacesMap({
     void loadMapbox().then((mapboxgl) => {
       clearMarkers();
 
-      const accentMint = getThemeColor("--accent-mint", "#3dffb8");
       const accentBlue = getThemeColor("--accent-blue", "#4dabff");
       const accentCyan = getThemeColor("--accent-cyan", "#5de4ff");
-      const fgTertiary = getThemeColor("--foreground-tertiary", "#6b7a8f");
 
       const bounds: [number, number][] = [];
 
