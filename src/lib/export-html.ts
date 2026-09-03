@@ -9,7 +9,14 @@ import { resolveTravelType } from "@/lib/export/detect-travel-type";
 import { getTypologyProfile } from "@/lib/export/typologies/registry";
 import { simplifyIfNeeded } from "@/lib/export/polyline";
 import { distanceMeters } from "@/lib/geo";
-import { buildTravelRoutePoints } from "@/lib/places";
+import {
+  buildFlightLegs,
+  buildRouteNodesFromPhotosAndPlaces,
+  coalesceRouteNodes,
+  resolveSegmentedRouteGeometry,
+  splitGroundRuns,
+  type SegmentedRouteGeometry,
+} from "@/lib/mapbox-route";
 import { isValidGps, sanitizeGpsPair } from "@/lib/exif";
 import { compareHighlightScore } from "@/lib/highlight-score";
 import { resolvePhotoExifFromFile } from "@/lib/photo-gps";
@@ -112,6 +119,8 @@ export interface ExportContext {
   template: ExportTemplateId;
   typology?: ExportTypologyId;
   includeGpsTrail?: boolean;
+  /** Precomputed road + flight segments for the interactive map (from Mapbox Directions). */
+  mapRouteGeometry?: SegmentedRouteGeometry;
 }
 
 export function getExportMapPhotos(ctx: ExportContext): ExportPhoto[] {
@@ -343,30 +352,85 @@ export function mergeMapPoints(photos: ExportPhoto[], places: ExportPlace[]): Ma
   ];
 }
 
-function buildCombinedRouteCoords(
+function buildExportRouteNodes(
   photos: ExportPhoto[],
   places: ExportPlace[]
-): [number, number][] {
-  const route = buildTravelRoutePoints(
-    photos.map((p) => ({
-      id: p.id,
-      latitude: p.latitude,
-      longitude: p.longitude,
-      exifDateTime: p.exifDateTime?.toISOString() ?? null,
-      isTransportStart: p.isTransportStart,
-      isTransportEnd: p.isTransportEnd,
-    })),
-    places
-      .filter((p) => isValidGps(p.latitude, p.longitude))
-      .map((p) => ({
-        id: p.id ?? p.name,
+) {
+  return coalesceRouteNodes(
+    buildRouteNodesFromPhotosAndPlaces(
+      photos.map((p) => ({
         latitude: p.latitude,
         longitude: p.longitude,
-        visitedAt: p.visitedAt ? String(p.visitedAt) : null,
-      }))
+        exifDateTime: p.exifDateTime,
+        isTransportStart: p.isTransportStart,
+        isTransportEnd: p.isTransportEnd,
+      })),
+      places
+        .filter((p) => isValidGps(p.latitude, p.longitude))
+        .map((p) => ({
+          latitude: p.latitude,
+          longitude: p.longitude,
+          visitedAt: p.visitedAt ?? null,
+        }))
+    )
   );
+}
 
-  return route.map((p) => [p.latitude, p.longitude]);
+export async function prepareExportMapRouteGeometry(
+  ctx: ExportContext
+): Promise<ExportContext> {
+  if (!exportHasMap(ctx)) return ctx;
+
+  const mapPhotos = getExportMapPhotos(ctx);
+  const nodes = buildExportRouteNodes(mapPhotos, ctx.places ?? []);
+  if (nodes.length < 2) return ctx;
+
+  const geometry = await resolveSegmentedRouteGeometry(nodes);
+  if (!geometry) return ctx;
+
+  return { ...ctx, mapRouteGeometry: geometry };
+}
+
+type LeafletRouteSegments = {
+  roadSegments: [number, number][][];
+  flightLegs: [number, number][][];
+};
+
+function toLeafletRouteSegments(geometry: SegmentedRouteGeometry): LeafletRouteSegments {
+  return {
+    roadSegments: geometry.roadSegments.map((seg) =>
+      seg.map((p) => [p.lat, p.lng] as [number, number])
+    ),
+    flightLegs: geometry.flightLegs.map((leg) =>
+      leg.map((p) => [p.lat, p.lng] as [number, number])
+    ),
+  };
+}
+
+function fallbackLeafletRouteSegments(
+  photos: ExportPhoto[],
+  places: ExportPlace[]
+): LeafletRouteSegments {
+  const nodes = buildExportRouteNodes(photos, places);
+  return {
+    roadSegments: splitGroundRuns(nodes).map((run) =>
+      run.map((p) => [p.lat, p.lng] as [number, number])
+    ),
+    flightLegs: buildFlightLegs(nodes).map((leg) =>
+      leg.map((p) => [p.lat, p.lng] as [number, number])
+    ),
+  };
+}
+
+function resolveLeafletRouteSegments(
+  ctx: ExportContext,
+  photos: ExportPhoto[],
+  places: ExportPlace[]
+): LeafletRouteSegments {
+  if (ctx.mapRouteGeometry) {
+    return toLeafletRouteSegments(ctx.mapRouteGeometry);
+  }
+  return fallbackLeafletRouteSegments(photos, places);
 }
 
 function rewriteMarkdownImagePaths(markdown: string, urlToLocal: Map<string, string>): string {
@@ -1120,8 +1184,7 @@ function buildFullscreenMapSection(dayGroups: ExportMapDayGroup[], mapLead: stri
       <p class="map-lead">${escapeHtml(mapLead)}</p>
     </div>
     <div class="map-legend">
-      <span><i class="legend-line"></i> Ruta</span>
-      <span><i class="legend-route"></i> Recorrido</span>
+      <span><i class="legend-line"></i> Ruta por carretera</span>
       <span><i class="legend-dash"></i> Vuelos</span>
       <span>📍 Lugares</span>
     </div>
@@ -1140,8 +1203,7 @@ function buildCompactMapSection(mapLead: string): string {
     <h2>Mapa del viaje</h2>
     <p class="map-lead">${escapeHtml(mapLead)}</p>
     <div class="map-legend">
-      <span><i class="legend-line"></i> Ruta fotos</span>
-      <span><i class="legend-route"></i> Recorrido</span>
+      <span><i class="legend-line"></i> Ruta por carretera</span>
       <span><i class="legend-dash"></i> Vuelo ida/vuelta</span>
       <span>📍 Lugares</span>
     </div>
@@ -1153,13 +1215,14 @@ function buildCompactMapSection(mapLead: string): string {
 function buildMapScript(
   points: MapPoint[],
   dayGroups: ExportMapDayGroup[],
-  routeCoords: [number, number][],
+  routeSegments: LeafletRouteSegments,
   assetPrefix = "assets/images",
   template: ExportTemplateId = "magazine"
 ): string {
   const data = JSON.stringify(points);
   const groupsData = JSON.stringify(dayGroups);
-  const routeData = JSON.stringify(routeCoords);
+  const roadData = JSON.stringify(routeSegments.roadSegments);
+  const flightData = JSON.stringify(routeSegments.flightLegs);
   const tileLayerScript = buildMapTileLayerScript(template);
   const dayColors = ["#2dd4bf", "#f59e0b", "#818cf8", "#f472b6", "#34d399", "#fb7185"];
 
@@ -1238,6 +1301,33 @@ function buildMapScript(
     var photoPoints = points.filter(function (p) { return p.kind === "photo"; });
     fitAllPoints();
 
+    var roadSegments = ${roadData};
+    roadSegments.forEach(function (seg) {
+      if (seg.length > 1) {
+        L.polyline(seg, { color: "#2dd4bf", weight: 4, opacity: 0.92, lineJoin: "round" }).addTo(map);
+      }
+    });
+
+    var flightLegs = ${flightData};
+    flightLegs.forEach(function (leg) {
+      if (leg.length > 1) {
+        L.polyline(leg, { color: "#818cf8", weight: 3, opacity: 0.85, dashArray: "10 8", lineJoin: "round" }).addTo(map);
+      }
+    });
+
+    if (roadSegments.length === 0 && photoPoints.length > 1) {
+      L.polyline(photoPoints.map(function (p) { return [p.lat, p.lng]; }), { color: "#2dd4bf", weight: 4, opacity: 0.9, lineJoin: "round" }).addTo(map);
+    }
+
+    if (flightLegs.length === 0 && flightOut && flightIn) {
+      L.polyline(
+        [[flightOut.lat, flightOut.lng], [flightIn.lat, flightIn.lng]],
+        { color: "#818cf8", weight: 3, opacity: 0.85, dashArray: "10 8" }
+      ).addTo(map);
+    }
+
+    var photoIndex = 0;
+    var markersByDay = {};
     var dayColorIndex = {};
     var colorIdx = 0;
     photoPoints.forEach(function (p) {
@@ -1246,38 +1336,6 @@ function buildMapScript(
         colorIdx += 1;
       }
     });
-
-    Object.keys(dayColorIndex).forEach(function (dayKey) {
-      var seg = photoPoints.filter(function (p) { return p.dayKey === dayKey; }).map(function (p) { return [p.lat, p.lng]; });
-      if (seg.length > 1) {
-        L.polyline(seg, { color: dayColorIndex[dayKey], weight: 4, opacity: 0.92, lineJoin: "round" }).addTo(map);
-      }
-    });
-
-    if (photoPoints.length > 1 && Object.keys(dayColorIndex).length === 0) {
-      L.polyline(photoPoints.map(function (p) { return [p.lat, p.lng]; }), { color: "#2dd4bf", weight: 4, opacity: 0.9, lineJoin: "round" }).addTo(map);
-    }
-
-    if (flightOut && flightIn) {
-      L.polyline(
-        [[flightOut.lat, flightOut.lng], [flightIn.lat, flightIn.lng]],
-        { color: "#818cf8", weight: 3, opacity: 0.85, dashArray: "10 8" }
-      ).addTo(map);
-    }
-
-    var routeCoords = ${routeData};
-    if (routeCoords.length > 1) {
-      L.polyline(routeCoords, {
-        color: "#f59e0b",
-        weight: 3,
-        opacity: 0.78,
-        dashArray: "8 6",
-        lineJoin: "round"
-      }).addTo(map);
-    }
-
-    var photoIndex = 0;
-    var markersByDay = {};
 
     function buildPopup(p) {
       var popup = "<strong>" + escapeHtml(p.label) + "</strong>";
@@ -1519,7 +1577,7 @@ export function buildExportHtml(ctx: ExportContext): string {
   const markdown = travel.journalMarkdown ?? buildFallbackMarkdown(travel, users, photos);
   const mapPhotos = getExportMapPhotos(ctx);
   const mapPoints = mergeMapPoints(mapPhotos, places);
-  const routeCoords = buildCombinedRouteCoords(mapPhotos, places);
+  const routeSegments = resolveLeafletRouteSegments(ctx, mapPhotos, places);
   const mapPhotoGpsCount = mapPhotos.filter((p) => isValidGps(p.latitude, p.longitude)).length;
   const selectedPhotoGpsCount = photos.filter((p) => isValidGps(p.latitude, p.longitude)).length;
   const placeCount = places.filter((p) => isValidGps(p.latitude, p.longitude)).length;
@@ -1735,7 +1793,7 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide)}`
   </div>
   ${lightboxBlock}
   ${timelineScript}
-  ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, routeCoords, "assets/images", template)}</script>` : ""}
+  ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, routeSegments, "assets/images", template)}</script>` : ""}
   ${playScript}
   ${interactiveScript}
   ${exportBootScript}
@@ -2025,11 +2083,11 @@ L.Icon.Default.mergeOptions({
 });`;
 
   const mapDayGroups = buildMapDayGroups(mapPoints);
-  const routeCoords = buildCombinedRouteCoords(mapPhotos, ctx.places ?? []);
+  const routeSegments = resolveLeafletRouteSegments(ctx, mapPhotos, ctx.places ?? []);
   const mapScriptBody = buildMapScript(
     mapPoints,
     mapDayGroups,
-    routeCoords,
+    routeSegments,
     "assets/images",
     ctx.template
   ).replace(
@@ -2061,11 +2119,17 @@ export async function buildExportZip(
 
   emit({ step: "html", status: "running", message: "Generando HTML del diario…" });
   const zip = new JSZip();
-  let html = buildExportHtml(ctx);
+  let preparedCtx = ctx;
+  if (exportHasMap(ctx)) {
+    emit({ step: "map", status: "running", message: "Calculando ruta del mapa…" });
+    preparedCtx = await prepareExportMapRouteGeometry(ctx);
+    emit({ step: "map", status: "done" });
+  }
+  let html = buildExportHtml(preparedCtx);
 
   if (exportHasMap(ctx)) {
     emit({ step: "map", status: "running", message: "Preparando mapa interactivo…" });
-    html = await inlineMapAssetsInHtml(html, ctx);
+    html = await inlineMapAssetsInHtml(html, preparedCtx);
     emit({ step: "map", status: "done" });
   }
 
@@ -2113,7 +2177,13 @@ export async function buildSingleFileHtml(
   const emit = (event: Parameters<ExportProgressCallback>[0]) => onProgress?.(event);
 
   emit({ step: "html", status: "running", message: "Generando HTML del diario…" });
-  let html = buildExportHtml(ctx);
+  let preparedCtx = ctx;
+  if (exportHasMap(ctx)) {
+    emit({ step: "map", status: "running", message: "Calculando ruta del mapa…" });
+    preparedCtx = await prepareExportMapRouteGeometry(ctx);
+    emit({ step: "map", status: "done" });
+  }
+  let html = buildExportHtml(preparedCtx);
   emit({ step: "html", status: "done" });
 
   const total = ctx.photos.length;
@@ -2147,7 +2217,7 @@ export async function buildSingleFileHtml(
   const registry = buildPhotoRegistry(photoFiles);
   if (exportHasMap(ctx)) {
     emit({ step: "map", status: "running", message: "Preparando mapa interactivo…" });
-    html = await inlineMapAssetsInHtml(html, ctx, registry);
+    html = await inlineMapAssetsInHtml(html, preparedCtx, registry);
     emit({ step: "map", status: "done" });
   }
   html = injectPhotoRegistry(html, registry);

@@ -4,9 +4,10 @@ import { MAPBOX_STYLE_LIGHT, MAPBOX_TOKEN } from "@/lib/mapbox";
 import {
   buildMapboxStaticOverlaysSegmented,
   buildMapboxStaticUrl,
+  buildRouteNodesFromPhotosAndPlaces,
+  coalesceRouteNodes,
   resolveSegmentedRoute,
   simplifyWaypoints,
-  type MapRouteNode,
   type MapRouteBuildMode,
 } from "@/lib/mapbox-route";
 import { coalesceMapPoints, type ReelMapPoint } from "@/lib/export-reel-map";
@@ -33,41 +34,25 @@ function mapboxStylePath(styleUrl: string): string {
   return styleUrl.replace(/^mapbox:\/\/styles\//, "");
 }
 
-function sortKey(at: string | null): string {
-  return at ?? "9999-12-31T23:59:59.999Z";
-}
-
 /** Chronological route nodes: photos (incl. ida/vuelta) + places. */
 export function buildPdfRouteNodes(
   photos: PdfPhotoAsset[],
   places: PdfMapPlaceInput[] = []
-): MapRouteNode[] {
-  const nodes: MapRouteNode[] = [];
-
-  for (const photo of photos) {
-    if (photo.latitude == null || photo.longitude == null) continue;
-    let kind: MapRouteNode["kind"] = "ground";
-    if (photo.isTransportStart) kind = "transport-out";
-    else if (photo.isTransportEnd) kind = "transport-in";
-
-    nodes.push({
-      lng: photo.longitude,
-      lat: photo.latitude,
-      kind,
-      at: photo.exifDateTime?.toISOString() ?? null,
-    });
-  }
-
-  for (const place of places) {
-    nodes.push({
-      lng: place.longitude,
-      lat: place.latitude,
-      kind: "ground",
-      at: place.visitedAt?.toISOString() ?? null,
-    });
-  }
-
-  return nodes.sort((a, b) => sortKey(a.at).localeCompare(sortKey(b.at)));
+) {
+  return buildRouteNodesFromPhotosAndPlaces(
+    photos.map((photo) => ({
+      latitude: photo.latitude,
+      longitude: photo.longitude,
+      exifDateTime: photo.exifDateTime,
+      isTransportStart: photo.isTransportStart,
+      isTransportEnd: photo.isTransportEnd,
+    })),
+    places.map((place) => ({
+      latitude: place.latitude,
+      longitude: place.longitude,
+      visitedAt: place.visitedAt,
+    }))
+  );
 }
 
 function reelPointsToWaypoints(points: ReelMapPoint[]): { lng: number; lat: number }[] {
@@ -85,32 +70,6 @@ export function pdfMapPointsFromPhotosAndPlaces(
     label: null,
     at: n.at,
   }));
-}
-
-function coalesceRouteNodes(nodes: MapRouteNode[]): MapRouteNode[] {
-  const seen = new Map<string, MapRouteNode>();
-  for (const node of nodes) {
-    const key = `${node.lat.toFixed(4)},${node.lng.toFixed(4)}`;
-    const existing = seen.get(key);
-    if (!existing) {
-      seen.set(key, node);
-      continue;
-    }
-    const kind =
-      node.kind !== "ground"
-        ? node.kind
-        : existing.kind !== "ground"
-          ? existing.kind
-          : "ground";
-    const at =
-      existing.at && node.at
-        ? existing.at <= node.at
-          ? existing.at
-          : node.at
-        : existing.at ?? node.at;
-    seen.set(key, { ...existing, kind, at });
-  }
-  return [...seen.values()].sort((a, b) => sortKey(a.at).localeCompare(sortKey(b.at)));
 }
 
 /** Landscape Mapbox static image with road + flight route overlays. */
