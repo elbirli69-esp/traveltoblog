@@ -25,7 +25,15 @@ interface NoteFormProps {
   dayDate?: string;
   /** Suggested default for TRIP note date (e.g. travel start). */
   defaultTripDate?: string;
-  onCreated?: () => void;
+  /** Called after a successful save. Prefer unlocking the button before heavy parent work. */
+  onCreated?: (note?: {
+    id: string;
+    text: string;
+    type: string;
+    photoId?: string | null;
+    placeId?: string | null;
+    user: { alias: string };
+  }) => void;
   /** Overrides the default label for `type`, or required when using `onPersist`. */
   label?: string;
   placeholder?: string;
@@ -73,19 +81,23 @@ export default function NoteForm({
       if (onPersist) {
         await onPersist(text.trim());
         setText("");
+        // Unlock before parent refresh (can be slow on NAS).
+        setLoading(false);
         onCreated?.();
         return;
       }
 
       if (!travelId || !userId || !type) {
         setError("Faltan datos para guardar la nota");
+        setLoading(false);
         return;
       }
 
       if (!navigator.onLine) {
         const { savePendingNote } = await import("@/lib/offline-db");
+        const localId = createLocalId();
         await savePendingNote({
-          localId: createLocalId(),
+          localId,
           travelId,
           userId,
           photoLocalId: type === "PHOTO" ? (photoId ?? null) : null,
@@ -97,7 +109,15 @@ export default function NoteForm({
           createdAt: new Date().toISOString(),
         });
         setText("");
-        onCreated?.();
+        setLoading(false);
+        onCreated?.({
+          id: localId,
+          text: text.trim(),
+          type,
+          photoId: type === "PHOTO" ? (photoId ?? null) : null,
+          placeId: type === "PLACE" ? (placeId ?? null) : null,
+          user: { alias: "Tú" },
+        });
         return;
       }
 
@@ -116,12 +136,22 @@ export default function NoteForm({
         }),
       });
       if (!res.ok) throw new Error("No se pudo guardar");
+      const data = (await res.json()) as {
+        note?: {
+          id: string;
+          text: string;
+          type: string;
+          photoId?: string | null;
+          placeId?: string | null;
+          user: { alias: string };
+        };
+      };
 
       setText("");
-      onCreated?.();
+      setLoading(false);
+      onCreated?.(data.note);
     } catch {
       setError("Error al guardar la nota");
-    } finally {
       setLoading(false);
     }
   };

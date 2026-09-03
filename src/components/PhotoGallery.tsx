@@ -155,6 +155,40 @@ export default function PhotoGallery({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const pageRef = useRef(page);
   pageRef.current = page;
+  const parentRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadGenRef = useRef(0);
+
+  /** Soft parent refresh — avoids slamming NAS with full travel reload on every keystroke-save. */
+  const scheduleParentRefresh = useCallback(() => {
+    if (!onNoteCreated) return;
+    if (parentRefreshTimer.current) clearTimeout(parentRefreshTimer.current);
+    parentRefreshTimer.current = setTimeout(() => {
+      parentRefreshTimer.current = null;
+      onNoteCreated();
+    }, 1200);
+  }, [onNoteCreated]);
+
+  useEffect(() => {
+    return () => {
+      if (parentRefreshTimer.current) clearTimeout(parentRefreshTimer.current);
+    };
+  }, []);
+
+  const patchPhotoNotes = useCallback(
+    (
+      photoId: string,
+      updater: (
+        notes: GalleryPhoto["notes"]
+      ) => GalleryPhoto["notes"]
+    ) => {
+      setPhotos((prev) =>
+        prev.map((p) =>
+          p.id === photoId ? { ...p, notes: updater(p.notes) } : p
+        )
+      );
+    },
+    []
+  );
 
   const loadPage = useCallback(
     async (
@@ -164,6 +198,7 @@ export default function PhotoGallery({
     ) => {
       // Silent refresh keeps the grid mounted so scroll / expanded photo stay put
       // (e.g. after adding a note — otherwise height collapses to "Cargando…").
+      const gen = ++loadGenRef.current;
       if (!opts?.silent) setLoading(true);
       setLoadError(null);
       try {
@@ -176,14 +211,18 @@ export default function PhotoGallery({
         const res = await fetch(`/api/travels/${travelId}/photos?${params}`);
         if (!res.ok) throw new Error("No se pudieron cargar las fotos");
         const data = await res.json();
+        if (gen !== loadGenRef.current) return;
         setPhotos(data.photos ?? []);
         setPage(data.pagination?.page ?? nextPage);
         setTotal(data.pagination?.total ?? 0);
         setTotalPages(data.pagination?.totalPages ?? 1);
       } catch {
+        if (gen !== loadGenRef.current) return;
         setLoadError("No se pudieron cargar las fotos");
       } finally {
-        if (!opts?.silent) setLoading(false);
+        // Always clear loading for the latest request (avoids stuck "Cargando…"
+        // if a silent refresh interleaved with a normal one).
+        if (gen === loadGenRef.current) setLoading(false);
       }
     },
     [travelId]
@@ -540,7 +579,13 @@ export default function PhotoGallery({
                       </div>
                     )}
 
-                    <PhotoDateEditor photo={photo} onSaved={onNoteCreated} />
+                    <PhotoDateEditor
+                      photo={photo}
+                      onSaved={() => {
+                        // Date change still needs a real refresh for timeline ordering.
+                        onNoteCreated?.();
+                      }}
+                    />
 
                     {photoNotes.length > 0 && (
                       <ul className="space-y-2">
@@ -548,7 +593,13 @@ export default function PhotoGallery({
                           <EditableNote
                             key={note.id}
                             note={note}
-                            onChanged={onNoteCreated}
+                            onChanged={() => {
+                              // After edit/delete, soft-refresh parent later; keep UI snappy.
+                              scheduleParentRefresh();
+                              void loadPage(pageRef.current, null, {
+                                silent: true,
+                              });
+                            }}
                           />
                         ))}
                       </ul>
@@ -558,7 +609,24 @@ export default function PhotoGallery({
                       userId={userId}
                       photoId={photo.id}
                       type="PHOTO"
-                      onCreated={onNoteCreated}
+                      onCreated={(note) => {
+                        if (note) {
+                          patchPhotoNotes(photo.id, (notes) => {
+                            if (notes.some((n) => n.id === note.id)) return notes;
+                            return [
+                              ...notes,
+                              {
+                                id: note.id,
+                                text: note.text,
+                                type: note.type,
+                                user: { alias: note.user.alias },
+                              },
+                            ];
+                          });
+                        }
+                        // Don't block the form on a full travel reload.
+                        scheduleParentRefresh();
+                      }}
                     />
                   </div>
                 )}
