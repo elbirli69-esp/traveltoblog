@@ -1,5 +1,3 @@
-import heic2any from "heic2any";
-
 const HEIC_EXT = /\.(heic|heif)$/i;
 
 function isHeicFile(file: File): boolean {
@@ -12,7 +10,9 @@ export async function createPhotoPreviewUrl(file: File): Promise<string> {
     return URL.createObjectURL(file);
   }
 
+  // Dynamic import: heic2any touches `window` at module load and must not SSR.
   try {
+    const { default: heic2any } = await import("heic2any");
     const converted = await heic2any({
       blob: file,
       toType: "image/jpeg",
