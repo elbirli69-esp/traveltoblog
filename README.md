@@ -100,6 +100,14 @@ docker-compose.yml                   # Despliegue NAS
 | `OPENAI_MODEL` | Modelo (`deepseek-chat` por defecto) |
 | `NEXT_PUBLIC_APP_URL` | URL pública de la app |
 
+## Roadmap de producto
+
+Dirección acordada (ver [`docs/plan-producto-escala.md`](docs/plan-producto-escala.md)):
+
+1. **Público general** — SaaS/cloud además del self-host en Synology.
+2. **Freemium** — free usable + Plus de pago.
+3. **Experiencias** — no solo viajes (boda, festival, fin de semana, etc.), mismo motor de captura y export.
+
 ## Licencia
 
 MIT — código abierto y colaborativo.

@@ -59,3 +59,4 @@ src/lib/export-html.ts     # Orquestación plantillas + ZIP
 - Plantilla totalmente personalizable (colores, fuentes).
 - Preview en app antes de exportar.
 - Avisos pre-export (“3 días sin nota DAY”).
+- Plantillas por tipología de experiencia (boda, festival, etc.) — ver [`plan-producto-escala.md`](./plan-producto-escala.md).
