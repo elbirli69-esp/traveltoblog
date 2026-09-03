@@ -10,6 +10,13 @@ import { getTypologyProfile } from "@/lib/export/typologies/registry";
 import { simplifyIfNeeded } from "@/lib/export/polyline";
 import { distanceMeters } from "@/lib/geo";
 import {
+  buildGpsTrailPolylines,
+  gpsTrailMapColor,
+  gpsTrailsHaveGeometry,
+  selectExportGpsTracks,
+  type GpsTrailPolyline,
+} from "@/lib/gps-track-map";
+import {
   buildDirectRouteGeometry,
   buildRouteNodesFromPhotosAndPlaces,
   coalesceRouteNodes,
@@ -664,6 +671,7 @@ export function mapExportStyles(): string {
 .legend-line { display: inline-block; width: 22px; height: 3px; border-radius: 2px; background: #0d9488; }
 .legend-route { display: inline-block; width: 22px; height: 0; border-top: 3px dashed #f59e0b; }
 .legend-dash { display: inline-block; width: 22px; height: 0; border-top: 3px dashed #818cf8; }
+.legend-gps { display: inline-block; width: 22px; height: 0; border-top: 3px dotted #64748b; }
 #map {
   height: min(62vh, 520px);
   min-height: 320px;
@@ -1191,10 +1199,16 @@ function buildMapDayLegendHtml(dayLegend: LeafletRouteSegments["dayLegend"]): st
     .join("");
 }
 
+function resolveExportGpsTrails(ctx: ExportContext): GpsTrailPolyline[] {
+  const selected = selectExportGpsTracks(ctx.gpsTracks ?? [], Boolean(ctx.includeGpsTrail));
+  return buildGpsTrailPolylines(selected);
+}
+
 function buildFullscreenMapSection(
   dayGroups: ExportMapDayGroup[],
   mapLead: string,
-  dayLegend: LeafletRouteSegments["dayLegend"] = []
+  dayLegend: LeafletRouteSegments["dayLegend"] = [],
+  hasGpsTrails = false
 ): string {
   return `
 <section class="map-explorer reveal" id="mapa">
@@ -1206,6 +1220,7 @@ function buildFullscreenMapSection(
     <div class="map-legend">
       ${buildMapDayLegendHtml(dayLegend)}
       <span><i class="legend-dash"></i> Vuelos</span>
+      ${hasGpsTrails ? '<span><i class="legend-gps"></i> Recorrido GPS</span>' : ""}
       <span>📍 Lugares · nº = orden</span>
     </div>
   </div>
@@ -1218,7 +1233,8 @@ function buildFullscreenMapSection(
 
 function buildCompactMapSection(
   mapLead: string,
-  dayLegend: LeafletRouteSegments["dayLegend"] = []
+  dayLegend: LeafletRouteSegments["dayLegend"] = [],
+  hasGpsTrails = false
 ): string {
   return `
 <section class="map-section reveal" id="mapa">
@@ -1228,6 +1244,7 @@ function buildCompactMapSection(
     <div class="map-legend">
       ${buildMapDayLegendHtml(dayLegend)}
       <span><i class="legend-dash"></i> Vuelo ida/vuelta</span>
+      ${hasGpsTrails ? '<span><i class="legend-gps"></i> Recorrido GPS</span>' : ""}
       <span>📍 Lugares · nº = orden</span>
     </div>
     <div id="map"></div>
@@ -1240,12 +1257,15 @@ function buildMapScript(
   dayGroups: ExportMapDayGroup[],
   routeSegments: LeafletRouteSegments,
   assetPrefix = "assets/images",
-  template: ExportTemplateId = "magazine"
+  template: ExportTemplateId = "magazine",
+  gpsTrails: GpsTrailPolyline[] = []
 ): string {
   const data = JSON.stringify(points);
   const groupsData = JSON.stringify(dayGroups);
   const roadData = JSON.stringify(routeSegments.roadSegments);
   const flightData = JSON.stringify(routeSegments.flightLegs);
+  const gpsData = JSON.stringify(gpsTrails);
+  const gpsColor = gpsTrailMapColor();
   const tileLayerScript = buildMapTileLayerScript(template);
   const dayColors = ["#2dd4bf", "#f59e0b", "#818cf8", "#f472b6", "#34d399", "#fb7185"];
 
@@ -1262,11 +1282,13 @@ function buildMapScript(
     var points = rawPoints.filter(function (p) {
       return typeof p.lat === "number" && typeof p.lng === "number" && isFinite(p.lat) && isFinite(p.lng);
     });
+    var gpsTrails = ${gpsData};
     var dayGroups = ${groupsData};
     var mapEl = document.getElementById("map");
     if (!mapEl || window.__travelMap) return;
 
-    if (!points.length) {
+    var hasGpsTrails = gpsTrails.some(function (t) { return t.coords && t.coords.length > 1; });
+    if (!points.length && !hasGpsTrails) {
       showMapLoadError(
         mapEl,
         "No hay coordenadas GPS en las fotos de este export. Comprueba que las fotos tengan ubicación en la app."
@@ -1299,12 +1321,16 @@ function buildMapScript(
     }
 
     function fitAllPoints() {
-      if (!points.length) return;
-      if (points.length === 1) {
-        map.setView([points[0].lat, points[0].lng], 14);
+      var latLngs = points.map(function (p) { return [p.lat, p.lng]; });
+      gpsTrails.forEach(function (trail) {
+        (trail.coords || []).forEach(function (c) { latLngs.push(c); });
+      });
+      if (!latLngs.length) return;
+      if (latLngs.length === 1) {
+        map.setView(latLngs[0], 14);
         return;
       }
-      bounds = L.latLngBounds(points.map(function (p) { return [p.lat, p.lng]; }));
+      bounds = L.latLngBounds(latLngs);
       if (bounds.isValid()) map.fitBounds(bounds.pad(0.18));
     }
 
@@ -1337,6 +1363,18 @@ function buildMapScript(
     flightLegs.forEach(function (leg) {
       if (leg.length > 1) {
         L.polyline(leg, { color: "#818cf8", weight: 3, opacity: 0.85, dashArray: "10 8", lineJoin: "round" }).addTo(map);
+      }
+    });
+
+    gpsTrails.forEach(function (trail) {
+      if (trail.coords && trail.coords.length > 1) {
+        L.polyline(trail.coords, {
+          color: "${gpsColor}",
+          weight: 3,
+          opacity: 0.88,
+          dashArray: "2 8",
+          lineJoin: "round"
+        }).addTo(map).bindPopup("Recorrido GPS · " + (trail.alias || ""));
       }
     });
 
@@ -1603,13 +1641,17 @@ export function buildExportHtml(ctx: ExportContext): string {
   const mapPhotos = getExportMapPhotos(ctx);
   const mapPoints = mergeMapPoints(mapPhotos, places);
   const routeSegments = resolveLeafletRouteSegments(ctx, mapPhotos, places);
+  const gpsTrails = resolveExportGpsTrails(ctx);
+  const hasGpsTrails = gpsTrailsHaveGeometry(gpsTrails);
   const mapPhotoGpsCount = mapPhotos.filter((p) => isValidGps(p.latitude, p.longitude)).length;
   const selectedPhotoGpsCount = photos.filter((p) => isValidGps(p.latitude, p.longitude)).length;
   const placeCount = places.filter((p) => isValidGps(p.latitude, p.longitude)).length;
   const mapLead =
-    mapPhotoGpsCount === 0 && placeCount > 0
+    mapPhotoGpsCount === 0 && placeCount > 0 && !hasGpsTrails
       ? `${placeCount} lugar${placeCount === 1 ? "" : "es"} marcado${placeCount === 1 ? "" : "s"} en el mapa. Pulsa un pin para ver fotos y notas.`
-      : mapPhotoGpsCount === 0 && photos.length > 0
+      : mapPhotoGpsCount === 0 && hasGpsTrails
+        ? `Mapa con recorrido GPS grabado${gpsTrails.length > 1 ? "s" : ""}${placeCount > 0 ? " y lugares" : ""}.`
+        : mapPhotoGpsCount === 0 && photos.length > 0
         ? "Las fotos no tienen GPS en los metadatos; se muestran lugares y vuelos marcados."
         : mapPhotoGpsCount > selectedPhotoGpsCount && photos.length < mapPhotos.length
           ? `${mapPhotoGpsCount} fotos con ubicación GPS en el mapa (${photos.length} incluidas en la crónica). Pulsa un día o «Lugares» para hacer zoom.`
@@ -1621,7 +1663,7 @@ export function buildExportHtml(ctx: ExportContext): string {
   const contentHtml =
     template === "editorial-clean" ? rawHtml : enhanceArticleHtml(rawHtml);
   const dateRange = formatDateRange(travel.startDate, travel.endDate);
-  const hasMap = mapPoints.length > 0;
+  const hasMap = mapPoints.length > 0 || hasGpsTrails;
   const isMagazine = template === "magazine";
   const isVisual = template === "visual-journey" || template === "dark-photo-journey";
   const isInteractive = template !== "editorial-clean";
@@ -1683,8 +1725,8 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide)}`
   const mapDayGroups = hasMap ? buildMapDayGroups(mapPoints) : [];
   const mapBlock = hasMap
     ? isVisual || isMagazine
-      ? buildFullscreenMapSection(mapDayGroups, mapLead, routeSegments.dayLegend)
-      : buildCompactMapSection(mapLead, routeSegments.dayLegend)
+      ? buildFullscreenMapSection(mapDayGroups, mapLead, routeSegments.dayLegend, hasGpsTrails)
+      : buildCompactMapSection(mapLead, routeSegments.dayLegend, hasGpsTrails)
     : "";
 
   const galleryBlock = isVisual || isMagazine
@@ -1818,7 +1860,7 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide)}`
   </div>
   ${lightboxBlock}
   ${timelineScript}
-  ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, routeSegments, "assets/images", template)}</script>` : ""}
+  ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, routeSegments, "assets/images", template, gpsTrails)}</script>` : ""}
   ${playScript}
   ${interactiveScript}
   ${exportBootScript}
@@ -1972,7 +2014,8 @@ async function getLeafletAssets(): Promise<Record<string, Buffer>> {
 }
 
 function exportHasMap(ctx: ExportContext): boolean {
-  return mergeMapPoints(getExportMapPhotos(ctx), ctx.places ?? []).length > 0;
+  if (mergeMapPoints(getExportMapPhotos(ctx), ctx.places ?? []).length > 0) return true;
+  return gpsTrailsHaveGeometry(resolveExportGpsTrails(ctx));
 }
 
 /** Fix Leaflet CSS image paths for zip bundle layout */
@@ -2109,12 +2152,14 @@ L.Icon.Default.mergeOptions({
 
   const mapDayGroups = buildMapDayGroups(mapPoints);
   const routeSegments = resolveLeafletRouteSegments(ctx, mapPhotos, ctx.places ?? []);
+  const gpsTrails = resolveExportGpsTrails(ctx);
   const mapScriptBody = buildMapScript(
     mapPoints,
     mapDayGroups,
     routeSegments,
     "assets/images",
-    ctx.template
+    ctx.template,
+    gpsTrails
   ).replace(
     /delete L\.Icon\.Default\.prototype\._getIconUrl;[\s\S]*?}\);/,
     iconScript

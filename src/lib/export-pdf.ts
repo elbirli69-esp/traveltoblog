@@ -93,6 +93,13 @@ export async function preparePdfAssets(
       longitude: number;
       visitedAt: Date | null;
     }[];
+    gpsTracks?: {
+      id: string;
+      points: { lat: number; lng: number; at?: string }[];
+      includeInExport?: boolean;
+      alias?: string;
+      startedAt?: Date | null;
+    }[];
   },
   options: PdfExportOptions,
   onProgress?: (current: number, total: number) => void
@@ -148,7 +155,8 @@ export async function preparePdfAssets(
       longitude: p.longitude,
       visitedAt: p.visitedAt,
       name: p.name,
-    }))
+    })),
+    travel.gpsTracks ?? []
   );
 
   return {
@@ -234,6 +242,11 @@ export async function buildPdfArtifact(
         },
         orderBy: { visitedAt: "asc" },
       },
+      gpsTracks: {
+        where: { includeInExport: true },
+        include: { user: { select: { alias: true } } },
+        orderBy: { startedAt: "asc" },
+      },
     },
   });
 
@@ -248,7 +261,20 @@ export async function buildPdfArtifact(
 
   emitStep("photos", "running", `Optimizando 0/${imagePhotos.length} fotos…`);
   const ctx = await preparePdfAssets(
-    travel,
+    {
+      ...travel,
+      gpsTracks: travel.gpsTracks.map((t) => ({
+        id: t.id,
+        points: JSON.parse(t.points || "[]") as {
+          lat: number;
+          lng: number;
+          at: string;
+        }[],
+        includeInExport: t.includeInExport,
+        alias: t.user.alias,
+        startedAt: t.startedAt,
+      })),
+    },
     options,
     (current, total) => {
       emit?.({
