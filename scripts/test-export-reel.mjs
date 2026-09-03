@@ -4,8 +4,13 @@ import {
   buildReelManifest,
   clipOverlayText,
   resolveFrameCaption,
+  REEL_BEAT_PATTERN,
+  REEL_HOOK_SECONDS,
+  REEL_CHAPTER_SECONDS,
 } from "../src/lib/export-reel.ts";
 import { coalesceMapPoints, buildReelMapPlan } from "../src/lib/export-reel-map.ts";
+
+const PLACE_TYPES = ["RESTAURANT", "BEACH", "MUSEUM", "PARK", "CAFE"];
 
 const photos = Array.from({ length: 20 }, (_, i) => ({
   id: `p${i}`,
@@ -17,6 +22,7 @@ const photos = Array.from({ length: 20 }, (_, i) => ({
   selected: true,
   placeName: i % 3 === 0 ? `Lugar ${i}` : null,
   placeComment: i % 3 === 0 ? `Nota del sitio ${i}` : null,
+  placeType: i % 3 === 0 ? PLACE_TYPES[i % PLACE_TYPES.length] : null,
   comments: i % 4 === 0 ? [`Foto genial número ${i} con mucho detalle innecesario`] : [],
   highlightScore: i % 5 === 0 ? 9 : 5,
   latitude: 38.7 + i * 0.01,
@@ -29,12 +35,13 @@ assert.ok(resolveFrameCaption(photos[0])?.includes("Foto genial"));
 const frames = selectReelFrames(photos, 30, [
   { dayKey: "2024-06-01", text: "Llegamos cansados pero felices", author: "Ada" },
 ]);
-assert.ok(frames.length >= 5 && frames.length <= 16);
+assert.ok(frames.length >= 5 && frames.length <= 11, `frames30=${frames.length}`);
 assert.ok(!frames.some((f) => f.photoId === "p0"));
 assert.ok(frames.some((f) => f.caption));
 assert.ok(frames.some((f) => f.hero));
-assert.ok(frames.some((f) => f.durationSeconds >= 1.6));
+assert.ok(frames.every((f) => f.role === "clip"));
 assert.ok(frames.every((f) => f.treatment && f.transitionOut && f.captionStyle));
+assert.ok(frames.some((f) => f.sticker), "expected place-type sticker");
 const treatmentSet = new Set(frames.map((f) => f.treatment));
 assert.ok(
   treatmentSet.size >= 2,
@@ -54,6 +61,7 @@ const manifest = buildReelManifest({
   places: [
     {
       name: "Belém",
+      type: "CAFE",
       latitude: 38.697,
       longitude: -9.206,
       comment: "Pasteles",
@@ -63,16 +71,50 @@ const manifest = buildReelManifest({
   dayNotes: [
     { dayKey: "2024-06-02", text: "Paseo largo", author: "Bob" },
   ],
+  gpsTracks: [
+    {
+      id: "trk1",
+      includeInExport: true,
+      alias: "Ada",
+      points: [
+        { lat: 38.7, lng: -9.14 },
+        { lat: 38.71, lng: -9.15 },
+        { lat: 38.72, lng: -9.16 },
+        { lat: 38.73, lng: -9.17 },
+      ],
+    },
+  ],
   durationSeconds: 15,
 });
 assert.equal(manifest.width, 1080);
 assert.equal(manifest.height, 1920);
-assert.ok(manifest.frames.length <= 9);
+assert.ok(manifest.coverPhotoId, "brutal cover photo id");
+assert.ok(manifest.ctaLine.includes("Lisboa") || manifest.ctaLine.includes("👇"));
+assert.ok(manifest.frames.some((f) => f.role === "hook"), "hook frame");
+assert.ok(
+  manifest.frames.some((f) => f.role === "chapter"),
+  "day chapter intertitle"
+);
+const hook = manifest.frames.find((f) => f.role === "hook");
+assert.ok(hook && Math.abs(hook.durationSeconds - REEL_HOOK_SECONDS) < 0.05);
+const chapter = manifest.frames.find((f) => f.role === "chapter");
+assert.ok(chapter && Math.abs(chapter.durationSeconds - REEL_CHAPTER_SECONDS) < 0.05);
+const clipDurations = manifest.frames
+  .filter((f) => f.role === "clip")
+  .map((f) => f.durationSeconds);
+assert.ok(clipDurations.length <= 7, `clip count ${clipDurations.length}`);
+const uniqueBeats = new Set(clipDurations.map((d) => d.toFixed(2)));
+assert.ok(
+  uniqueBeats.size >= 2 || clipDurations.length < 3,
+  `expected irregular beat pacing, got ${[...uniqueBeats].join(",")}`
+);
 assert.ok(manifest.map);
 assert.ok(manifest.map.points.length >= 2);
+assert.ok((manifest.map.gpsTrails?.length ?? 0) >= 1, "gps trails on map plan");
 assert.ok(manifest.mapIntroSeconds > 0);
 assert.ok(manifest.crossfadeSeconds > 0);
-assert.ok(manifest.secondsPerClip >= 0.9);
+assert.ok(manifest.outroSeconds >= 1.5, "strong CTA outro length");
+assert.ok(manifest.secondsPerClip >= 0.55);
 
 const coalesced = coalesceMapPoints([
   { lat: 38.7, lng: -9.1, kind: "photo", label: null, at: "a" },
@@ -86,9 +128,18 @@ assert.equal(buildReelMapPlan([{ lat: 1, lng: 1, kind: "photo", label: null, at:
 console.log("export-reel ok", {
   frames30: frames.length,
   frames15: manifest.frames.length,
+  hooks: manifest.frames.filter((f) => f.role === "hook").length,
+  chapters: manifest.frames.filter((f) => f.role === "chapter").length,
+  clips: manifest.frames.filter((f) => f.role === "clip").length,
   mapPoints: manifest.map?.points.length,
+  gpsTrails: manifest.map?.gpsTrails?.length,
+  coverPhotoId: manifest.coverPhotoId,
+  ctaLine: manifest.ctaLine,
+  beatPattern: [...REEL_BEAT_PATTERN],
+  clipDurations: clipDurations.map((d) => d.toFixed(2)),
   heroes: manifest.frames.filter((f) => f.hero).length,
   treatments: [...new Set(manifest.frames.map((f) => f.treatment))],
   transitions: [...new Set(manifest.frames.map((f) => f.transitionOut))],
+  stickers: [...new Set(manifest.frames.map((f) => f.sticker).filter(Boolean))],
   avgClip: manifest.secondsPerClip.toFixed(2),
 });

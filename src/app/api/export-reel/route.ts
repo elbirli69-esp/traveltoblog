@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
             place: {
               select: {
                 name: true,
+                type: true,
                 comment: true,
                 highlightScore: true,
                 notes: {
@@ -52,6 +53,7 @@ export async function POST(request: NextRequest) {
         places: {
           select: {
             name: true,
+            type: true,
             latitude: true,
             longitude: true,
             comment: true,
@@ -74,6 +76,10 @@ export async function POST(request: NextRequest) {
             user: { select: { alias: true } },
           },
           orderBy: { createdAt: "asc" },
+        },
+        gpsTracks: {
+          include: { user: { select: { alias: true } } },
+          orderBy: { startedAt: "asc" },
         },
       },
     });
@@ -105,6 +111,7 @@ export async function POST(request: NextRequest) {
           selected: p.selected,
           placeName: p.place?.name ?? null,
           placeComment,
+          placeType: p.place?.type ?? null,
           highlightScore: p.highlightScore,
           placeHighlightScore: p.place?.highlightScore ?? null,
           latitude: p.latitude,
@@ -116,6 +123,7 @@ export async function POST(request: NextRequest) {
         const fromNotes = place.notes.map((n) => n.text.trim()).filter(Boolean);
         return {
           name: place.name,
+          type: place.type,
           latitude: place.latitude,
           longitude: place.longitude,
           comment:
@@ -134,6 +142,17 @@ export async function POST(request: NextRequest) {
           text: n.text,
           author: n.user.alias,
         })),
+      gpsTracks: travel.gpsTracks.map((t) => ({
+        id: t.id,
+        points: JSON.parse(t.points || "[]") as {
+          lat: number;
+          lng: number;
+          at?: string;
+        }[],
+        includeInExport: t.includeInExport,
+        alias: t.user.alias,
+        startedAt: t.startedAt,
+      })),
     });
 
     if (manifest.frames.length === 0) {

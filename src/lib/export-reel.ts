@@ -7,6 +7,12 @@ import {
   type ReelMapPlan,
   type ReelMapPoint,
 } from "@/lib/export-reel-map";
+import {
+  buildGpsTrailPolylines,
+  type GpsTrackForMap,
+} from "@/lib/gps-track-map";
+import { placeEmoji } from "@/lib/places";
+import type { PlaceType } from "@prisma/client";
 
 /** Instagram Reels recommended master: vertical 9:16 H.264 MP4. */
 export const REEL_WIDTH = 1080;
@@ -15,10 +21,15 @@ export const REEL_FPS = 30;
 /** Target visual bitrate — ~2.8 Mbps keeps a 30s reel near 10–12 MB. */
 export const REEL_BITRATE = 2_800_000;
 
-export const REEL_CROSSFADE_SECONDS = 0.22;
-export const REEL_MAP_INTRO_SECONDS = 3.2;
-export const REEL_TITLE_INTRO_SECONDS = 1.1;
-export const REEL_OUTRO_SECONDS = 1.2;
+export const REEL_CROSSFADE_SECONDS = 0.18;
+/** Shorter map beat after the hook. */
+export const REEL_MAP_INTRO_SECONDS = 2.15;
+export const REEL_TITLE_INTRO_SECONDS = 0.65;
+export const REEL_OUTRO_SECONDS = 1.9;
+export const REEL_HOOK_SECONDS = 1.05;
+export const REEL_CHAPTER_SECONDS = 0.65;
+/** Simulated “beat” lengths for punchy pacing. */
+export const REEL_BEAT_PATTERN = [0.75, 1.15, 1.85] as const;
 
 export type ReelDurationPreset = 15 | 30 | 60;
 
@@ -54,6 +65,7 @@ export interface ReelPhotoInput {
   selected: boolean;
   placeName?: string | null;
   placeComment?: string | null;
+  placeType?: string | null;
   highlightScore?: number;
   placeHighlightScore?: number | null;
   latitude?: number | null;
@@ -64,6 +76,7 @@ export interface ReelPhotoInput {
 
 export interface ReelPlaceInput {
   name: string;
+  type?: string | null;
   latitude: number | null;
   longitude: number | null;
   comment: string | null;
@@ -93,6 +106,8 @@ export type ReelTransition = "fade" | "slideLeft" | "slideUp" | "zoomSoft";
 /** How story captions are painted (not subtitle bars). */
 export type ReelCaptionStyle = "pullQuote" | "glassCard" | "sideAccent";
 
+export type ReelFrameRole = "hook" | "chapter" | "clip";
+
 export interface ReelFramePlan {
   photoId: string;
   dayKey: string | null;
@@ -113,6 +128,11 @@ export interface ReelFramePlan {
   kenBurns: "in" | "out";
   latitude: number | null;
   longitude: number | null;
+  role: ReelFrameRole;
+  /** 1-based day chapter index when role is chapter / for CTA */
+  dayIndex: number | null;
+  /** Place-type emoji sticker */
+  sticker: string | null;
 }
 
 export interface ReelManifest {
@@ -131,6 +151,10 @@ export interface ReelManifest {
   outroSeconds: number;
   map: ReelMapPlan | null;
   frames: ReelFramePlan[];
+  /** Best still for cover.jpg */
+  coverPhotoId: string | null;
+  /** Closing CTA line */
+  ctaLine: string;
 }
 
 function toDayKey(value: Date | string | null | undefined): string | null {
@@ -146,9 +170,30 @@ function toIso(value: Date | string | null | undefined): string | null {
 }
 
 function maxFramesForDuration(seconds: ReelDurationPreset): number {
-  if (seconds <= 15) return 9;
-  if (seconds <= 30) return 16;
-  return 24;
+  // Fewer, stronger clips (point 4): leave room for hook + chapters + map + CTA.
+  if (seconds <= 15) return 7;
+  if (seconds <= 30) return 11;
+  return 16;
+}
+
+/** Keys match Prisma PlaceType. */
+const PLACE_TYPE_KEYS: Record<string, true> = {
+  HOTEL: true,
+  RESTAURANT: true,
+  CAFE: true,
+  MUSEUM: true,
+  PARK: true,
+  BEACH: true,
+  VIEWPOINT: true,
+  TRANSPORT: true,
+  SHOP: true,
+  OTHER: true,
+};
+
+function resolveSticker(type: string | null | undefined): string | null {
+  if (!type) return null;
+  if (!(type in PLACE_TYPE_KEYS)) return "📍";
+  return placeEmoji(type as PlaceType);
 }
 
 export function clipOverlayText(text: string, max = 78): string {
@@ -194,6 +239,18 @@ export function assignReelTreatments(
   let mapFocusUsed = 0;
 
   return frames.map((frame, i) => {
+    if (frame.role === "hook" || frame.role === "chapter") {
+      return {
+        ...frame,
+        treatment: "clean" as ReelTreatment,
+        layout: "full" as ReelLayout,
+        transitionOut: "fade" as ReelTransition,
+        captionStyle: "glassCard" as ReelCaptionStyle,
+        durationSeconds:
+          frame.role === "hook" ? REEL_HOOK_SECONDS : REEL_CHAPTER_SECONDS,
+      };
+    }
+
     const hasCaption = Boolean(frame.caption);
     const hasPlace = Boolean(frame.placeName);
     const hasGps = frame.latitude != null && frame.longitude != null;
@@ -241,6 +298,7 @@ export function assignReelTreatments(
       layout: treatment === "mapInset" ? "mapInset" : "full",
       transitionOut: pickTransition(i, treatment),
       captionStyle: pickCaptionStyle(i + (treatment === "story" ? 1 : 0)),
+      sticker: frame.sticker,
       durationSeconds:
         treatment === "mapFocus"
           ? Math.max(frame.durationSeconds, frame.hero ? 2.1 : 1.45)
@@ -311,6 +369,8 @@ export function selectReelFrames(
   const pickedIds = new Set<string>();
   const frames: ReelFramePlan[] = [];
   const usedDayNotes = new Set<string>();
+  // Higher bar (point 4): prefer captioned / placed / high-score shots when the pool is rich.
+  const minPriority = durationSeconds <= 15 ? 2 : 1;
 
   let pass = 0;
   while (frames.length < maxFrames && pass < 8) {
@@ -319,9 +379,19 @@ export function selectReelFrames(
       const list = byDay.get(dayKey) ?? [];
       const candidate = list[pass];
       if (!candidate || pickedIds.has(candidate.id)) continue;
+      const caption = resolveFrameCaption(candidate);
+      const priority = computeReelPhotoPriority({
+        highlightScore: candidate.highlightScore,
+        hasCaption: Boolean(caption),
+        placeName: candidate.placeName,
+        placeHighlightScore: candidate.placeHighlightScore,
+      });
+      // On early passes, skip weak clips if stronger ones remain.
+      if (pass === 0 && priority < minPriority && pool.length > maxFrames) {
+        continue;
+      }
       pickedIds.add(candidate.id);
       const realDay = dayKey === "_sin_fecha" ? null : dayKey;
-      const caption = resolveFrameCaption(candidate);
       let dayNote: string | null = null;
       if (realDay && notesByDay.has(realDay) && !usedDayNotes.has(realDay)) {
         if (frames.length % 3 === 1 || !caption) {
@@ -346,6 +416,9 @@ export function selectReelFrames(
         kenBurns: frames.length % 2 === 0 ? "in" : "out",
         latitude: candidate.latitude ?? null,
         longitude: candidate.longitude ?? null,
+        role: "clip",
+        dayIndex: null,
+        sticker: resolveSticker(candidate.placeType),
       });
     }
     pass += 1;
@@ -423,17 +496,129 @@ function fitClipDurations(
   outroSeconds: number
 ): ReelFramePlan[] {
   if (frames.length === 0) return frames;
+
+  // Beat pacing (point 1): irregular punchy lengths for clips; fixed for hook/chapter.
+  let beat = 0;
+  const paced = frames.map((f) => {
+    if (f.role === "hook") {
+      return { ...f, durationSeconds: REEL_HOOK_SECONDS };
+    }
+    if (f.role === "chapter") {
+      return { ...f, durationSeconds: REEL_CHAPTER_SECONDS };
+    }
+    const pattern = REEL_BEAT_PATTERN[beat % REEL_BEAT_PATTERN.length]!;
+    beat += 1;
+    const base = f.hero ? Math.max(pattern, 1.85) : pattern;
+    const boosted =
+      f.treatment === "mapFocus"
+        ? Math.max(base, f.hero ? 2.0 : 1.45)
+        : f.treatment === "story"
+          ? Math.max(base, f.hero ? 1.85 : 1.15)
+          : base;
+    return { ...f, durationSeconds: boosted };
+  });
+
   const fixed = mapIntroSeconds + titleIntroSeconds + outroSeconds;
-  const budget = Math.max(durationSeconds - fixed, frames.length * 0.9);
-  const baseSum = frames.reduce((s, f) => s + f.durationSeconds, 0);
+  const budget = Math.max(durationSeconds - fixed, paced.length * 0.55);
+  const baseSum = paced.reduce((s, f) => s + f.durationSeconds, 0);
+  if (baseSum <= 0) return paced;
   const scale = budget / baseSum;
-  return frames.map((f) => ({
-    ...f,
-    durationSeconds: Math.max(
-      f.hero ? 1.6 : 0.95,
-      Math.min(f.hero ? 2.2 : 1.45, f.durationSeconds * scale)
-    ),
-  }));
+  return paced.map((f) => {
+    if (f.role === "hook" || f.role === "chapter") return f;
+    const min = f.hero ? 1.35 : 0.65;
+    const max = f.hero ? 2.35 : 2.0;
+    return {
+      ...f,
+      durationSeconds: Math.max(min, Math.min(max, f.durationSeconds * scale)),
+    };
+  });
+}
+
+function pickBestCoverFrame(frames: ReelFramePlan[]): ReelFramePlan | null {
+  const clips = frames.filter((f) => f.role === "clip" || f.role === "hook");
+  if (clips.length === 0) return null;
+  return [...clips].sort((a, b) => {
+    const scoreA =
+      computeReelPhotoPriority({
+        highlightScore: a.highlightScore,
+        hasCaption: Boolean(a.caption),
+        placeName: a.placeName,
+      }) + (a.hero ? 2 : 0);
+    const scoreB =
+      computeReelPhotoPriority({
+        highlightScore: b.highlightScore,
+        hasCaption: Boolean(b.caption),
+        placeName: b.placeName,
+      }) + (b.hero ? 2 : 0);
+    return scoreB - scoreA;
+  })[0]!;
+}
+
+function buildHookFrame(best: ReelFramePlan): ReelFramePlan {
+  return {
+    ...best,
+    role: "hook",
+    dayIndex: null,
+    hero: true,
+    caption: null,
+    dayNote: null,
+    treatment: "clean",
+    layout: "full",
+    transitionOut: "zoomSoft",
+    captionStyle: "glassCard",
+    durationSeconds: REEL_HOOK_SECONDS,
+    kenBurns: "in",
+    // Keep sticker off the hook so the still hits hard.
+    sticker: null,
+  };
+}
+
+function insertDayChapters(frames: ReelFramePlan[]): ReelFramePlan[] {
+  const dayKeys = [
+    ...new Set(frames.map((f) => f.dayKey).filter((k): k is string => Boolean(k))),
+  ].sort((a, b) => a.localeCompare(b));
+  if (dayKeys.length < 2) return frames;
+
+  const out: ReelFramePlan[] = [];
+  let lastDay: string | null = null;
+  let chapterCount = 0;
+  for (const frame of frames) {
+    if (
+      frame.role === "clip" &&
+      frame.dayKey &&
+      frame.dayKey !== lastDay &&
+      chapterCount < 4
+    ) {
+      const dayIndex = dayKeys.indexOf(frame.dayKey) + 1;
+      out.push({
+        ...frame,
+        role: "chapter",
+        dayIndex: dayIndex > 0 ? dayIndex : null,
+        hero: false,
+        caption: null,
+        dayNote: null,
+        treatment: "clean",
+        layout: "full",
+        transitionOut: "fade",
+        captionStyle: "glassCard",
+        durationSeconds: REEL_CHAPTER_SECONDS,
+        sticker: null,
+        kenBurns: "out",
+      });
+      chapterCount += 1;
+      lastDay = frame.dayKey;
+    }
+    if (frame.role === "clip" && frame.dayKey) lastDay = frame.dayKey;
+    out.push(frame);
+  }
+  return out;
+}
+
+function buildCtaLine(title: string, participants: string[]): string {
+  const who =
+    participants.length > 0 ? participants.slice(0, 3).join(" · ") : null;
+  if (who) return `${title} — ¿cuál fue vuestro momento? 👇`;
+  return `Comenta tu parada favorita de ${title} 👇`;
 }
 
 export function buildReelManifest(input: {
@@ -444,11 +629,19 @@ export function buildReelManifest(input: {
   photos: ReelPhotoInput[];
   places?: ReelPlaceInput[];
   dayNotes?: ReelDayNoteInput[];
+  gpsTracks?: GpsTrackForMap[];
   durationSeconds: ReelDurationPreset;
 }): ReelManifest {
   const durationSeconds = input.durationSeconds;
+  // Prefer tracks marked for export; if none, still show any recorded trails.
+  const exportMarked = (input.gpsTracks ?? []).filter((t) => t.includeInExport);
+  const trailSource =
+    exportMarked.length > 0 ? exportMarked : input.gpsTracks ?? [];
+  const gpsTrails = buildGpsTrailPolylines(trailSource);
+
   const map = buildReelMapPlan(
-    collectMapPoints(input.photos, input.places ?? [])
+    collectMapPoints(input.photos, input.places ?? []),
+    gpsTrails
   );
   const mapIntroSeconds = map ? REEL_MAP_INTRO_SECONDS : 0;
   const titleIntroSeconds = REEL_TITLE_INTRO_SECONDS;
@@ -460,6 +653,15 @@ export function buildReelManifest(input: {
     input.dayNotes ?? [],
     Boolean(map)
   );
+
+  const best = pickBestCoverFrame(frames);
+  const coverPhotoId = best?.photoId ?? frames[0]?.photoId ?? null;
+  if (best) {
+    frames = [buildHookFrame(best), ...insertDayChapters(frames)];
+  } else {
+    frames = insertDayChapters(frames);
+  }
+
   frames = fitClipDurations(
     frames,
     durationSeconds,
@@ -500,12 +702,16 @@ export function buildReelManifest(input: {
     outroSeconds,
     map,
     frames,
+    coverPhotoId,
+    ctaLine: buildCtaLine(input.title, input.participants),
   };
 }
 
 export function reelReadmeText(manifest: ReelManifest): string {
   const mapLine = manifest.map
-    ? `- Incluye intro con mapa (${manifest.map.points.length} puntos GPS/lugares).\n`
+    ? `- Incluye intro con mapa (${manifest.map.points.length} puntos GPS/lugares)${
+        (manifest.map.gpsTrails?.length ?? 0) > 0 ? " + trail GPS animado" : ""
+      }.\n`
     : "";
   const treatments = [...new Set(manifest.frames.map((f) => f.treatment))].join(", ");
   return `Reel listo para Instagram
@@ -515,7 +721,10 @@ Archivo: instagram-reel.mp4
 Formato: MP4 H.264, ${manifest.width}×${manifest.height} (9:16), ${manifest.fps} fps
 Duración objetivo: ~${manifest.durationSeconds} s
 Audio: sin pista (añade música trending en Instagram → más alcance)
+Estructura: gancho → mapa → título → capítulos/clips → CTA
 Tratamientos visuales: ${treatments || "variados"}
+Portada: cover.jpg (mejor still del viaje)
+CTA: ${manifest.ctaLine}
 ${mapLine}
 Cómo publicar
 -------------

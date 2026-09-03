@@ -13,6 +13,7 @@ import type {
 } from "@/lib/export-reel";
 import { REEL_BITRATE, REEL_HEIGHT, REEL_WIDTH } from "@/lib/export-reel";
 import { projectMapPoint, type ReelMapPlan } from "@/lib/export-reel-map";
+import { gpsTrailMapColor } from "@/lib/gps-track-map";
 
 export type ReelEncodeProgress = {
   phase: "frames" | "encode" | "cover" | "zip";
@@ -341,11 +342,12 @@ function paintMapOverlays(
     ? count
     : Math.min(count, Math.max(1, Math.ceil(progress * count)));
   const routeT = allVisible ? 1 : Math.min(1, progress * 1.15);
+  const trailT = allVisible ? 1 : Math.min(1, easeInOut(progress));
 
-  const projected = map.points.map((p) => {
+  const project = (lat: number, lng: number) => {
     const pt = projectMapPoint(
-      p.lat,
-      p.lng,
+      lat,
+      lng,
       map.center,
       map.zoom,
       width,
@@ -353,9 +355,48 @@ function paintMapOverlays(
       map.imageWidth,
       map.imageHeight
     );
+    return { x: pt.x, y: pt.y * scaleY + offsetY };
+  };
+
+  // Animated GPS trails (point 9) — drawn under place/photo pins.
+  const trails = map.gpsTrails ?? [];
+  if (trails.length > 0) {
+    ctx.save();
+    ctx.strokeStyle = gpsTrailMapColor();
+    ctx.lineWidth = 4;
+    ctx.setLineDash([10, 10]);
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.globalAlpha = 0.9;
+    for (const trail of trails) {
+      if (trail.coords.length < 2) continue;
+      const totalSeg = trail.coords.length - 1;
+      const drawSeg = Math.max(1, Math.floor(totalSeg * trailT));
+      ctx.beginPath();
+      for (let i = 0; i <= drawSeg; i++) {
+        const c = trail.coords[i]!;
+        const p = project(c[0], c[1]);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      if (drawSeg < totalSeg && trailT < 1) {
+        const segT = trailT * totalSeg - drawSeg;
+        const a = trail.coords[drawSeg]!;
+        const b = trail.coords[drawSeg + 1]!;
+        const pa = project(a[0], a[1]);
+        const pb = project(b[0], b[1]);
+        ctx.lineTo(pa.x + (pb.x - pa.x) * segT, pa.y + (pb.y - pa.y) * segT);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  const projected = map.points.map((p) => {
+    const pt = project(p.lat, p.lng);
     return {
       x: pt.x,
-      y: pt.y * scaleY + offsetY,
+      y: pt.y,
       label: p.label,
       kind: p.kind,
       lat: p.lat,
@@ -436,18 +477,9 @@ function paintMapOverlays(
 
   // If no nearby map point, still drop a pin at projected highlight coords
   if (highlight && highlightIdx < 0) {
-    const pt = projectMapPoint(
-      highlight.lat,
-      highlight.lng,
-      map.center,
-      map.zoom,
-      width,
-      height / scaleY,
-      map.imageWidth,
-      map.imageHeight
-    );
+    const pt = project(highlight.lat, highlight.lng);
     const x = pt.x;
-    const y = pt.y * scaleY + offsetY;
+    const y = pt.y;
     ctx.fillStyle = "#f97316";
     ctx.beginPath();
     ctx.arc(x, y, 16, 0, Math.PI * 2);
@@ -468,6 +500,78 @@ function paintMapOverlays(
   }
 }
 
+function drawPlaceSticker(
+  ctx: CanvasRenderingContext2D,
+  sticker: string,
+  width: number,
+  height: number,
+  t: number
+) {
+  const appear = Math.min(1, easeInOut(Math.max(0, (t - 0.05) / 0.25)));
+  if (appear <= 0.01) return;
+  const bounce = 1 + Math.sin(easeInOut(Math.min(1, t * 1.4)) * Math.PI) * 0.12;
+  ctx.save();
+  ctx.globalAlpha = appear;
+  ctx.font = `${Math.round(72 * bounce)}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+  ctx.shadowColor = "rgba(0,0,0,0.35)";
+  ctx.shadowBlur = 12;
+  ctx.fillText(sticker, width - 48, height * 0.14);
+  ctx.restore();
+}
+
+function paintChapterCard(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  frameMeta: ReelFramePlan,
+  t: number,
+  width: number,
+  height: number
+) {
+  ctx.fillStyle = "#0b1020";
+  ctx.fillRect(0, 0, width, height);
+  drawCover(ctx, img, width, height, 1.08, 0, 0, 0.45);
+  ctx.fillStyle = `rgba(0,0,0,${0.35 + t * 0.1})`;
+  ctx.fillRect(0, 0, width, height);
+  const label =
+    frameMeta.dayIndex != null
+      ? `Día ${frameMeta.dayIndex}`
+      : frameMeta.dayLabel || "Nuevo día";
+  const appear = easeInOut(Math.min(1, t / 0.55));
+  ctx.save();
+  ctx.globalAlpha = appear;
+  drawSafeText(
+    ctx,
+    [
+      { text: label, size: 72, weight: "700" },
+      ...(frameMeta.dayLabel && frameMeta.dayIndex != null
+        ? [{ text: frameMeta.dayLabel, size: 28, weight: "500" }]
+        : []),
+    ],
+    height * 0.45,
+    width
+  );
+  ctx.restore();
+}
+
+function paintHookClip(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  t: number,
+  width: number,
+  height: number
+) {
+  const scale = 1.04 + easeInOut(t) * 0.08;
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, width, height);
+  drawCover(ctx, img, width, height, scale, 0, -0.02 + t * 0.04);
+  // Soft edge vignette only — no title chrome on the hook.
+  ctx.fillStyle = `rgba(0,0,0,${0.08 + t * 0.06})`;
+  ctx.fillRect(0, 0, width, height * 0.18);
+  ctx.fillRect(0, height * 0.82, width, height * 0.18);
+}
+
 function paintPhotoClip(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
@@ -479,6 +583,15 @@ function paintPhotoClip(
   map: ReelMapPlan | null,
   mapImg: HTMLImageElement | null
 ) {
+  if (frameMeta.role === "hook") {
+    paintHookClip(ctx, img, t, width, height);
+    return;
+  }
+  if (frameMeta.role === "chapter") {
+    paintChapterCard(ctx, img, frameMeta, t, width, height);
+    return;
+  }
+
   const zoomFrom = frameMeta.kenBurns === "in" ? 1.0 : 1.12;
   const zoomTo = frameMeta.kenBurns === "in" ? 1.1 : 1.0;
   const scale = zoomFrom + (zoomTo - zoomFrom) * easeInOut(t);
@@ -497,13 +610,54 @@ function paintPhotoClip(
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, width, height);
 
+  if (treatment === "mapFocus" && map && mapImg && highlight) {
+    // Zoom toward the pin (point 7).
+    const pin = projectMapPoint(
+      highlight.lat,
+      highlight.lng,
+      map.center,
+      map.zoom,
+      width,
+      height,
+      map.imageWidth,
+      map.imageHeight
+    );
+    const zoom = 1.05 + easeInOut(t) * 0.42;
+    const panTowardX = ((width / 2 - pin.x) / width) * easeInOut(t) * 1.35;
+    const panTowardY = ((height / 2 - pin.y) / height) * easeInOut(t) * 1.35;
+    drawCover(ctx, mapImg, width, height, zoom, panTowardX, panTowardY);
+    ctx.fillStyle = "rgba(0,0,0,0.22)";
+    ctx.fillRect(0, 0, width, height);
+    paintMapOverlays(ctx, map, 1, width, height, undefined, true, highlight);
+    const insetW = Math.round(width * 0.38);
+    const insetH = Math.round(height * 0.22);
+    const insetX = width - insetW - 36;
+    const insetY = height - insetH - 120;
+    ctx.save();
+    roundedRectPath(ctx, insetX, insetY, insetW, insetH, 18);
+    ctx.clip();
+    drawCover(ctx, img, insetW, insetH, 1.05, 0, 0);
+    ctx.restore();
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    ctx.lineWidth = 4;
+    roundedRectPath(ctx, insetX, insetY, insetW, insetH, 18);
+    ctx.stroke();
+    if (frameMeta.placeName) {
+      const pulse = 1 + Math.sin(t * Math.PI * 2) * 0.06;
+      drawPlacePinBadge(ctx, frameMeta.placeName, width / 2, height * 0.2, pulse);
+    }
+    if (frameMeta.sticker) {
+      drawPlaceSticker(ctx, frameMeta.sticker, width, height, t);
+    }
+    return;
+  }
+
   if (treatment === "mapFocus" && map && mapImg) {
     const pulse = 1 + Math.sin(t * Math.PI * 2) * 0.06;
     drawCover(ctx, mapImg, width, height, 1.08 + t * 0.04, 0, 0);
     ctx.fillStyle = "rgba(0,0,0,0.28)";
     ctx.fillRect(0, 0, width, height);
     paintMapOverlays(ctx, map, 1, width, height, undefined, true, highlight);
-    // Small photo inset
     const insetW = Math.round(width * 0.38);
     const insetH = Math.round(height * 0.22);
     const insetX = width - insetW - 36;
@@ -520,13 +674,8 @@ function paintPhotoClip(
     if (frameMeta.placeName) {
       drawPlacePinBadge(ctx, frameMeta.placeName, width / 2, height * 0.22, pulse);
     }
-    if (frameMeta.dayLabel) {
-      drawSafeText(
-        ctx,
-        [{ text: frameMeta.dayLabel, size: 24, weight: "500" }],
-        height * 0.34,
-        width
-      );
+    if (frameMeta.sticker) {
+      drawPlaceSticker(ctx, frameMeta.sticker, width, height, t);
     }
     return;
   }
@@ -562,6 +711,9 @@ function paintPhotoClip(
     ctx.fillStyle = "rgba(255,255,255,0.35)";
     ctx.fillRect(0, photoH - 2, width, 4);
     drawScrim(ctx, width, photoH);
+    if (frameMeta.sticker) {
+      drawPlaceSticker(ctx, frameMeta.sticker, width, photoH, t);
+    }
     if (frameMeta.caption) {
       drawStoryCaption(
         ctx,
@@ -582,6 +734,9 @@ function paintPhotoClip(
 
   drawCover(ctx, img, width, height, scale, panX, panY);
   drawScrim(ctx, width, height);
+  if (frameMeta.sticker) {
+    drawPlaceSticker(ctx, frameMeta.sticker, width, height, t);
+  }
 
   if (treatment === "placePin" && frameMeta.placeName) {
     const pulse = 1 + Math.sin(easeInOut(t) * Math.PI) * 0.08;
@@ -784,9 +939,14 @@ export async function encodeInstagramReelMp4(
   }
 
   const images: HTMLImageElement[] = [];
+  const imageByPhotoId = new Map<string, HTMLImageElement>();
   for (let i = 0; i < manifest.frames.length; i++) {
-    const frame = manifest.frames[i];
-    const img = await loadImage(`/api/photos/${frame.photoId}/reel-frame`);
+    const frame = manifest.frames[i]!;
+    let img = imageByPhotoId.get(frame.photoId);
+    if (!img) {
+      img = await loadImage(`/api/photos/${frame.photoId}/reel-frame`);
+      imageByPhotoId.set(frame.photoId, img);
+    }
     images.push(img);
     onProgress?.({
       phase: "frames",
@@ -815,7 +975,17 @@ export async function encodeInstagramReelMp4(
   const titleIntroSeconds = manifest.titleIntroSeconds;
   const outroSeconds = manifest.outroSeconds;
   const crossfade = manifest.crossfadeSeconds;
-  const clipsDuration = manifest.frames.reduce((s, f) => s + f.durationSeconds, 0);
+
+  const hookIndices: number[] = [];
+  const bodyIndices: number[] = [];
+  for (let i = 0; i < manifest.frames.length; i++) {
+    if (manifest.frames[i]!.role === "hook") hookIndices.push(i);
+    else bodyIndices.push(i);
+  }
+  const clipsDuration = manifest.frames.reduce(
+    (s, f) => s + f.durationSeconds,
+    0
+  );
   const totalSeconds =
     mapIntroSeconds + titleIntroSeconds + clipsDuration + outroSeconds;
   const totalFramesEstimate = Math.max(1, Math.round(totalSeconds * fps));
@@ -833,7 +1003,10 @@ export async function encodeInstagramReelMp4(
   };
 
   const paintTitleIntro = (t: number) => {
-    const img = images[0];
+    const coverId = manifest.coverPhotoId;
+    const img =
+      (coverId ? imageByPhotoId.get(coverId) : null) ??
+      images[hookIndices[0] ?? bodyIndices[0] ?? 0];
     ctx.fillStyle = "#0b1020";
     ctx.fillRect(0, 0, width, height);
     if (img) {
@@ -855,26 +1028,36 @@ export async function encodeInstagramReelMp4(
   };
 
   const paintOutro = (t: number) => {
-    const img = images[images.length - 1] ?? images[0];
+    const coverId = manifest.coverPhotoId;
+    const img =
+      (coverId ? imageByPhotoId.get(coverId) : null) ??
+      images[images.length - 1] ??
+      images[0];
     ctx.fillStyle = "#0b1020";
     ctx.fillRect(0, 0, width, height);
     if (img) {
-      drawCover(ctx, img, width, height, 1.1 - easeInOut(t) * 0.04, 0, 0.03);
+      drawCover(ctx, img, width, height, 1.12 - easeInOut(t) * 0.05, 0, 0.02);
     }
     drawScrim(ctx, width, height);
     const people =
       manifest.participants.length > 0
         ? manifest.participants.join(" · ")
         : "TravelToBlog";
+    const cta = manifest.ctaLine || `Comenta tu momento favorito de ${manifest.title}`;
+    const appear = easeInOut(Math.min(1, t / 0.35));
+    ctx.save();
+    ctx.globalAlpha = appear;
     drawSafeText(
       ctx,
       [
-        { text: manifest.title, size: 52, weight: "700" },
-        { text: people, size: 28, weight: "500" },
+        { text: cta, size: 44, weight: "700" },
+        { text: people, size: 26, weight: "500" },
+        { text: "TravelToBlog", size: 22, weight: "600" },
       ],
-      height * 0.45,
+      height * 0.42,
       width
     );
+    ctx.restore();
   };
 
   const addSegment = async (
@@ -893,6 +1076,18 @@ export async function encodeInstagramReelMp4(
     }
   };
 
+  // 1) Hook first (~1s best still) — before map/title.
+  for (const hi of hookIndices) {
+    const meta = manifest.frames[hi]!;
+    const img = images[hi]!;
+    await addSegment(
+      meta.durationSeconds,
+      (t) => paintPhotoClip(ctx, img, meta, t, hi, width, height, mapPlan, mapImg),
+      "Gancho…"
+    );
+  }
+
+  // 2) Map with animated GPS trail
   if (mapImg && mapPlan) {
     const plan = mapPlan;
     const basemap = mapImg;
@@ -913,26 +1108,32 @@ export async function encodeInstagramReelMp4(
     );
   }
 
+  // 3) Short title flash
   await addSegment(titleIntroSeconds, paintTitleIntro, "Título…");
 
-  // Clips with crossfade: hold (duration - crossfade) then blend into next
-  for (let i = 0; i < images.length; i++) {
-    const meta = manifest.frames[i];
-    const img = images[i];
-    const nextImg = images[i + 1];
-    const nextMeta = manifest.frames[i + 1];
-    const hold = Math.max(0.35, meta.durationSeconds - (nextImg ? crossfade : 0));
+  // 4) Chapters + clips with transitions
+  for (let bi = 0; bi < bodyIndices.length; bi++) {
+    const i = bodyIndices[bi]!;
+    const meta = manifest.frames[i]!;
+    const img = images[i]!;
+    const nextIdx = bodyIndices[bi + 1];
+    const nextImg = nextIdx != null ? images[nextIdx] : undefined;
+    const nextMeta = nextIdx != null ? manifest.frames[nextIdx] : undefined;
+    const hold = Math.max(0.28, meta.durationSeconds - (nextImg ? crossfade : 0));
 
     await addSegment(
       hold,
       (t) =>
         paintPhotoClip(ctx, img, meta, t * 0.85, i, width, height, mapPlan, mapImg),
-      `Clip ${i + 1}/${images.length}`
+      meta.role === "chapter"
+        ? `Capítulo…`
+        : `Clip ${bi + 1}/${bodyIndices.length}`
     );
 
     if (nextImg && nextMeta) {
       const fadeFrames = Math.max(1, Math.round(crossfade * fps));
-      const transition = meta.transitionOut ?? "fade";
+      const transition =
+        meta.role === "chapter" ? "fade" : (meta.transitionOut ?? "fade");
       for (let f = 0; f < fadeFrames; f++) {
         const u = fadeFrames === 1 ? 1 : f / (fadeFrames - 1);
         const tA = 0.85 + u * 0.15;
@@ -943,7 +1144,7 @@ export async function encodeInstagramReelMp4(
           nextImg,
           nextMeta,
           tB,
-          i + 1,
+          nextIdx!,
           width,
           height,
           mapPlan,
@@ -952,12 +1153,13 @@ export async function encodeInstagramReelMp4(
         blendTransition(ctx, layerA, layerB, u, transition, width, height);
         const timestamp = frameIndex / fps;
         await videoSource.add(timestamp, 1 / fps);
-        reportEncode(`Transición ${i + 1}→${i + 2}`);
+        reportEncode(`Transición ${bi + 1}→${bi + 2}`);
         frameIndex += 1;
       }
     }
   }
 
+  // 5) Strong CTA outro
   await addSegment(outroSeconds, paintOutro, "Cierre…");
 
   await output.finalize();
@@ -971,7 +1173,30 @@ export async function encodeInstagramReelMp4(
     message: "Generando portada…",
   });
 
-  if (mapImg && mapPlan) {
+  // Brutal cover = best still (point 8), not generic map.
+  const coverImg =
+    (manifest.coverPhotoId
+      ? imageByPhotoId.get(manifest.coverPhotoId)
+      : null) ??
+    images[hookIndices[0] ?? 0] ??
+    images[0];
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, width, height);
+  if (coverImg) {
+    drawCover(ctx, coverImg, width, height, 1.08, 0, -0.02);
+    drawScrim(ctx, width, height);
+    drawSafeText(
+      ctx,
+      [
+        { text: manifest.title, size: 52, weight: "700" },
+        ...(manifest.dateRangeLabel
+          ? [{ text: manifest.dateRangeLabel, size: 26, weight: "500" }]
+          : []),
+      ],
+      height * 0.78,
+      width
+    );
+  } else if (mapImg && mapPlan) {
     paintMapIntro(
       ctx,
       mapPlan,
