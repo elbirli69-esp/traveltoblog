@@ -13,6 +13,14 @@ import {
 } from "@/lib/gps-track-map";
 import { placeEmoji } from "@/lib/places";
 import type { PlaceType } from "@prisma/client";
+import {
+  defaultExportDirectives,
+  type ExportReelDirectives,
+  type ReelCaptionMode,
+  type ReelCaptionPlacement,
+  type ReelPacing,
+  type ReelTransitionStyle,
+} from "@/lib/export-directives";
 
 /** Instagram Reels recommended master: vertical 9:16 H.264 MP4. */
 export const REEL_WIDTH = 1080;
@@ -166,6 +174,56 @@ export interface ReelManifest {
   coverPhotoId: string | null;
   /** Closing CTA line */
   ctaLine: string;
+  /** Echo of free-text brief grounding (if any). */
+  briefInterpretation?: string | null;
+  /** Reel knobs that were applied after UI duration. */
+  appliedReelDirectives?: ExportReelDirectives | null;
+}
+
+/** Resolved knobs used while building a reel from optional brief directives. */
+export interface ReelBuildOptions {
+  targetPhotoCount?: number;
+  pacing: ReelPacing;
+  captionMode: ReelCaptionMode;
+  captionPlacement: ReelCaptionPlacement;
+  transitionStyle: ReelTransitionStyle;
+  transitionSeconds: number;
+  heroBias: ExportReelDirectives["heroBias"];
+}
+
+export function resolveReelBuildOptions(
+  reel?: ExportReelDirectives | null
+): ReelBuildOptions {
+  const d = defaultExportDirectives().reel!;
+  const src = reel ?? d;
+  return {
+    targetPhotoCount: src.targetPhotoCount,
+    pacing: src.pacing ?? d.pacing,
+    captionMode: src.captionMode ?? d.captionMode,
+    captionPlacement: src.captionPlacement ?? d.captionPlacement,
+    transitionStyle: src.transitionStyle ?? d.transitionStyle,
+    transitionSeconds:
+      typeof src.transitionSeconds === "number"
+        ? Math.max(0.15, Math.min(0.55, src.transitionSeconds))
+        : (d.transitionSeconds ?? REEL_CROSSFADE_SECONDS),
+    heroBias: src.heroBias ?? d.heroBias,
+  };
+}
+
+function beatPatternForPacing(pacing: ReelPacing): readonly number[] {
+  if (pacing === "calm") return [1.45, 1.9, 2.35];
+  if (pacing === "punchy") return [0.8, 1.05, 1.4];
+  return REEL_BEAT_PATTERN;
+}
+
+function captionStyleForPlacement(
+  placement: ReelCaptionPlacement,
+  index: number
+): ReelCaptionStyle {
+  if (placement === "center") return "pullQuote";
+  if (placement === "side") return "sideAccent";
+  // bottom: mild rotation still lands mostly on glassCard
+  return index % 5 === 0 ? "pullQuote" : "glassCard";
 }
 
 function toDayKey(value: Date | string | null | undefined): string | null {
@@ -180,12 +238,17 @@ function toIso(value: Date | string | null | undefined): string | null {
   return value.toISOString();
 }
 
-function maxFramesForDuration(seconds: ReelDurationPreset): number {
+function maxFramesForDuration(
+  seconds: ReelDurationPreset,
+  targetPhotoCount?: number
+): number {
   // Photo clips only (hook/chapters/map/CTA are extra).
   // 15s ≈ 6 · 30s ≈ 10 · 60s ≈ 20.
-  if (seconds <= 15) return 6;
-  if (seconds <= 30) return 10;
-  return 20;
+  const softMax = seconds <= 15 ? 6 : seconds <= 30 ? 10 : 20;
+  const hardMax = seconds <= 15 ? 8 : seconds <= 30 ? 14 : 24;
+  const hardMin = seconds <= 15 ? 3 : seconds <= 30 ? 5 : 8;
+  if (targetPhotoCount == null) return softMax;
+  return Math.max(hardMin, Math.min(hardMax, targetPhotoCount));
 }
 
 /** Keys match Prisma PlaceType. */
@@ -266,18 +329,38 @@ export function fitCaptionsToClipHolds(frames: ReelFramePlan[]): ReelFramePlan[]
 }
 
 const TRANSITIONS: ReelTransition[] = ["fade", "slideLeft", "slideUp", "zoomSoft"];
-const CAPTION_STYLES: ReelCaptionStyle[] = ["pullQuote", "glassCard", "sideAccent"];
 
-function pickTransition(index: number, treatment: ReelTreatment): ReelTransition {
-  if (treatment === "mapFocus" || treatment === "mapInset") {
-    return index % 2 === 0 ? "slideUp" : "fade";
-  }
-  if (treatment === "story") return index % 2 === 0 ? "fade" : "zoomSoft";
-  return TRANSITIONS[index % TRANSITIONS.length]!;
+function transitionsForStyle(style: ReelTransitionStyle): ReelTransition[] {
+  if (style === "softFade") return ["fade"];
+  if (style === "fastCut") return ["fade", "slideLeft", "slideUp"];
+  return TRANSITIONS;
 }
 
-function pickCaptionStyle(index: number): ReelCaptionStyle {
-  return CAPTION_STYLES[index % CAPTION_STYLES.length]!;
+function pickTransition(
+  index: number,
+  treatment: ReelTreatment,
+  style: ReelTransitionStyle = "mixed"
+): ReelTransition {
+  const pool = transitionsForStyle(style);
+  if (style === "softFade") return "fade";
+  if (treatment === "mapFocus" || treatment === "mapInset") {
+    return index % 2 === 0 ? (pool.includes("slideUp") ? "slideUp" : pool[0]!) : "fade";
+  }
+  if (treatment === "story") {
+    return index % 2 === 0
+      ? "fade"
+      : pool.includes("zoomSoft")
+        ? "zoomSoft"
+        : pool[pool.length - 1]!;
+  }
+  return pool[index % pool.length]!;
+}
+
+function pickCaptionStyle(
+  index: number,
+  placement: ReelCaptionPlacement = "bottom"
+): ReelCaptionStyle {
+  return captionStyleForPlacement(placement, index);
 }
 
 /**
@@ -286,10 +369,14 @@ function pickCaptionStyle(index: number): ReelCaptionStyle {
  */
 export function assignReelTreatments(
   frames: ReelFramePlan[],
-  hasMap: boolean
+  hasMap: boolean,
+  opts?: Pick<ReelBuildOptions, "captionMode" | "captionPlacement" | "transitionStyle">
 ): ReelFramePlan[] {
   const recent: ReelTreatment[] = [];
   let mapFocusUsed = 0;
+  const captionMode = opts?.captionMode ?? "short";
+  const captionPlacement = opts?.captionPlacement ?? "bottom";
+  const transitionStyle = opts?.transitionStyle ?? "mixed";
 
   return frames.map((frame, i) => {
     if (frame.role === "hook" || frame.role === "chapter") {
@@ -304,13 +391,16 @@ export function assignReelTreatments(
       };
     }
 
-    const hasCaption = Boolean(frame.caption);
+    const allowCaptions =
+      captionMode !== "none" && captionMode !== "placeOnly";
+    const hasCaption = Boolean(frame.caption) && allowCaptions;
     const hasPlace = Boolean(frame.placeName);
     const hasGps = frame.latitude != null && frame.longitude != null;
     const canMap = hasMap && hasGps;
 
     const candidates: ReelTreatment[] = [];
-    if (hasCaption) candidates.push("story");
+    if (hasCaption && captionMode === "story") candidates.push("story", "story");
+    else if (hasCaption) candidates.push("story");
     if (hasPlace) candidates.push("placePin");
     if (canMap && hasPlace) {
       candidates.push("mapInset");
@@ -318,7 +408,7 @@ export function assignReelTreatments(
         candidates.push("mapFocus");
       }
     }
-    if (!hasCaption || i % 4 === 3) candidates.push("clean");
+    if (!hasCaption || i % 4 === 3 || !allowCaptions) candidates.push("clean");
     if (candidates.length === 0) candidates.push("clean");
 
     const preferred = candidates.filter((t) => !recent.includes(t));
@@ -335,7 +425,8 @@ export function assignReelTreatments(
       hasPlace &&
       i > 0 &&
       i % 5 === 3 &&
-      !recent.includes("mapFocus")
+      !recent.includes("mapFocus") &&
+      allowCaptions
     ) {
       treatment = "mapFocus";
     }
@@ -349,8 +440,11 @@ export function assignReelTreatments(
       ...frame,
       treatment,
       layout: treatment === "mapInset" ? "mapInset" : "full",
-      transitionOut: pickTransition(i, treatment),
-      captionStyle: pickCaptionStyle(i + (treatment === "story" ? 1 : 0)),
+      transitionOut: pickTransition(i, treatment, transitionStyle),
+      captionStyle: pickCaptionStyle(
+        i + (treatment === "story" ? 1 : 0),
+        captionPlacement
+      ),
       sticker: frame.sticker,
       durationSeconds:
         treatment === "mapFocus"
@@ -369,8 +463,23 @@ export function selectReelFrames(
   photos: ReelPhotoInput[],
   durationSeconds: ReelDurationPreset,
   dayNotes: ReelDayNoteInput[] = [],
-  hasMap = false
+  hasMap = false,
+  buildOpts?: Partial<ReelBuildOptions>
 ): ReelFramePlan[] {
+  const opts = resolveReelBuildOptions(
+    buildOpts
+      ? {
+          pacing: buildOpts.pacing ?? "balanced",
+          captionMode: buildOpts.captionMode ?? "short",
+          captionPlacement: buildOpts.captionPlacement ?? "bottom",
+          transitionStyle: buildOpts.transitionStyle ?? "mixed",
+          transitionSeconds: buildOpts.transitionSeconds ?? REEL_CROSSFADE_SECONDS,
+          heroBias: buildOpts.heroBias ?? "medium",
+          targetPhotoCount: buildOpts.targetPhotoCount,
+        }
+      : null
+  );
+
   const usable = photos.filter((p) => {
     if (!p.selected) return false;
     if (p.mediaType === "VIDEO" && !p.posterFilename) return false;
@@ -418,12 +527,24 @@ export function selectReelFrames(
   }
 
   const dayKeys = [...byDay.keys()].sort((a, b) => a.localeCompare(b));
-  const maxFrames = Math.min(maxFramesForDuration(durationSeconds), pool.length);
+  const maxFrames = Math.min(
+    maxFramesForDuration(durationSeconds, opts.targetPhotoCount),
+    pool.length
+  );
   const pickedIds = new Set<string>();
   const frames: ReelFramePlan[] = [];
   const usedDayNotes = new Set<string>();
-  // Higher bar (point 4): prefer captioned / placed / high-score shots when the pool is rich.
-  const minPriority = durationSeconds <= 15 ? 2 : 1;
+  // Higher bar: prefer captioned / placed / high-score shots when the pool is rich.
+  const minPriority =
+    opts.heroBias === "high"
+      ? durationSeconds <= 15
+        ? 3
+        : 2
+      : opts.heroBias === "low"
+        ? 0
+        : durationSeconds <= 15
+          ? 2
+          : 1;
 
   let pass = 0;
   while (frames.length < maxFrames && pass < 8) {
@@ -446,7 +567,13 @@ export function selectReelFrames(
       pickedIds.add(candidate.id);
       const realDay = dayKey === "_sin_fecha" ? null : dayKey;
       let dayNote: string | null = null;
-      if (realDay && notesByDay.has(realDay) && !usedDayNotes.has(realDay)) {
+      if (
+        realDay &&
+        notesByDay.has(realDay) &&
+        !usedDayNotes.has(realDay) &&
+        opts.captionMode !== "none" &&
+        opts.captionMode !== "placeOnly"
+      ) {
         if (frames.length % 3 === 1 || !caption) {
           dayNote = notesByDay.get(realDay) ?? null;
           usedDayNotes.add(realDay);
@@ -477,7 +604,18 @@ export function selectReelFrames(
     pass += 1;
   }
 
-  const heroBudget = durationSeconds <= 15 ? 2 : 3;
+  const heroBudget =
+    opts.heroBias === "high"
+      ? durationSeconds <= 15
+        ? 3
+        : 4
+      : opts.heroBias === "low"
+        ? durationSeconds <= 15
+          ? 1
+          : 2
+        : durationSeconds <= 15
+          ? 2
+          : 3;
   const heroCandidates = frames
     .map((f, i) => ({
       f,
@@ -509,7 +647,23 @@ export function selectReelFrames(
     kenBurns: (i % 2 === 0 ? "in" : "out") as "in" | "out",
   }));
 
-  return assignReelTreatments(withHeroes, hasMap);
+  return assignReelTreatments(withHeroes, hasMap, opts);
+}
+
+/** Apply captionMode after durations are known. */
+export function applyReelCaptionMode(
+  frames: ReelFramePlan[],
+  mode: ReelCaptionMode
+): ReelFramePlan[] {
+  if (mode === "short" || mode === "story") return frames;
+  return frames.map((frame) => {
+    if (frame.role === "chapter" || frame.role === "hook") return frame;
+    if (mode === "none") {
+      return { ...frame, caption: null, dayNote: null };
+    }
+    // placeOnly
+    return { ...frame, caption: null, dayNote: null };
+  });
 }
 
 function collectMapPoints(
@@ -546,11 +700,13 @@ function fitClipDurations(
   durationSeconds: ReelDurationPreset,
   mapIntroSeconds: number,
   titleIntroSeconds: number,
-  outroSeconds: number
+  outroSeconds: number,
+  pacing: ReelPacing = "balanced"
 ): ReelFramePlan[] {
   if (frames.length === 0) return frames;
 
-  // Beat pacing (point 1): irregular punchy lengths for clips; fixed for hook/chapter.
+  const patternList = beatPatternForPacing(pacing);
+  // Beat pacing: irregular punchy lengths for clips; fixed for hook/chapter.
   let beat = 0;
   const paced = frames.map((f) => {
     if (f.role === "hook") {
@@ -559,9 +715,9 @@ function fitClipDurations(
     if (f.role === "chapter") {
       return { ...f, durationSeconds: REEL_CHAPTER_SECONDS };
     }
-    const pattern = REEL_BEAT_PATTERN[beat % REEL_BEAT_PATTERN.length]!;
+    const pattern = patternList[beat % patternList.length]!;
     beat += 1;
-    const base = f.hero ? Math.max(pattern, 1.85) : pattern;
+    const base = f.hero ? Math.max(pattern, pacing === "punchy" ? 1.5 : 1.85) : pattern;
     const boosted =
       f.treatment === "mapFocus"
         ? Math.max(base, f.hero ? 2.0 : 1.45)
@@ -578,9 +734,31 @@ function fitClipDurations(
   const scale = budget / baseSum;
   return paced.map((f) => {
     if (f.role === "hook" || f.role === "chapter") return f;
-    // Keep holds usable after subtracting REEL_CROSSFADE_SECONDS in the encoder.
-    const min = f.hero || f.caption ? 1.55 : 1.1;
-    const max = f.hero ? 2.6 : 2.25;
+    // Keep holds usable after subtracting crossfade in the encoder.
+    const min =
+      pacing === "punchy"
+        ? f.hero || f.caption
+          ? 1.2
+          : 0.95
+        : pacing === "calm"
+          ? f.hero || f.caption
+            ? 1.75
+            : 1.35
+          : f.hero || f.caption
+            ? 1.55
+            : 1.1;
+    const max =
+      pacing === "punchy"
+        ? f.hero
+          ? 2.1
+          : 1.85
+        : pacing === "calm"
+          ? f.hero
+            ? 3.0
+            : 2.6
+          : f.hero
+            ? 2.6
+            : 2.25;
     return {
       ...f,
       durationSeconds: Math.max(min, Math.min(max, f.durationSeconds * scale)),
@@ -685,8 +863,12 @@ export function buildReelManifest(input: {
   dayNotes?: ReelDayNoteInput[];
   gpsTracks?: GpsTrackForMap[];
   durationSeconds: ReelDurationPreset;
+  /** Grounded free-text brief directives (UI duration still wins). */
+  reelDirectives?: ExportReelDirectives | null;
+  briefInterpretation?: string | null;
 }): ReelManifest {
   const durationSeconds = input.durationSeconds;
+  const buildOpts = resolveReelBuildOptions(input.reelDirectives ?? null);
   // Prefer tracks marked for export; if none, still show any recorded trails.
   const exportMarked = (input.gpsTracks ?? []).filter((t) => t.includeInExport);
   const trailSource =
@@ -705,7 +887,8 @@ export function buildReelManifest(input: {
     input.photos,
     durationSeconds,
     input.dayNotes ?? [],
-    Boolean(map)
+    Boolean(map),
+    buildOpts
   );
 
   const best = pickBestCoverFrame(frames);
@@ -721,9 +904,11 @@ export function buildReelManifest(input: {
     durationSeconds,
     mapIntroSeconds,
     titleIntroSeconds,
-    outroSeconds
+    outroSeconds,
+    buildOpts.pacing
   );
   frames = fitCaptionsToClipHolds(frames);
+  frames = applyReelCaptionMode(frames, buildOpts.captionMode);
 
   const avgClip =
     frames.length > 0
@@ -751,7 +936,7 @@ export function buildReelManifest(input: {
     height: REEL_HEIGHT,
     fps: REEL_FPS,
     secondsPerClip: avgClip,
-    crossfadeSeconds: REEL_CROSSFADE_SECONDS,
+    crossfadeSeconds: buildOpts.transitionSeconds,
     mapIntroSeconds,
     titleIntroSeconds,
     outroSeconds,
@@ -759,6 +944,15 @@ export function buildReelManifest(input: {
     frames,
     coverPhotoId,
     ctaLine: buildCtaLine(input.title, input.participants),
+    briefInterpretation: input.briefInterpretation ?? null,
+    appliedReelDirectives: input.reelDirectives
+      ? {
+          ...buildOpts,
+          ...(input.reelDirectives.durationSeconds
+            ? { durationSeconds: input.reelDirectives.durationSeconds }
+            : {}),
+        }
+      : null,
   };
 }
 
