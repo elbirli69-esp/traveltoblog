@@ -84,11 +84,21 @@ export const JOURNAL_STYLE_LABELS: Record<
 
 const VOICE_RULES = `VOZ Y LENGUAJE:
 - Escribe como un amigo que cuenta el viaje en voz alta: natural, claro, humano.
-- Preferir concreto a abstracto (qué pasó, quién lo dijo, dónde).
-- Conserva el humor y los giros de las notas; cuando cites, usa el alias y, si encaja, comillas con la frase casi literal.
+- Preferir concreto a abstracto (qué pasó, quién estaba, dónde).
+- Las notas y comentarios de foto son MATERIA PRIMA: parafraséalos en hechos y ambiente. NO los copies.
+- PROHIBIDO en la prosa: blockquotes Markdown (> …), comillas largas con la frase casi literal, y fórmulas tipo «como dijo X: "…"» o «X escribió: …».
+- Sí puedes nombrar aliases al contar hechos (“Irene se reía en la plaza”), sin pegar su texto.
 - PROHIBIDO (y variantes): inolvidable, mágico/a, experiencia única, tejido de recuerdos, odisea, sinfonía de sensaciones, "cada rincón", "momentos que quedarán grabados".
-- Evita párrafos que solo ambientan sin aportar un hecho o una cita de los viajeros.
+- Evita párrafos que solo ambientan sin aportar un hecho de los datos.
 - Español peninsular natural; no suenes a folleto turístico ni a IA.`;
+
+/** Day-summary role: synthesis for «El viaje»; literal quotes live on timeline cards. */
+const DAY_SYNTHESIS_RULES = `SÍNTESIS (importante — el export HTML ya muestra las notas literales junto a fotos/lugares):
+- Resume lugares visitados y qué se hizo ese día en 1-3 párrafos fluidos.
+- Usa notas_dia y comentarios de fotos solo para extraer hechos; reescríbelos con tus palabras.
+- NO repitas citas textuales ni listas "Autor: texto".
+- Integra lugares_del_dia en la narración (no como viñetas sueltas).
+- Si hay poca información, 1-2 frases sobrias sin rellenar.`;
 
 interface JournalPromptConfig {
   intro: { system: string; temperature: number };
@@ -124,12 +134,11 @@ REGLAS ESTRICTAS:
         system: `Eres un editor de diarios de viaje. Recibirás días con notas, lugares y comentarios de fotos.
 Responde SOLO un JSON array: [{"date":"YYYY-MM-DD","summary":"texto markdown"}].
 ${VOICE_RULES}
+${DAY_SYNTHESIS_RULES}
 REGLAS ESTRICTAS:
 - Un elemento por cada día del input.
 - Basa cada párrafo SOLO en notas_dia, lugares_del_dia, comentarios de fotos e indicaciones_usuario.
-- Cita autores cuando corresponda. No añadas clima, reflexiones ni eventos no documentados.
-- Integra los lugares del día en la narración (no como lista suelta) si aparecen en los datos.
-- Si un día tiene poca información, 1-2 frases sin rellenar.
+- No añadas clima, reflexiones ni eventos no documentados.
 - No incluyas imágenes ni URLs.`,
         temperature: 0.3,
       },
@@ -158,7 +167,7 @@ REGLAS ESTRICTAS:
       system: `Eres un cronista de blogs de viaje. Escribe SOLO la introducción (2-4 párrafos en Markdown) de un artículo colaborativo.
 ${VOICE_RULES}
 Puedes dar ritmo y calidez, pero solo con hechos de los datos e indicaciones_usuario.
-Empieza cerca de algo concreto (un detalle, una cita, el motivo del viaje), no con una tesis grandilocuente.
+Empieza cerca de algo concreto (un detalle del viaje, el motivo, el primer lugar), no con una tesis grandilocuente ni con una cita entre comillas.
 No uses encabezados (#).`,
       temperature: 0.65,
     },
@@ -166,8 +175,8 @@ No uses encabezados (#).`,
       system: `Eres un cronista de blogs de viaje. Recibirás días con notas, lugares visitados y fotos.
 Responde SOLO un JSON array: [{"date":"YYYY-MM-DD","summary":"texto markdown 1-3 párrafos"}].
 ${VOICE_RULES}
-Un elemento por cada día. Integra anécdotas citando aliases; conecta momentos con transiciones naturales (no "Ese día… Ese día…").
-Menciona lugares del día dentro de la escena cuando existan en los datos.
+${DAY_SYNTHESIS_RULES}
+Un elemento por cada día. Conecta momentos con transiciones naturales (no "Ese día… Ese día…").
 Puedes ambientar con lo implícito mínimo (mañana/tarde por el orden de fotos), pero no contradigas las notas ni inventes tormentas, discusiones o descubrimientos no escritos.
 Respeta indicaciones_usuario. No incluyas imágenes ni URLs.`,
       temperature: 0.6,
@@ -182,7 +191,7 @@ Basa cada caption en comentarios; si no hay, una línea sobria con autor o lugar
     conclusion: {
       system: `Eres un cronista de blogs de viaje. Escribe SOLO la conclusión (1-3 párrafos Markdown).
 ${VOICE_RULES}
-Cierra con eco de lo vivido (hechos o citas ya aparecidos), sin sermón ni resumen telegráfico de toda la intro.
+Cierra con eco de lo vivido (hechos ya contados), sin sermón, sin citas literales nuevas y sin resumen telegráfico de toda la intro.
 Sin encabezados. Respeta indicaciones_usuario.`,
       temperature: 0.6,
     },
@@ -396,7 +405,9 @@ ${VOICE_RULES}
 
 REGLAS DE REFINAMIENTO:
 - Parte de la crónica existente: conserva el tono, la estructura y las formulaciones que ya funcionan.
-- Incorpora notas, fotos o lugares NUEVOS que falten en el texto.
+- Incorpora notas, fotos o lugares NUEVOS que falten en el texto — como SÍNTESIS, no como citas pegadas.
+- En los párrafos de cada día: resume lugares y hechos; PROHIBIDO blockquotes (>) y comillas con el texto casi literal de notas/comentarios (esas citas viven en el recorrido del export).
+- Si la crónica actual tiene citas literales de notas, reescríbelas como prosa resumida.
 - Corrige solo lo contradictorio, vacío o claramente peor que el contexto nuevo.
 - NO tires el texto para reescribirlo de cero si no hace falta.
 - PRESERVA todas las imágenes Markdown existentes (![alt](url)) y sus URLs; puedes mejorar el alt/caption.
@@ -427,6 +438,50 @@ function stripMarkdownFences(text: string): string {
   const trimmed = text.trim();
   const fenced = trimmed.match(/^```(?:markdown|md)?\s*([\s\S]*?)```$/i);
   return (fenced?.[1] ?? trimmed).trim();
+}
+
+/**
+ * Remove literal note dumps from day prose so HTML «El viaje» doesn't echo
+ * the same quotes already shown on photo/place cards.
+ */
+export function sanitizeDaySummaryProse(text: string): string {
+  const cleaned = text
+    .replace(/^>\s?.*$/gm, "")
+    .replace(/^[«"“].+[»"”]\s*$/gm, "")
+    .replace(
+      /^#{0,3}\s*[A-Za-zÁÉÍÓÚÜáéíóúüñÑ][\wÁÉÍÓÚÜáéíóúüñÑ.-]{0,32}:\s*[«"“].+$/gm,
+      ""
+    )
+    .replace(
+      /\*\*[^*]{1,40}\*\*:\s*[«"“][^»"”]{0,280}[»"”]/g,
+      ""
+    )
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return cleaned;
+}
+
+/** Strip blockquotes from day ### sections only; keep image captions intact. */
+export function sanitizeJournalDayProse(markdown: string): string {
+  if (!markdown.trim()) return markdown;
+  const parts = markdown.split(/\n(?=###\s+)/);
+  return parts
+    .map((part) => {
+      if (!/^\s*###\s+/.test(part)) return part;
+      const match = part.match(/^(\s*###\s+.+?(?:\n|$))([\s\S]*)$/);
+      if (!match) return part;
+      const heading = match[1] ?? "";
+      const body = match[2] ?? "";
+      // Split body into prose vs trailing media (images / *author* lines).
+      const mediaStart = body.search(/\n!\[/);
+      if (mediaStart < 0) {
+        return `${heading}${sanitizeDaySummaryProse(body)}`;
+      }
+      const prose = body.slice(0, mediaStart);
+      const media = body.slice(mediaStart);
+      return `${heading}${sanitizeDaySummaryProse(prose)}${media}`;
+    })
+    .join("\n");
 }
 
 function buildRefineUserPayload(
@@ -489,7 +544,7 @@ export async function refineJournalMarkdown(
   if (!refined || refined.length < 40) {
     throw new Error("La IA devolvió una crónica vacía al refinar");
   }
-  return refined;
+  return sanitizeJournalDayProse(refined);
 }
 
 export async function generateIntroduction(
@@ -559,13 +614,21 @@ export async function generateDaySummaries(
   );
   const parsed = extractJsonArray<DaySummaryRow>(raw);
 
-  if (parsed.length > 0) return parsed;
+  if (parsed.length > 0) {
+    return parsed.map((row) => ({
+      ...row,
+      summary: sanitizeDaySummaryProse(row.summary ?? ""),
+    }));
+  }
 
   return ctx.days.map((d) => ({
     date: d.date,
-    summary:
-      d.dayNotes.map((n) => `${n.author}: ${n.text}`).join("\n\n") ||
-      "Día de exploración y momentos compartidos.",
+    summary: sanitizeDaySummaryProse(
+      d.dayNotes.map((n) => n.text).join(" ") ||
+        (d.places.length > 0
+          ? `Pasamos por ${d.places.map((p) => p.name).join(", ")}.`
+          : "Día de exploración y momentos compartidos.")
+    ),
   }));
 }
 
@@ -680,9 +743,9 @@ export function assembleJournalMarkdown(
     lines.push(`### ${formatDateKey(day.date)}`, "");
     const summary =
       summaryByDate.get(day.date) ??
-      (day.dayNotes.map((n) => `${n.author}: ${n.text}`).join("\n\n") ||
+      (day.dayNotes.map((n) => n.text).join(" ") ||
         "_Sin notas para este día._");
-    lines.push(summary.trim(), "");
+    lines.push(sanitizeDaySummaryProse(summary.trim()) || "_Sin notas para este día._", "");
 
     const sortedPhotos = [...day.photos].sort((a, b) => {
       const ta = a.exifDateTime ? new Date(a.exifDateTime).getTime() : 0;
@@ -733,7 +796,7 @@ export function assembleJournalMarkdown(
   if (ctx.tripNotes.length > 0) {
     lines.push("## Notas del viaje", "");
     for (const note of ctx.tripNotes) {
-      lines.push(`> **${note.author}:** ${note.text}`, "");
+      lines.push(`**${note.author}:** ${note.text}`, "");
     }
   }
 
