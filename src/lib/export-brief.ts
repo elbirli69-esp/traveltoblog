@@ -50,6 +50,7 @@ Reglas:
     "proseDensity": "low"|"medium"|"high",
     "placeCallouts": "low"|"medium"|"high",
     "mapEmphasis": "low"|"medium"|"high",
+    "theme"?: "light"|"dark",
     "preferSectionOrder"?: ["timeline"|"gallery"|"map"|"guide"|"closing"]
   },
   "reel": {
@@ -82,8 +83,13 @@ Guía reel:
 - mejores fotos / highlights → heroBias high
 
 Guía html (si el brief habla de página/galería/crónica):
-- muchas fotos grandes → imageEmphasis+galleryEmphasis high, proseDensity low
+- fotos grandes / protagonismo fotográfico / formas destacadas → imageEmphasis (+galleryEmphasis) high, proseDensity low.
+  IMPORTANTE: imageEmphasis high = fotos MÁS GRANDES, NUNCA más repeticiones. Cada foto aparece como máximo 1 vez en «El viaje» y 1 vez en la galería.
 - más texto / crónica → proseDensity high, imageEmphasis medium/low
+- modo oscuro / dark mode / tema oscuro / dark theme → theme: "dark"
+- modo claro / light / fondo claro → theme: "light"
+- No inventes theme si el usuario no lo pidió.
+- En "interpretation": sé honesto. Si dices modo oscuro, DEBE ir theme:"dark". Si dices fotos protagonistas, habla de tamaño/peso visual, no de «muchas apariciones».
 `;
 
 function extractJsonObject(text: string): unknown | null {
@@ -233,7 +239,7 @@ export function groundExportBriefHeuristically(
 
   // HTML cues
   if (
-    /\b(fotos?\s+grandes?|protagonismo\s+foto|galeria\s+(muy\s+)?visible|maximo\s+visual|image[- ]first)\b/.test(
+    /\b(fotos?\s+grandes?|protagonismo\s+foto|galeria\s+(muy\s+)?visible|maximo\s+visual|image[- ]first|formas?\s+destacadas?)\b/.test(
       text
     )
   ) {
@@ -242,7 +248,7 @@ export function groundExportBriefHeuristically(
     html.proseDensity = "low";
     pdf.imageEmphasis = "high";
     pdf.preferFullBleed = "high";
-    notes.push("énfasis visual en fotos/galería");
+    notes.push("fotos más grandes (sin repetirlas)");
   }
   if (
     /\b(poca\s+cronica|menos\s+texto|poco\s+texto\s+(en\s+)?(html|pagina|pdf))\b/.test(
@@ -263,6 +269,21 @@ export function groundExportBriefHeuristically(
   if (/\b(mapa\s+(grande|protagonista|visible)|map\s+first)\b/.test(text)) {
     html.mapEmphasis = "high";
     notes.push("mapa destacado");
+  }
+  if (
+    /\b(modo\s+oscuro|tema\s+oscuro|dark\s+mode|dark\s+theme|fondo\s+oscuro|estilo\s+oscuro)\b/.test(
+      text
+    )
+  ) {
+    html.theme = "dark";
+    notes.push("modo oscuro");
+  } else if (
+    /\b(modo\s+claro|tema\s+claro|light\s+mode|fondo\s+claro|estilo\s+claro)\b/.test(
+      text
+    )
+  ) {
+    html.theme = "light";
+    notes.push("modo claro");
   }
 
   const interpretation =
@@ -343,11 +364,21 @@ export async function interpretExportBrief(
     const directives = parseExportDirectives(parsed, {
       durationHint: context.durationSeconds,
     });
+    const heuristics = groundExportBriefHeuristically(trimmed, context);
     if (!directives.interpretation) {
-      directives.interpretation = groundExportBriefHeuristically(
-        trimmed,
-        context
-      ).interpretation;
+      directives.interpretation = heuristics.interpretation;
+    }
+    // If the model echoed "modo oscuro" but forgot theme, land it from heuristics.
+    if (!directives.html?.theme && heuristics.html?.theme) {
+      directives.html = { ...directives.html!, theme: heuristics.html.theme };
+    }
+    // Keep interpretation honest: don't claim dark mode without theme.
+    if (
+      directives.interpretation &&
+      /\bmodo oscuro|tema oscuro|dark mode\b/i.test(directives.interpretation) &&
+      !directives.html?.theme
+    ) {
+      directives.html = { ...directives.html!, theme: "dark" };
     }
     return { directives, fromAi: true };
   } catch (error) {

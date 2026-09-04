@@ -59,8 +59,10 @@ import {
   applyHtmlSectionOrderBias,
   bodyClassForHtmlDirectives,
   clampProseHtml,
+  collectPrimaryStoryPhotoIds,
   htmlDirectiveStyles,
   resolveHtmlDirectives,
+  resolveHtmlTemplateFromBrief,
 } from "@/lib/export-html-directives";
 import type { ExportHtmlDirectives } from "@/lib/export-directives";
 import { buildMapTileLayerScript } from "@/lib/export/map-tiles";
@@ -1763,12 +1765,20 @@ function buildExportTimelineEvents(ctx: ExportContext): TimelineEvent[] {
   };
 
   const { events } = buildTimeline(timelineInput);
-  const placeThumbById = new Map(
-    (ctx.places ?? [])
-      .filter((p) => p.id && isValidGps(p.latitude, p.longitude))
-      .map((p) => [p.id!, photosForPlace(p, ctx.photos)[0]?.thumbPath] as const)
-      .filter((entry): entry is [string, string] => Boolean(entry[1]))
-  );
+  const primaryPhotoIds = collectPrimaryStoryPhotoIds(events);
+  const claimedPlacePhotoIds = new Set<string>(primaryPhotoIds);
+
+  const placeThumbById = new Map<string, string>();
+  for (const p of ctx.places ?? []) {
+    if (!p.id || !isValidGps(p.latitude, p.longitude)) continue;
+    const candidates = photosForPlace(p, ctx.photos);
+    // Prefer a photo not already used as a story photo card / another place thumb
+    const unused = candidates.find((photo) => !claimedPlacePhotoIds.has(photo.id));
+    // If every candidate is already in the story, omit place media (text-only place card)
+    if (!unused) continue;
+    claimedPlacePhotoIds.add(unused.id);
+    if (unused.thumbPath) placeThumbById.set(p.id, unused.thumbPath);
+  }
 
   return events.map((ev) => ({
     ...ev,
@@ -1807,8 +1817,10 @@ function estimateRouteKm(photos: ExportPhoto[]): number | undefined {
 }
 
 export function buildExportHtml(ctx: ExportContext): string {
-  const { travel, users, photos, places = [], template } = ctx;
+  const { travel, users, photos, places = [] } = ctx;
   const htmlDir = resolveHtmlDirectives(ctx.htmlDirectives ?? null);
+  // Soft theme from brief: magazine/editorial + dark → dark-photo-journey
+  const template = resolveHtmlTemplateFromBrief(ctx.template, htmlDir);
   const explicitType =
     ctx.typology && ctx.typology !== "auto" ? ctx.typology : travel.travelType ?? null;
   const resolvedType = resolveTravelType(
@@ -2038,6 +2050,7 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
     : "";
   const storyAnchor = "";
   const timelineBlock = buildTimelineSectionHtml(timelineEvents, storyTimelineOptions);
+  const storyPhotoIds = collectPrimaryStoryPhotoIds(timelineEvents);
   const hasFlightsInTimeline = timelineEvents.some(
     (e) => e.kind === "flight-out" || e.kind === "flight-in"
   );
@@ -2057,6 +2070,9 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
     const linked = [...photosForPlace(p, mapPhotos)].sort((a, b) =>
       compareHighlightScore(a.highlightScore, b.highlightScore)
     );
+    // Guide never reuses photos already shown in El viaje (photo/flight cards).
+    // User rule: each photo at most once in the story and once in the gallery.
+    const unusedForGuide = linked.filter((photo) => !storyPhotoIds.has(photo.id));
     return {
       id: p.id,
       name: p.name,
@@ -2067,7 +2083,9 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
       photoPaths:
         htmlDir.placeCallouts === "low"
           ? []
-          : linked.slice(0, htmlDir.placeCallouts === "high" ? 4 : 3).map((photo) => photo.thumbPath),
+          : unusedForGuide
+              .slice(0, htmlDir.placeCallouts === "high" ? 4 : 3)
+              .map((photo) => photo.thumbPath),
     };
   });
   const calloutsBlock = isMagazine ? buildPlaceCalloutsHtml(calloutPlaces) : "";

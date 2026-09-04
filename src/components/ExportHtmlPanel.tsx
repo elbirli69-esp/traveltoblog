@@ -448,8 +448,10 @@ export default function ExportHtmlPanel({
           className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-secondary/70 focus:border-accent-cyan focus:outline-none"
         />
         <p className="text-xs text-fg-secondary">
-          Texto libre: aterrizamos peso de fotos, galería, prosa, mapa y guía a knobs del
-          export. Tipología y plantilla de arriba siguen mandando la estructura base.
+          Texto libre: aterrizamos peso de fotos (tamaño, no repeticiones), galería, prosa,
+          mapa, guía y tema (claro/oscuro) a knobs del export. Tipología y plantilla siguen
+          mandando la estructura; si pides modo oscuro con Magazine, pasamos a Dark Photo
+          Journey. Cada foto sale como máximo una vez en «El viaje» y otra en la galería.
         </p>
         <button
           type="button"
