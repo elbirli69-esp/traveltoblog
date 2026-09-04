@@ -135,7 +135,7 @@ function drawStoryCaption(
   t: number,
   meta?: string | null
 ) {
-  const appear = Math.min(1, easeInOut(Math.max(0, (t - 0.08) / 0.35)));
+  const appear = Math.min(1, easeInOut(Math.max(0, (t - 0.04) / 0.22)));
   if (appear <= 0.01 || !text.trim()) return;
 
   ctx.save();
@@ -151,15 +151,15 @@ function drawStoryCaption(
     ctx.textBaseline = "top";
     ctx.fillText("“", x - 8, y - 28);
 
-    ctx.font = `600 42px Georgia, "Times New Roman", serif`;
-    const lines = wrapCanvasText(ctx, text, boxW - 24, 4);
+    ctx.font = `600 48px Georgia, "Times New Roman", serif`;
+    const lines = wrapCanvasText(ctx, text, boxW - 24, 2);
     let cursorY = y + 70;
     ctx.fillStyle = "#fff";
     ctx.shadowColor = "rgba(0,0,0,0.55)";
     ctx.shadowBlur = 18;
     for (const line of lines) {
       ctx.fillText(line, x + 12, cursorY, boxW - 24);
-      cursorY += 52;
+      cursorY += 58;
     }
     ctx.shadowBlur = 0;
     // Accent underline
@@ -179,9 +179,9 @@ function drawStoryCaption(
     const boxW = width * 0.78;
     const x = pad;
     const y = height * 0.62;
-    ctx.font = `600 38px "Segoe UI", system-ui, sans-serif`;
-    const lines = wrapCanvasText(ctx, text, boxW - 40, 4);
-    const blockH = lines.length * 48 + (meta ? 40 : 16);
+    ctx.font = `600 44px "Segoe UI", system-ui, sans-serif`;
+    const lines = wrapCanvasText(ctx, text, boxW - 40, 2);
+    const blockH = lines.length * 54 + (meta ? 40 : 16);
     // Accent bar
     ctx.fillStyle = "#f97316";
     ctx.fillRect(x, y, 8, blockH);
@@ -195,7 +195,7 @@ function drawStoryCaption(
     let cursorY = y + 8;
     for (const line of lines) {
       ctx.fillText(line, x + 36, cursorY, boxW - 48);
-      cursorY += 48;
+      cursorY += 54;
     }
     if (meta) {
       ctx.font = `600 22px "Segoe UI", system-ui, sans-serif`;
@@ -209,9 +209,9 @@ function drawStoryCaption(
   // glassCard
   const boxW = width * 0.86;
   const x = (width - boxW) / 2;
-  ctx.font = `600 36px "Segoe UI", system-ui, sans-serif`;
-  const lines = wrapCanvasText(ctx, text, boxW - 64, 4);
-  const blockH = lines.length * 46 + (meta ? 44 : 28);
+  ctx.font = `600 42px "Segoe UI", system-ui, sans-serif`;
+  const lines = wrapCanvasText(ctx, text, boxW - 64, 2);
+  const blockH = lines.length * 52 + (meta ? 44 : 28);
   const y = height * 0.68 - blockH / 2;
   ctx.fillStyle = "rgba(12, 18, 32, 0.62)";
   roundedRectPath(ctx, x, y, boxW, blockH, 28);
@@ -226,7 +226,7 @@ function drawStoryCaption(
   let cursorY = y + 36;
   for (const line of lines) {
     ctx.fillText(line, x + 32, cursorY, boxW - 64);
-    cursorY += 46;
+    cursorY += 52;
   }
   if (meta) {
     ctx.font = `600 22px "Segoe UI", system-ui, sans-serif`;
@@ -1119,7 +1119,8 @@ export async function encodeInstagramReelMp4(
     const nextIdx = bodyIndices[bi + 1];
     const nextImg = nextIdx != null ? images[nextIdx] : undefined;
     const nextMeta = nextIdx != null ? manifest.frames[nextIdx] : undefined;
-    const hold = Math.max(0.28, meta.durationSeconds - (nextImg ? crossfade : 0));
+    // Floor so a scaled-down clip still shows before the ~0.4 s transition.
+    const hold = Math.max(0.5, meta.durationSeconds - (nextImg ? crossfade : 0));
 
     await addSegment(
       hold,
