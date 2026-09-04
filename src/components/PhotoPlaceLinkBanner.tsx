@@ -51,10 +51,22 @@ export default function PhotoPlaceLinkBanner({
     }
   };
 
-  const matchableHint =
-    summary.matchable > 0
-      ? ` ${summary.matchable} están cerca de un lugar (≤120 m) y se pueden vincular solas.`
-      : "";
+  const detailParts: string[] = [];
+  if (summary.matchable > 0) {
+    detailParts.push(
+      `${summary.matchable} cerca de un lugar (≤120 m) se pueden vincular solas`
+    );
+  }
+  if (summary.withGpsFar > 0) {
+    detailParts.push(
+      `${summary.withGpsFar} con GPS lejos de los lugares (asócialas a mano)`
+    );
+  }
+  if (summary.withoutGps > 0) {
+    detailParts.push(
+      `${summary.withoutGps} sin GPS (elige el lugar en la foto o desde el lugar)`
+    );
+  }
 
   return (
     <div
@@ -65,9 +77,8 @@ export default function PhotoPlaceLinkBanner({
         {summary.unlinked} foto{summary.unlinked !== 1 ? "s" : ""} sin lugar vinculado
       </p>
       <p className="mt-1 text-fg-secondary">
-        Tienes {places.length} lugar{places.length !== 1 ? "es" : ""} en el viaje.
-        {matchableHint}
-        {" "}Las fotos con GPS se vinculan solas al subirlas o al marcar un lugar nuevo.
+        {places.length} lugar{places.length !== 1 ? "es" : ""} en el viaje.
+        {detailParts.length > 0 ? ` ${detailParts.join(". ")}.` : ""}
       </p>
       {lastLinked != null && lastLinked > 0 && (
         <p className="mt-2 text-xs text-emerald-400">
