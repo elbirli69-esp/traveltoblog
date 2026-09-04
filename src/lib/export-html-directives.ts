@@ -195,6 +195,32 @@ body.export-dir--callouts-high .mag-callout-card {
   padding: 1.1rem 1.15rem;
 }
 body.export-dir--callouts-high .mag-callout-name { font-size: 1.08rem; }
+
+/* Dark theme on the CURRENT layout (structure stays put). */
+body.export-dir--theme-dark {
+  --bg: #0c0a09;
+  --surface: #1c1917;
+  --text: #e7e5e4;
+  --muted: #a8a29e;
+  --accent: #2dd4bf;
+  --accent-2: #fbbf24;
+  --border: #44403c;
+  color-scheme: dark;
+}
+body.export-dir--theme-dark .mag-hero {
+  background: linear-gradient(135deg, #134e4a 0%, #0c0a09 55%, #1e1b4b 100%);
+}
+body.export-dir--theme-dark .mag-hero::before {
+  background: linear-gradient(to top, rgba(12,10,9,.96) 0%, rgba(12,10,9,.5) 50%, rgba(12,10,9,.2) 100%);
+}
+body.export-dir--theme-dark .mag-toc,
+body.export-dir--theme-dark .mag-callout-card,
+body.export-dir--theme-dark .story-card,
+body.export-dir--theme-dark .gallery-tile {
+  background: var(--surface);
+  border-color: var(--border);
+}
+body.export-dir--theme-dark a { color: var(--accent); }
 `;
 }
 
@@ -205,21 +231,14 @@ export function bodyClassForHtmlDirectives(
 }
 
 /**
- * Soft-apply brief theme onto the UI-selected template.
- * Only upgrades light defaults (magazine / editorial-clean) → dark-photo-journey.
- * An explicit dark UI template is left alone; light brief never downgrades a dark UI pick.
+ * Keep the UI-selected template. Theme/emphasis come from directives (CSS knobs).
+ * Structure never changes from theme alone — only the template catalog matcher
+ * may suggest another layout when the brief expressly asks.
  */
 export function resolveHtmlTemplateFromBrief(
   selectedTemplate: "magazine" | "visual-journey" | "editorial-clean" | "dark-photo-journey",
-  html?: ExportHtmlDirectives | null
+  _html?: ExportHtmlDirectives | null
 ): "magazine" | "visual-journey" | "editorial-clean" | "dark-photo-journey" {
-  const theme = resolveHtmlDirectives(html).theme;
-  if (
-    theme === "dark" &&
-    (selectedTemplate === "magazine" || selectedTemplate === "editorial-clean")
-  ) {
-    return "dark-photo-journey";
-  }
   return selectedTemplate;
 }
 

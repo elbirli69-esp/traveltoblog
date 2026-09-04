@@ -1819,7 +1819,7 @@ function estimateRouteKm(photos: ExportPhoto[]): number | undefined {
 export function buildExportHtml(ctx: ExportContext): string {
   const { travel, users, photos, places = [] } = ctx;
   const htmlDir = resolveHtmlDirectives(ctx.htmlDirectives ?? null);
-  // Soft theme from brief: magazine/editorial + dark → dark-photo-journey
+  // Structure stays on the UI template; theme/emphasis are directive CSS knobs.
   const template = resolveHtmlTemplateFromBrief(ctx.template, htmlDir);
   const explicitType =
     ctx.typology && ctx.typology !== "auto" ? ctx.typology : travel.travelType ?? null;
