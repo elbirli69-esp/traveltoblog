@@ -62,3 +62,7 @@ Resumen:
 - Mapa inline por sección / scroll spy con mapa lateral
 - «Reproducir» en Magazine + dual maps
 - Tests del export HTML, lightbox/a11y, HTML único liviano, GPS trail UX, paridad plantillas
+- Plantilla totalmente personalizable (colores, fuentes)
+- Preview en app antes de exportar
+- Avisos pre-export (“3 días sin nota DAY”)
+- Plantillas por tipología de experiencia (boda, festival, etc.) — ver [`plan-producto-escala.md`](./plan-producto-escala.md)

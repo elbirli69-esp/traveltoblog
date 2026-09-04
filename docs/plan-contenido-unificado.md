@@ -2,6 +2,8 @@
 
 Plan de implementación derivado de la auditoría de flujos **Foto / Lugar / Trayecto / Día**. Objetivo: reducir fricción y silos sin reescribir el modelo de datos de golpe.
 
+> **Estrategia posterior:** escala a público general, freemium y tipologías más allá del viaje → [`plan-producto-escala.md`](./plan-producto-escala.md).
+
 ## Estado del plan
 
 **Completado** — mergeado en `main` el 2026-08-31 (PRs #26–#32).
