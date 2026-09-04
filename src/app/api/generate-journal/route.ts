@@ -34,12 +34,15 @@ async function persistGeneratedJournal(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { travelId, stream, style } = body as {
+    const { travelId, stream, style, brief } = body as {
       travelId?: string;
       stream?: boolean;
       style?: JournalStyle;
+      brief?: string | null;
     };
     const journalStyle = parseJournalStyle(style);
+    const journalBrief =
+      typeof brief === "string" ? brief.trim().slice(0, 4000) || null : undefined;
 
     if (!travelId) {
       return NextResponse.json({ error: "travelId es obligatorio" }, { status: 400 });
@@ -59,7 +62,10 @@ export async function POST(request: NextRequest) {
         users: true,
         photos: {
           where: { selected: true },
-          include: { user: true },
+          include: {
+            user: true,
+            place: { select: { name: true } },
+          },
         },
         notes: {
           include: { user: true, photo: true },
@@ -81,13 +87,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Viaje no encontrado" }, { status: 404 });
     }
 
+    if (journalBrief !== undefined) {
+      await prisma.travel.update({
+        where: { id: travelId },
+        data: { journalBrief },
+      });
+      travel.journalBrief = journalBrief;
+    }
+
     const existingMarkdown = travel.journalMarkdown?.trim() || null;
     const ctx = buildEnhancedJournalContext(
       travel,
       travel.users,
       travel.photos,
       travel.notes,
-      travel.places
+      travel.places,
+      journalBrief !== undefined ? journalBrief : travel.journalBrief
     );
 
     if (stream) {

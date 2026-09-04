@@ -28,13 +28,16 @@ export default function GenerateJournalButton({
   travelId,
   hasExistingJournal = false,
   hasPreviousJournal = false,
+  initialBrief = "",
 }: {
   travelId: string;
   hasExistingJournal?: boolean;
   hasPreviousJournal?: boolean;
+  initialBrief?: string;
 }) {
   const router = useRouter();
-  const [style, setStyle] = useState<JournalStyle>("factual");
+  const [style, setStyle] = useState<JournalStyle>("narrative");
+  const [brief, setBrief] = useState(initialBrief);
   const [loading, setLoading] = useState(false);
   const [undoBusy, setUndoBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,12 +51,16 @@ export default function GenerateJournalButton({
     setCanUndo(hasPreviousJournal);
   }, [hasPreviousJournal]);
 
+  useEffect(() => {
+    setBrief(initialBrief);
+  }, [initialBrief]);
+
   const stepLabels = hasExistingJournal ? REFINE_STEP_LABELS : GENERATE_STEP_LABELS;
 
   const handleGenerate = async () => {
     if (hasExistingJournal) {
       const ok = confirm(
-        "La IA refinará la crónica actual: conservará tus ediciones e incorporará notas/fotos nuevas. Se guarda una copia para poder deshacer. ¿Continuar?"
+        "La IA refinará la crónica actual: conservará tus ediciones e incorporará notas/fotos nuevas y tus indicaciones. Se guarda una copia para poder deshacer. ¿Continuar?"
       );
       if (!ok) return;
     }
@@ -69,7 +76,12 @@ export default function GenerateJournalButton({
       const res = await fetch("/api/generate-journal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ travelId, stream: true, style }),
+        body: JSON.stringify({
+          travelId,
+          stream: true,
+          style,
+          brief: brief.trim() || null,
+        }),
       });
 
       if (!res.ok) {
@@ -157,6 +169,25 @@ export default function GenerateJournalButton({
 
   return (
     <div className="space-y-3">
+      <div className="space-y-1.5">
+        <label htmlFor="journal-brief" className="block text-sm font-medium text-accent-cyan">
+          Indicaciones para la IA{" "}
+          <span className="font-normal text-fg-secondary">(opcional)</span>
+        </label>
+        <textarea
+          id="journal-brief"
+          value={brief}
+          onChange={(e) => setBrief(e.target.value.slice(0, 4000))}
+          disabled={loading || undoBusy}
+          rows={4}
+          placeholder="Anécdotas, énfasis o tono. Ej.: Cuenta lo de la tormenta en la playa; tono cercano, sin frases grandilocuentes; dale más peso al último día."
+          className="form-input w-full resize-y text-sm"
+        />
+        <p className="text-xs text-fg-secondary">
+          Se guarda con el viaje y se reutiliza al generar o refinar. {brief.length}/4000
+        </p>
+      </div>
+
       <fieldset className="space-y-2" disabled={loading || undoBusy}>
         <legend className="mb-2 text-sm font-medium text-accent-cyan">
           Estilo de la crónica
@@ -203,8 +234,8 @@ export default function GenerateJournalButton({
 
       {hasExistingJournal && (
         <p className="text-xs text-fg-secondary">
-          Cada refinamiento parte del texto actual (incluidas tus ediciones) e incorpora material
-          nuevo del viaje. Se guarda una copia para deshacer.
+          Cada refinamiento parte del texto actual (incluidas tus ediciones), aplica las
+          indicaciones e incorpora material nuevo. Se guarda una copia para deshacer.
         </p>
       )}
 

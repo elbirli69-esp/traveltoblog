@@ -21,6 +21,7 @@ export default async function JournalPage({
       journalMarkdown: true,
       journalGeneratedAt: true,
       journalMarkdownPrevious: true,
+      journalBrief: true,
       photos: {
         select: {
           exifDateTime: true,
@@ -59,6 +60,7 @@ export default async function JournalPage({
         journalMarkdown={travel.journalMarkdown}
         journalGeneratedAt={travel.journalGeneratedAt?.toISOString() ?? null}
         journalMarkdownPrevious={travel.journalMarkdownPrevious}
+        journalBrief={travel.journalBrief}
         photos={travel.photos.map((p) => ({
           exifDateTime: p.exifDateTime?.toISOString() ?? null,
           isTransportStart: p.isTransportStart,

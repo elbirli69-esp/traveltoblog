@@ -11,10 +11,12 @@ const ctx = {
   flights: { outbound: null, inbound: null },
   places: [],
   tripNotes: [{ text: "Primera nota", author: "Ada" }],
+  brief: null,
   days: [
     {
       date: "2026-08-01",
       dayNotes: [{ text: "Playa", author: "Ada" }],
+      places: [],
       photos: [
         {
           url: "/uploads/a.jpg",
