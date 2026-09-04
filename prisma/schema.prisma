@@ -36,6 +36,8 @@ model Travel {
   journalGeneratedAt DateTime?
   /// Previous journalMarkdown before last AI generate/refine (one-level undo)
   journalMarkdownPrevious String?
+  /// Free-text brief: anecdotes, emphasis, tone for AI journal generation
+  journalBrief String?
   /// Export / narrative typology (null = auto-suggest on export)
   travelType   TravelType?
   createdAt    DateTime @default(now())

@@ -15,6 +15,7 @@ interface JournalWorkspaceProps {
   journalMarkdown: string | null;
   journalGeneratedAt: string | null;
   journalMarkdownPrevious?: string | null;
+  journalBrief?: string | null;
   photos: {
     exifDateTime: string | null;
     isTransportStart: boolean;
@@ -32,6 +33,7 @@ export default function JournalWorkspace({
   journalMarkdown,
   journalGeneratedAt,
   journalMarkdownPrevious = null,
+  journalBrief = null,
   photos,
   dayNotes,
   tripNoteCount,
@@ -49,8 +51,8 @@ export default function JournalWorkspace({
       <header className="mb-6 border-b border-[var(--border)] pb-6">
         <h1 className="heading-page">{title}</h1>
         <p className="mt-2 text-sm text-fg-secondary">
-          Genera y edita la crónica del viaje con IA. Puedes refinarla en varias pasadas: cada vez
-          parte de lo ya escrito.
+          Genera y edita la crónica con IA. Puedes dejar indicaciones libres (tono, anécdotas,
+          énfasis) y refinarla en varias pasadas.
         </p>
       </header>
 
@@ -58,8 +60,8 @@ export default function JournalWorkspace({
         <h2 className="heading-section mb-2 text-accent-cyan">Generar crónica</h2>
         <p className="mb-4 text-sm text-fg-secondary">
           {journalMarkdown
-            ? "Refina la crónica existente: la IA conserva tus ediciones e incorpora notas y fotos nuevas."
-            : "Primera generación en varios pasos: introducción, resumen por día, leyendas y conclusión."}
+            ? "Refina la crónica existente: conserva tus ediciones, aplica las indicaciones e incorpora notas y fotos nuevas."
+            : "Añade indicaciones si quieres, elige el estilo y genera (introducción, días, leyendas y conclusión)."}
         </p>
         <JournalReadinessChecklist
           startDate={startDate}
@@ -73,6 +75,7 @@ export default function JournalWorkspace({
           travelId={travelId}
           hasExistingJournal={Boolean(journalMarkdown)}
           hasPreviousJournal={Boolean(journalMarkdownPrevious)}
+          initialBrief={journalBrief ?? ""}
         />
       </section>
 
