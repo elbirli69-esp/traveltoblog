@@ -7,10 +7,25 @@ import { exportDisplayPathFromThumb } from "@/lib/export-images";
 import { formatDurationMs } from "@/lib/media-types";
 
 export interface StoryTimelineOptions {
-  /** Si hay artículo de crónica, omitir trozos journal-chunk duplicados */
+  /**
+   * Omit journal-chunk timeline events. Prefer true when day prose is
+   * injected via introHtml / dayProse / conclusionHtml (unified story).
+   */
   excludeJournalChunks?: boolean;
   /** Título de la sección */
   title?: string;
+  /** Eyebrow above the title */
+  eyebrow?: string;
+  /** Lead under the title */
+  lead?: string;
+  /** Intro prose HTML (from journal, images stripped) */
+  introHtml?: string;
+  /** Closing prose HTML */
+  conclusionHtml?: string;
+  /** dayKey → prose HTML for that day */
+  dayProseByKey?: Map<string, string>;
+  /** Fallback ordered day prose when title/key match fails */
+  dayProseOrdered?: string[];
 }
 
 function escapeHtml(text: string): string {
@@ -95,15 +110,22 @@ function eventAttrs(ev: TimelineEvent): string {
   return parts.join(" ");
 }
 
-function renderDayBoundary(ev: TimelineEvent): string {
+function renderDayBoundary(
+  ev: TimelineEvent,
+  dayProseHtml?: string
+): string {
   const weekday = formatWeekday(ev.dayKey);
   const label = formatDateKey(ev.dayKey);
+  const prose = dayProseHtml?.trim()
+    ? `<div class="story-day-prose reveal">${dayProseHtml}</div>`
+    : "";
   return `
 <div class="story-day" data-day="${escapeHtml(ev.dayKey)}" id="day-${escapeHtml(ev.dayKey)}">
   <div class="story-day-inner reveal">
     <span class="story-day-weekday">${escapeHtml(weekday)}</span>
     <h3 class="story-day-title">${escapeHtml(label)}</h3>
   </div>
+  ${prose}
 </div>`;
 }
 
@@ -301,18 +323,32 @@ export function buildVisualStoryTimelineHtml(
   events: TimelineEvent[],
   options: StoryTimelineOptions = {}
 ): string {
-  const { events: storyEvents, photoNotes } = prepareStoryEvents(events, options);
-  const title = options.title ?? "Recorrido del viaje";
+  const { events: storyEvents, photoNotes } = prepareStoryEvents(events, {
+    ...options,
+    excludeJournalChunks: options.excludeJournalChunks !== false,
+  });
+  const title = options.title ?? "El viaje";
+  const eyebrow = options.eyebrow ?? "Crónica y recorrido";
   const contentEvents = storyEvents.filter((e) => e.kind !== "day-boundary");
 
-  if (contentEvents.length === 0) {
+  if (
+    contentEvents.length === 0 &&
+    !options.introHtml?.trim() &&
+    !options.conclusionHtml?.trim()
+  ) {
     return "";
   }
 
   let photoIndex = 0;
+  let dayOrdinal = 0;
   const cards = storyEvents
     .map((ev) => {
-      if (ev.kind === "day-boundary") return renderDayBoundary(ev);
+      if (ev.kind === "day-boundary") {
+        const fromKey = options.dayProseByKey?.get(ev.dayKey);
+        const fromOrder = options.dayProseOrdered?.[dayOrdinal];
+        dayOrdinal += 1;
+        return renderDayBoundary(ev, fromKey ?? fromOrder);
+      }
       if (ev.kind === "photo") {
         const pid = ev.meta?.photoId ?? "";
         const notes = pid ? photoNotes.get(pid) ?? [] : [];
@@ -329,18 +365,36 @@ export function buildVisualStoryTimelineHtml(
 
   const eventCount = contentEvents.length;
   const dayCount = storyEvents.filter((e) => e.kind === "day-boundary").length;
+  const hasProse = Boolean(
+    options.introHtml?.trim() ||
+      options.conclusionHtml?.trim() ||
+      (options.dayProseByKey && options.dayProseByKey.size > 0) ||
+      (options.dayProseOrdered && options.dayProseOrdered.length > 0)
+  );
+  const lead =
+    options.lead ??
+    (hasProse
+      ? `${eventCount} momento${eventCount === 1 ? "" : "s"} con la crónica del viaje`
+      : `${eventCount} momento${eventCount === 1 ? "" : "s"} en orden cronológico`) +
+      (dayCount > 0 ? ` · ${dayCount} día${dayCount === 1 ? "" : "s"}` : "");
+
+  const intro = options.introHtml?.trim()
+    ? `<div class="story-intro reveal">${options.introHtml}</div>`
+    : "";
+  const conclusion = options.conclusionHtml?.trim()
+    ? `<div class="story-conclusion reveal">${options.conclusionHtml}</div>`
+    : "";
 
   return `
 <section id="cronologia" class="story-timeline export-timeline reveal">
   <header class="story-timeline-header">
-    <p class="story-timeline-eyebrow">Línea de tiempo</p>
+    <p class="story-timeline-eyebrow">${escapeHtml(eyebrow)}</p>
     <h2 class="section-title story-timeline-title">${escapeHtml(title)}</h2>
-    <p class="story-timeline-lead">
-      ${eventCount} momento${eventCount === 1 ? "" : "s"} en orden cronológico
-      ${dayCount > 0 ? ` · ${dayCount} día${dayCount === 1 ? "" : "s"}` : ""}
-    </p>
+    <p class="story-timeline-lead">${escapeHtml(lead)}</p>
   </header>
+  ${intro}
   <div class="story-track tl-list" role="list">${cards}</div>
+  ${conclusion}
 </section>`;
 }
 
@@ -358,6 +412,31 @@ export function storyTimelineStyles(): string {
 }
 .story-timeline-title { margin: 0 0 .75rem; }
 .story-timeline-lead { margin: 0; color: var(--muted, #a8a29e); font-size: .95rem; }
+
+.story-intro,
+.story-conclusion,
+.story-day-prose {
+  max-width: 42rem;
+  margin: 0 auto 1.75rem;
+  font-size: 1.05rem;
+  line-height: 1.75;
+  color: var(--text, #e7e5e4);
+}
+.story-intro p,
+.story-conclusion p,
+.story-day-prose p { margin: 0 0 .9rem; }
+.story-intro p:last-child,
+.story-conclusion p:last-child,
+.story-day-prose p:last-child { margin-bottom: 0; }
+.story-day-prose { margin: .85rem 0 1.5rem; padding-left: .15rem; opacity: .92; }
+.story-conclusion {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255,255,255,.1);
+}
+.story-intro img,
+.story-conclusion img,
+.story-day-prose img { display: none !important; }
 
 .story-track { position: relative; display: flex; flex-direction: column; gap: 0; padding: 0; }
 

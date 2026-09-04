@@ -39,6 +39,10 @@ import {
   timelineExportStyles,
 } from "@/lib/export/timeline-html";
 import {
+  extractJournalStoryProse,
+  resolveDayNarrativeHtml,
+} from "@/lib/export/journal-prose";
+import {
   buildClosingSectionHtml,
   buildHeadMeta,
   buildMagazineHero,
@@ -1873,7 +1877,42 @@ export function buildExportHtml(ctx: ExportContext): string {
   const deck = extractDeck(travel.journalMarkdown, tripNote);
   const hasJournalArticle = Boolean(travel.journalMarkdown?.trim());
   const hasGuide = isMagazine && places.length > 0;
-  const storyTimelineOptions = { excludeJournalChunks: hasJournalArticle };
+  const useUnifiedStory = isMagazine || isVisual;
+  const storyProse = useUnifiedStory
+    ? extractJournalStoryProse(travel.journalMarkdown)
+    : null;
+  const dayProseByKey = new Map<string, string>();
+  if (storyProse?.hasProse) {
+    const dayKeys = [
+      ...new Set(
+        timelineEvents
+          .filter((e) => e.kind === "day-boundary")
+          .map((e) => e.dayKey)
+      ),
+    ];
+    dayKeys.forEach((dayKey, index) => {
+      const dayTitle =
+        dayKey === "sin-fecha" ? "Recuerdos" : formatDateKey(dayKey, "long");
+      const html = resolveDayNarrativeHtml(
+        dayKey,
+        dayTitle,
+        index,
+        storyProse.days
+      );
+      if (html) dayProseByKey.set(dayKey, html);
+    });
+  }
+  const storyTimelineOptions = useUnifiedStory
+    ? {
+        excludeJournalChunks: true,
+        title: "El viaje",
+        eyebrow: storyProse?.hasProse ? "Crónica y recorrido" : "Recorrido",
+        introHtml: storyProse?.introHtml,
+        conclusionHtml: storyProse?.conclusionHtml,
+        dayProseByKey,
+        dayProseOrdered: storyProse?.days.ordered,
+      }
+    : { excludeJournalChunks: hasJournalArticle };
   const dayCount = timelineEvents.filter((e) => e.kind === "day-boundary").length;
   const distanceKm = estimateRouteKm(photos);
   const travelers = users.map((u) => u.alias).join(", ");
@@ -1910,7 +1949,7 @@ export function buildExportHtml(ctx: ExportContext): string {
         heroGradient,
       })}
 ${buildTocHtml(timelineEvents)}
-${buildMagazineNav(hasMap, hasJournalArticle, hasGuide, dualMaps)}`
+${buildMagazineNav(hasMap, hasGuide, dualMaps)}`
     : isVisual
       ? `<header class="hero"${heroPhotoPath ? ` data-export-hero="${escapeHtml(heroPhotoPath)}" data-export-hero-gradient="${escapeHtml(heroGradient)}"` : ""}>
       <div class="hero-content reveal">
@@ -1926,8 +1965,7 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide, dualMaps)}`
     </header>
     <nav class="section-nav">
       ${mapNavLinks}
-      <a href="#cronologia">Recorrido</a>
-      ${hasJournalArticle ? '<a href="#historia">Crónica</a>' : ""}
+      <a href="#cronologia">El viaje</a>
       <a href="#galeria">Galería</a>
       ${profile.playProfile.showScrubber ? '<a href="#reproducir">Reproducir</a>' : ""}
     </nav>`
@@ -1981,7 +2019,7 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide, dualMaps)}`
         travel.endDate
       )
     : "";
-  const storyAnchor = isVisual || isMagazine ? ' id="historia"' : "";
+  const storyAnchor = "";
   const timelineBlock = buildTimelineSectionHtml(timelineEvents, storyTimelineOptions);
   const hasFlightsInTimeline = timelineEvents.some(
     (e) => e.kind === "flight-out" || e.kind === "flight-in"
@@ -2035,9 +2073,11 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide, dualMaps)}`
     map: mapBlock,
     timeline: timelineBlock,
     gallery: galleryBlock,
-    journal: hasJournalArticle
-      ? `<section class="journal-section reveal visible"><h2 class="section-title">Crónica del viaje</h2><article${storyAnchor}>${contentHtml}</article></section>`
-      : "",
+    // Magazine/visual: crónica lives inside timeline (El viaje). Editorial keeps article.
+    journal:
+      useUnifiedStory || !hasJournalArticle
+        ? ""
+        : `<section class="journal-section reveal visible"><h2 class="section-title">Crónica del viaje</h2><article${storyAnchor}>${contentHtml}</article></section>`,
     play: playBlock,
   };
 

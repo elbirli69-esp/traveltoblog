@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { buildExportHtml } from "../src/lib/export-html.ts";
 import { getTypologyProfile } from "../src/lib/export/typologies/registry.ts";
+import { formatDateKey } from "../src/lib/travel-dates.ts";
 
 const baseTravel = {
   id: "t1",
@@ -116,6 +117,10 @@ if (flightsIdx >= 0 && mapIdx >= 0) {
   assert.ok(flightsIdx < mapIdx, "INTERNATIONAL: flights section before map when present");
 }
 assert.ok(mapIdx >= 0 && timelineIdx >= 0 && mapIdx < timelineIdx, "INTERNATIONAL: map before timeline");
+assert.ok(international.includes("El viaje"), "unified story nav/title");
+assert.ok(!international.includes('href="#historia"'), "no separate crónica nav");
+assert.ok(!international.includes("Crónica del viaje"), "no separate journal section");
+assert.ok(international.includes("Llegamos") || international.includes("story-day-prose") || international.includes("story-intro"), "day prose interleaved or present");
 
 const beach = buildExportHtml({
   travel: { ...baseTravel, travelType: "BEACH_RESORT", journalMarkdown: null },
@@ -135,9 +140,53 @@ if (beachMap >= 0) {
 const cityProfile = getTypologyProfile("CITY_BREAK");
 assert.equal(cityProfile.mapConfig.showRoute, false);
 assert.equal(cityProfile.mapConfig.emphasis, "pois");
+assert.ok(!cityProfile.sectionOrder.includes("journal"), "typology has no separate journal slot");
+
+const richJournal = `# Krakow
+
+Empezamos con ganas.
+
+---
+
+## El viaje día a día
+
+### ${formatDateKey("2024-06-02", "long")}
+
+Plaza del Mercado al amanecer.
+
+![Foto de Ana](/uploads/t1/p1.jpg)
+
+*Ana*
+
+---
+
+Y volvimos con historias.
+`;
+
+const unified = buildExportHtml({
+  travel: {
+    ...baseTravel,
+    journalMarkdown: richJournal,
+  },
+  users,
+  photos: photos.filter((p) => !p.isTransportStart && !p.isTransportEnd),
+  template: "magazine",
+  typology: "CITY_BREAK",
+});
+assert.ok(unified.includes("Empezamos con ganas") || unified.includes("story-intro"), "intro in unified story");
+assert.ok(unified.includes("Plaza del Mercado"), "day prose in unified story");
+assert.ok(unified.includes("Y volvimos") || unified.includes("story-conclusion"), "conclusion in unified story");
+const storySlice = unified.slice(
+  unified.indexOf('id="cronologia"'),
+  unified.indexOf('id="galeria"') >= 0 ? unified.indexOf('id="galeria"') : undefined
+);
+assert.ok(!storySlice.includes("Foto de Ana"), "no image alt dump inside El viaje");
+assert.ok(!unified.includes('id="historia"'), "no historia article id");
+assert.ok(!unified.includes("Crónica del viaje"), "no separate journal heading");
 
 console.log("export-html ok", {
   internationalDualStatic: true,
   video: true,
   beachOrder: true,
+  unifiedStory: true,
 });
