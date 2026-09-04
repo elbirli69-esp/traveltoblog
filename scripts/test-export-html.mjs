@@ -203,6 +203,10 @@ const storySlice = unified.slice(
   unified.indexOf('id="galeria"') >= 0 ? unified.indexOf('id="galeria"') : undefined
 );
 assert.ok(!storySlice.includes("Foto de Ana"), "no image alt dump inside El viaje");
+assert.ok(!storySlice.includes("story-dot"), "no timeline rail dots");
+assert.ok(!storySlice.includes("story-card-rail"), "no timeline rail column");
+assert.ok(unified.includes("lightbox-prev"), "lightbox prev control");
+assert.ok(unified.includes("stepLightbox") || unified.includes("ArrowLeft") || unified.includes("touchend"), "lightbox swipe/keyboard nav");
 assert.ok(!unified.includes('id="historia"'), "no historia article id");
 assert.ok(!unified.includes("Crónica del viaje"), "no separate journal heading");
 

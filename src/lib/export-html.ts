@@ -501,20 +501,6 @@ function buildInteractiveScripts(template: ExportTemplateId): string {
 
   return `
 (function () {
-  var lightbox = document.getElementById("lightbox");
-  if (lightbox) {
-    lightbox.addEventListener("click", function () {
-      lightbox.classList.remove("open");
-      document.body.style.overflow = "";
-    });
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") {
-        lightbox.classList.remove("open");
-        document.body.style.overflow = "";
-      }
-    });
-  }
-
   if ("IntersectionObserver" in window) {
     var observer = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
@@ -2112,7 +2098,13 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
     .join("\n");
 
   const lightboxBlock = isInteractive
-    ? `<div id="lightbox" role="dialog" aria-label="Visor de fotos"><img src="" alt=""><p class="lightbox-caption"></p></div>`
+    ? `<div id="lightbox" role="dialog" aria-modal="true" aria-label="Visor de fotos">
+  <button type="button" class="lightbox-prev" aria-label="Foto anterior" hidden>‹</button>
+  <button type="button" class="lightbox-next" aria-label="Foto siguiente" hidden>›</button>
+  <img src="" alt="">
+  <p class="lightbox-counter" aria-live="polite"></p>
+  <p class="lightbox-caption"></p>
+</div>`
     : "";
 
   const timelineJson = JSON.stringify(timelineEvents).replace(/</g, "\\u003c");
