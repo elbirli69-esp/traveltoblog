@@ -122,6 +122,24 @@ assert.ok(!international.includes('href="#historia"'), "no separate crónica nav
 assert.ok(!international.includes("Crónica del viaje"), "no separate journal section");
 assert.ok(international.includes("Llegamos") || international.includes("story-day-prose") || international.includes("story-intro"), "day prose interleaved or present");
 
+const galleryIdx = international.indexOf('id="galeria"');
+const guideIdx = international.indexOf('id="guia"');
+const closingIdx = international.indexOf('id="cierre"');
+assert.ok(timelineIdx >= 0 && galleryIdx >= 0 && timelineIdx < galleryIdx, "El viaje before Galería");
+if (guideIdx >= 0) {
+  assert.ok(galleryIdx < guideIdx, "Galería before Guía");
+}
+if (closingIdx >= 0 && guideIdx >= 0) {
+  assert.ok(guideIdx < closingIdx, "Guía before Cierre");
+}
+const navChunk = international.slice(
+  international.indexOf("mag-section-nav"),
+  international.indexOf("</nav>", international.indexOf("mag-section-nav"))
+);
+const navGal = navChunk.indexOf("#galeria");
+const navGuide = navChunk.indexOf("#guia");
+assert.ok(navGal >= 0 && (navGuide < 0 || navGal < navGuide), "nav: Galería before Guía");
+
 const beach = buildExportHtml({
   travel: { ...baseTravel, travelType: "BEACH_RESORT", journalMarkdown: null },
   users,
@@ -132,9 +150,13 @@ const beach = buildExportHtml({
 const beachGallery = beach.indexOf("id=\"galeria\"");
 const beachMap = beach.indexOf("id=\"mapa\"");
 const beachTimeline = beach.indexOf("id=\"cronologia\"");
-assert.ok(beachGallery >= 0 && beachTimeline >= 0 && beachGallery < beachTimeline, "BEACH: gallery before timeline");
+assert.ok(beachGallery >= 0 && beachTimeline >= 0 && beachTimeline < beachGallery, "Magazine: El viaje before Galería");
 if (beachMap >= 0) {
-  assert.ok(beachTimeline < beachMap, "BEACH: timeline before map");
+  // Map may sit before timeline (typology) or after gallery; never between viaje and galería.
+  assert.ok(
+    beachMap < beachTimeline || beachMap > beachGallery,
+    "Magazine: map not between El viaje and Galería"
+  );
 }
 
 const cityProfile = getTypologyProfile("CITY_BREAK");
