@@ -1,6 +1,13 @@
 import { marked } from "marked";
 import { formatDateKey, isoToDateKey } from "@/lib/travel-dates";
 import { getPdfThemeCss, pageDimensions } from "@/lib/export-pdf-themes";
+import {
+  buildDayLegend,
+  buildRouteNodesFromPhotosAndPlaces,
+  coalesceRouteNodes,
+  resolveDayLegend,
+  type RouteDayLegendEntry,
+} from "@/lib/mapbox-route";
 import type { PdfExportContext, PdfPageFormat, PdfPhotoAsset } from "@/lib/export-pdf-types";
 
 export type PdfPageKind =
@@ -30,6 +37,36 @@ function escapeHtml(text: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function resolvePdfMapDayLegend(ctx: PdfExportContext): RouteDayLegendEntry[] {
+  const existing = resolveDayLegend(ctx.mapDayLegend ?? []);
+  if (existing.length > 0) return existing;
+  const nodes = coalesceRouteNodes(
+    buildRouteNodesFromPhotosAndPlaces(
+      ctx.photos.map((photo) => ({
+        latitude: photo.latitude,
+        longitude: photo.longitude,
+        exifDateTime: photo.exifDateTime,
+        isTransportStart: photo.isTransportStart,
+        isTransportEnd: photo.isTransportEnd,
+      })),
+      []
+    )
+  );
+  return buildDayLegend(nodes);
+}
+
+function buildPdfDayLegendHtml(entries: RouteDayLegendEntry[]): string {
+  if (entries.length === 0) {
+    return `<span class="map-legend-item"><i style="background:#2dd4bf"></i>Ruta por carretera</span>`;
+  }
+  return entries
+    .map(
+      (entry) =>
+        `<span class="map-legend-item"><i style="background:${escapeHtml(entry.color)}"></i>${escapeHtml(entry.label)}</span>`
+    )
+    .join("");
 }
 
 function formatDateRange(start: Date | null, end: Date | null): string {
@@ -267,13 +304,8 @@ function renderMap(
           : "Color por día · ruta cronológica";
   const legend =
     variant === "flights"
-      ? ""
-      : (ctx.mapDayLegend ?? [])
-          .map(
-            (entry) =>
-              `<span class="map-legend-item"><i style="background:${escapeHtml(entry.color)}"></i>${escapeHtml(entry.label)}</span>`
-          )
-          .join("");
+      ? `<span class="map-legend-item"><i style="background:#818cf8;height:0;border-top:1.2mm dashed #818cf8;border-radius:0"></i>Vuelo ida / vuelta</span>`
+      : buildPdfDayLegendHtml(resolvePdfMapDayLegend(ctx));
   const dualLocal = Boolean(ctx.mapFlightImagePath);
   const eyebrow =
     variant === "flights"
@@ -295,7 +327,7 @@ function renderMap(
         <div class="map-frame">
           <img src="${escapeHtml(imagePath)}" alt="${escapeHtml(eyebrow)}" />
         </div>
-        ${legend ? `<div class="map-legend">${legend}</div>` : ""}
+        <div class="map-legend">${legend}</div>
         <p class="map-caption">${caption}</p>
       </div>
     </div>

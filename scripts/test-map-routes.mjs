@@ -8,6 +8,7 @@ import {
   hasFlightOverview,
   hasLocalActivity,
   partitionSegmentedRouteGeometry,
+  resolveDayLegend,
   resolveSegmentedRoute,
   resolveSegmentedRouteGeometry,
   shouldShowDualMaps,
@@ -128,6 +129,8 @@ assert.equal(parts.local.roadSegments.length, 1);
 assert.equal(filterGeometryByScope(idaGeometry, "flights")?.flightLegs.length, 1);
 assert.equal(filterGeometryByScope(idaGeometry, "local")?.roadSegments.length, 1);
 assert.equal(filterGeometryByScope(idaGeometry, "all"), idaGeometry);
+assert.equal(resolveDayLegend([], idaGeometry.roadSegments).length, 1);
+assert.equal(resolveDayLegend(idaGeometry.dayLegend).length, idaGeometry.dayLegend.length);
 
 // Long-haul: MAD → KRK style should dual-map
 const longHaul = coalesceRouteNodes(

@@ -322,6 +322,26 @@ export function buildDayLegend(nodes: MapRouteNode[]): RouteDayLegendEntry[] {
   return entries;
 }
 
+/** Prefer explicit legend; else derive unique days from colored road segments. */
+export function resolveDayLegend(
+  dayLegend: RouteDayLegendEntry[] | null | undefined,
+  roadSegments: Array<Pick<ColoredRouteSegment, "dayKey" | "dayIndex" | "color" | "label">> = []
+): RouteDayLegendEntry[] {
+  if (dayLegend && dayLegend.length > 0) return dayLegend;
+  const seen = new Map<string, RouteDayLegendEntry>();
+  for (const seg of roadSegments) {
+    const key = seg.dayKey ?? `idx:${seg.dayIndex}`;
+    if (seen.has(key)) continue;
+    seen.set(key, {
+      dayKey: seg.dayKey,
+      dayIndex: seg.dayIndex,
+      color: seg.color,
+      label: seg.label,
+    });
+  }
+  return [...seen.values()].sort((a, b) => a.dayIndex - b.dayIndex);
+}
+
 function isTransportKind(kind: MapRouteNodeKind): boolean {
   return kind === "transport-out" || kind === "transport-in";
 }

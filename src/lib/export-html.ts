@@ -17,9 +17,11 @@ import {
   type GpsTrailPolyline,
 } from "@/lib/gps-track-map";
 import {
+  buildDayLegend,
   buildDirectRouteGeometry,
   buildRouteNodesFromPhotosAndPlaces,
   coalesceRouteNodes,
+  resolveDayLegend,
   resolveSegmentedRouteGeometry,
   type SegmentedRouteGeometry,
 } from "@/lib/mapbox-route";
@@ -409,17 +411,18 @@ type LeafletRouteSegments = {
 };
 
 function toLeafletRouteSegments(geometry: SegmentedRouteGeometry): LeafletRouteSegments {
+  const roadSegments = geometry.roadSegments.map((seg) => ({
+    coords: seg.coordinates.map((p) => [p.lat, p.lng] as [number, number]),
+    color: seg.color,
+    dayKey: seg.dayKey,
+    label: seg.label,
+  }));
   return {
-    roadSegments: geometry.roadSegments.map((seg) => ({
-      coords: seg.coordinates.map((p) => [p.lat, p.lng] as [number, number]),
-      color: seg.color,
-      dayKey: seg.dayKey,
-      label: seg.label,
-    })),
+    roadSegments,
     flightLegs: geometry.flightLegs.map((leg) =>
       leg.map((p) => [p.lat, p.lng] as [number, number])
     ),
-    dayLegend: geometry.dayLegend,
+    dayLegend: resolveDayLegend(geometry.dayLegend, geometry.roadSegments),
   };
 }
 
@@ -430,7 +433,11 @@ function fallbackLeafletRouteSegments(
   const nodes = buildExportRouteNodes(photos, places);
   const direct = buildDirectRouteGeometry(nodes);
   if (direct) return toLeafletRouteSegments(direct);
-  return { roadSegments: [], flightLegs: [], dayLegend: [] };
+  return {
+    roadSegments: [],
+    flightLegs: [],
+    dayLegend: buildDayLegend(nodes),
+  };
 }
 
 function resolveLeafletRouteSegments(
@@ -1188,10 +1195,11 @@ function buildMapSidebarHtml(dayGroups: ExportMapDayGroup[]): string {
 }
 
 function buildMapDayLegendHtml(dayLegend: LeafletRouteSegments["dayLegend"]): string {
-  if (dayLegend.length === 0) {
+  const entries = resolveDayLegend(dayLegend);
+  if (entries.length === 0) {
     return `<span><i class="legend-line"></i> Ruta por carretera</span>`;
   }
-  return dayLegend
+  return entries
     .map(
       (entry) =>
         `<span><i class="legend-line" style="background:${escapeHtml(entry.color)}"></i> ${escapeHtml(entry.label)}</span>`
