@@ -1119,7 +1119,8 @@ export async function encodeInstagramReelMp4(
     const nextIdx = bodyIndices[bi + 1];
     const nextImg = nextIdx != null ? images[nextIdx] : undefined;
     const nextMeta = nextIdx != null ? manifest.frames[nextIdx] : undefined;
-    const hold = Math.max(0.28, meta.durationSeconds - (nextImg ? crossfade : 0));
+    // Floor so a scaled-down clip still shows before the ~0.4 s transition.
+    const hold = Math.max(0.5, meta.durationSeconds - (nextImg ? crossfade : 0));
 
     await addSegment(
       hold,

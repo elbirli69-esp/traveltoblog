@@ -21,15 +21,24 @@ export const REEL_FPS = 30;
 /** Target visual bitrate — ~2.8 Mbps keeps a 30s reel near 10–12 MB. */
 export const REEL_BITRATE = 2_800_000;
 
-export const REEL_CROSSFADE_SECONDS = 0.18;
+/**
+ * Crossfade / slide / soft-zoom length.
+ * ~0.4 s matches travel-influencer Reels (fade/slide readable, not whip-cut).
+ * 0.12–0.20 s feels TikTok-aggressive; keep that only for intentional smash cuts.
+ */
+export const REEL_CROSSFADE_SECONDS = 0.4;
 /** Shorter map beat after the hook. */
 export const REEL_MAP_INTRO_SECONDS = 2.15;
 export const REEL_TITLE_INTRO_SECONDS = 0.65;
 export const REEL_OUTRO_SECONDS = 1.9;
 export const REEL_HOOK_SECONDS = 1.05;
-export const REEL_CHAPTER_SECONDS = 0.65;
-/** Simulated “beat” lengths for punchy pacing. */
-export const REEL_BEAT_PATTERN = [0.75, 1.15, 1.85] as const;
+/** Day chapter card — long enough to read the label at a glance. */
+export const REEL_CHAPTER_SECONDS = 0.95;
+/**
+ * Clip hold pattern (includes outgoing transition).
+ * With a 0.4 s crossfade, clean on-screen holds land ~0.55 / 0.95 / 1.6 s.
+ */
+export const REEL_BEAT_PATTERN = [0.95, 1.35, 2.0] as const;
 
 export type ReelDurationPreset = 15 | 30 | 60;
 
@@ -525,8 +534,9 @@ function fitClipDurations(
   const scale = budget / baseSum;
   return paced.map((f) => {
     if (f.role === "hook" || f.role === "chapter") return f;
-    const min = f.hero ? 1.35 : 0.65;
-    const max = f.hero ? 2.35 : 2.0;
+    // Keep holds usable after subtracting REEL_CROSSFADE_SECONDS in the encoder.
+    const min = f.hero ? 1.5 : 0.95;
+    const max = f.hero ? 2.5 : 2.15;
     return {
       ...f,
       durationSeconds: Math.max(min, Math.min(max, f.durationSeconds * scale)),

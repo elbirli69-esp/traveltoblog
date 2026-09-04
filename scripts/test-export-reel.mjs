@@ -112,7 +112,10 @@ assert.ok(manifest.map);
 assert.ok(manifest.map.points.length >= 2);
 assert.ok((manifest.map.gpsTrails?.length ?? 0) >= 1, "gps trails on map plan");
 assert.ok(manifest.mapIntroSeconds > 0);
-assert.ok(manifest.crossfadeSeconds > 0);
+assert.ok(
+  manifest.crossfadeSeconds >= 0.35 && manifest.crossfadeSeconds <= 0.55,
+  `crossfade should be influencer-paced (~0.4s), got ${manifest.crossfadeSeconds}`
+);
 assert.ok(manifest.outroSeconds >= 1.5, "strong CTA outro length");
 assert.ok(manifest.secondsPerClip >= 0.55);
 
