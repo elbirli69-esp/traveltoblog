@@ -152,6 +152,16 @@ export default function TravelPlacesPanel({
 
   const selectedPlace = places.find((p) => p.id === selectedPlaceId) ?? null;
   const { outbound, inbound } = resolveFlightLegs(photos);
+  const hasFlightGps = Boolean(outbound?.hasGps || inbound?.hasGps);
+  const hasLocalMapContent =
+    photos.some(
+      (p) =>
+        p.latitude != null &&
+        p.longitude != null &&
+        !p.isTransportStart &&
+        !p.isTransportEnd
+    ) || places.length > 0;
+  const showDualMaps = hasFlightGps && hasLocalMapContent;
   const placesPageCount = totalPages(places.length, PLACES_PAGE_SIZE);
   const visiblePlaces = pageSlice(places, placesPage, PLACES_PAGE_SIZE);
 
@@ -458,7 +468,7 @@ export default function TravelPlacesPanel({
         <h3 className="text-sm font-semibold text-accent-blue">Vuelos ida / vuelta</h3>
         <p className="mt-1 text-xs text-fg-secondary">
           Derivado de fotos marcadas como Ida o Vuelta en la pestaña Fotos (no se crean aquí).
-          Si tienen GPS de aeropuerto, aparecen en el mapa con línea discontinua.
+          Si tienen GPS de aeropuerto, el trayecto se muestra en un mapa aparte del recorrido en destino.
         </p>
         {onOpenFotosTab && (
           <button
@@ -475,26 +485,78 @@ export default function TravelPlacesPanel({
         </div>
       </section>
 
-      <TravelPlacesMap
-        places={places}
-        photos={photos}
-        selectedPlaceId={selectedPlaceId}
-        selectedPhotoId={selectedPhotoId}
-        addMode={addMode}
-        clickToPlace={addMode && pickOnMap}
-        locateSignal={locateSignal}
-        draftPin={draft ? { lat: draft.lat, lng: draft.lng } : null}
-        onMapClick={handleMapClick}
-        onPlaceClick={(id) => {
-          setSelectedPlaceId(id);
-          setSelectedPhotoId(null);
-          setEditForm(null);
-        }}
-        onPhotoClick={(id) => {
-          setSelectedPhotoId(id);
-          onOpenPhoto?.(id);
-        }}
-      />
+      {showDualMaps ? (
+        <div className="space-y-4">
+          <TravelPlacesMap
+            scope="flights"
+            compact
+            title="Trayecto / llegada"
+            subtitle="Vuelos de ida y vuelta — contexto del destino"
+            places={places}
+            photos={photos}
+            selectedPlaceId={selectedPlaceId}
+            selectedPhotoId={selectedPhotoId}
+            addMode={false}
+            clickToPlace={false}
+            locateSignal={0}
+            draftPin={null}
+            onMapClick={handleMapClick}
+            onPlaceClick={(id) => {
+              setSelectedPlaceId(id);
+              setSelectedPhotoId(null);
+              setEditForm(null);
+            }}
+            onPhotoClick={(id) => {
+              setSelectedPhotoId(id);
+              onOpenPhoto?.(id);
+            }}
+          />
+          <TravelPlacesMap
+            scope="local"
+            title="En destino"
+            subtitle="Recorrido del viaje — sin el zoom de los vuelos"
+            places={places}
+            photos={photos}
+            selectedPlaceId={selectedPlaceId}
+            selectedPhotoId={selectedPhotoId}
+            addMode={addMode}
+            clickToPlace={addMode && pickOnMap}
+            locateSignal={locateSignal}
+            draftPin={draft ? { lat: draft.lat, lng: draft.lng } : null}
+            onMapClick={handleMapClick}
+            onPlaceClick={(id) => {
+              setSelectedPlaceId(id);
+              setSelectedPhotoId(null);
+              setEditForm(null);
+            }}
+            onPhotoClick={(id) => {
+              setSelectedPhotoId(id);
+              onOpenPhoto?.(id);
+            }}
+          />
+        </div>
+      ) : (
+        <TravelPlacesMap
+          places={places}
+          photos={photos}
+          selectedPlaceId={selectedPlaceId}
+          selectedPhotoId={selectedPhotoId}
+          addMode={addMode}
+          clickToPlace={addMode && pickOnMap}
+          locateSignal={locateSignal}
+          draftPin={draft ? { lat: draft.lat, lng: draft.lng } : null}
+          onMapClick={handleMapClick}
+          onPlaceClick={(id) => {
+            setSelectedPlaceId(id);
+            setSelectedPhotoId(null);
+            setEditForm(null);
+          }}
+          onPhotoClick={(id) => {
+            setSelectedPhotoId(id);
+            onOpenPhoto?.(id);
+          }}
+        />
+      )}
 
       {draft && (
         <div className="form-panel space-y-3">

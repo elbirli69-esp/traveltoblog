@@ -12,7 +12,7 @@ import {
   PDF_JPEG_QUALITY,
 } from "@/lib/export-images";
 import { readPhotoBuffer } from "@/lib/export-html";
-import { fetchPdfMapImage } from "@/lib/export-pdf-map";
+import { fetchPdfDualMapImages } from "@/lib/export-pdf-map";
 import { prisma } from "@/lib/prisma";
 import type { PdfProgressCallback } from "@/lib/export-pdf-pipeline";
 
@@ -146,7 +146,7 @@ export async function preparePdfAssets(
     });
   }
 
-  const mapResult = await fetchPdfMapImage(
+  const mapDual = await fetchPdfDualMapImages(
     photos,
     workDir,
     (travel.places ?? []).map((p) => ({
@@ -173,10 +173,12 @@ export async function preparePdfAssets(
     format,
     template,
     coverPhotoId,
-    mapImagePath: mapResult?.relativePath ?? null,
-    mapRouteMode: mapResult?.routeMode ?? null,
-    mapPointCount: mapResult?.pointCount ?? 0,
-    mapDayLegend: mapResult?.dayLegend ?? [],
+    mapImagePath: mapDual.local?.relativePath ?? null,
+    mapFlightImagePath: mapDual.flights?.relativePath ?? null,
+    mapRouteMode: mapDual.local?.routeMode ?? mapDual.flights?.routeMode ?? null,
+    mapPointCount: mapDual.local?.pointCount ?? 0,
+    mapDayLegend: mapDual.local?.dayLegend ?? [],
+    mapFlightPointCount: mapDual.flights?.pointCount ?? 0,
     workDir,
   };
 }

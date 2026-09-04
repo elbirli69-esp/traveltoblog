@@ -4,8 +4,14 @@ import {
   buildFlightLegs,
   buildRouteNodesFromPhotosAndPlaces,
   coalesceRouteNodes,
+  filterGeometryByScope,
+  hasFlightOverview,
+  hasLocalActivity,
+  partitionSegmentedRouteGeometry,
+  resolveDayLegend,
   resolveSegmentedRoute,
   resolveSegmentedRouteGeometry,
+  shouldShowDualMaps,
   splitGroundRuns,
   splitGroundRunsByDay,
 } from "../src/lib/mapbox-route.ts";
@@ -110,9 +116,64 @@ assert.ok(idaGeometry);
 assert.equal(idaGeometry.flightLegs.length, 1);
 assert.equal(idaGeometry.roadSegments.length, 1);
 
+assert.equal(hasFlightOverview(idaGeometry), true);
+assert.equal(hasLocalActivity(idaGeometry), true);
+assert.equal(shouldShowDualMaps(idaGeometry), true);
+assert.equal(shouldShowDualMaps(direct), false, "ground-only trip stays single map");
+
+const parts = partitionSegmentedRouteGeometry(idaGeometry);
+assert.equal(parts.flights.flightLegs.length, 1);
+assert.equal(parts.flights.roadSegments.length, 0);
+assert.equal(parts.local.flightLegs.length, 0);
+assert.equal(parts.local.roadSegments.length, 1);
+assert.equal(filterGeometryByScope(idaGeometry, "flights")?.flightLegs.length, 1);
+assert.equal(filterGeometryByScope(idaGeometry, "local")?.roadSegments.length, 1);
+assert.equal(filterGeometryByScope(idaGeometry, "all"), idaGeometry);
+assert.equal(resolveDayLegend([], idaGeometry.roadSegments).length, 1);
+assert.equal(resolveDayLegend(idaGeometry.dayLegend).length, idaGeometry.dayLegend.length);
+
+// Long-haul: MAD → KRK style should dual-map
+const longHaul = coalesceRouteNodes(
+  buildRouteNodesFromPhotosAndPlaces([
+    {
+      latitude: 40.4719,
+      longitude: -3.5626,
+      exifDateTime: "2024-06-01T08:00:00Z",
+      isTransportStart: true,
+    },
+    {
+      latitude: 50.0777,
+      longitude: 19.7981,
+      exifDateTime: "2024-06-01T12:00:00Z",
+    },
+    {
+      latitude: 50.0614,
+      longitude: 19.9372,
+      exifDateTime: "2024-06-02T10:00:00Z",
+    },
+    {
+      latitude: 50.0647,
+      longitude: 19.945,
+      exifDateTime: "2024-06-03T11:00:00Z",
+    },
+    {
+      latitude: 50.0777,
+      longitude: 19.7981,
+      exifDateTime: "2024-06-04T18:00:00Z",
+      isTransportEnd: true,
+    },
+  ])
+);
+const longHaulGeometry = await resolveSegmentedRouteGeometry(longHaul);
+assert.ok(longHaulGeometry);
+assert.ok(longHaulGeometry.flightLegs.length >= 1);
+assert.ok(longHaulGeometry.roadSegments.length >= 1);
+assert.equal(shouldShowDualMaps(longHaulGeometry), true);
+
 console.log("map-routes ok", {
   groundOnly: segmented.mode,
   dayColors: dayRuns.map((r) => r.color),
   idaOnly: idaGeometry.mode,
   roadPoints: geometry.roadSegments[0].coordinates.length,
+  dualMaps: shouldShowDualMaps(longHaulGeometry),
 });

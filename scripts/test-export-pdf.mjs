@@ -31,12 +31,20 @@ const html = buildPrintHtml({
   mapImagePath: "map/route.png",
   mapRouteMode: "segmented",
   mapPointCount: 3,
+  mapDayLegend: [
+    { dayKey: "2024-06-02", dayIndex: 0, color: "#2dd4bf", label: "Día 1 · 2 jun" },
+    { dayKey: "2024-06-03", dayIndex: 1, color: "#f59e0b", label: "Día 2 · 3 jun" },
+  ],
 });
 
 assert.ok(html.includes('src="photos/001-bleed.jpg"'), "bleed image on cover");
 assert.ok(html.includes("page-cover"), "cover page");
 assert.ok(html.includes("page-map"), "map page");
 assert.ok(html.includes("map/route.png"), "map image path");
+assert.ok(html.includes("map-legend"), "day legend container on map page");
+assert.ok(html.includes("Día 1 · 2 jun"), "day 1 legend label");
+assert.ok(html.includes("Día 2 · 3 jun"), "day 2 legend label");
+assert.ok(html.includes("#2dd4bf"), "day 1 legend color");
 assert.ok(html.includes("page-bleed") || html.includes("page-featured"), "interior layouts");
 assert.ok(!html.includes("file://"), "no file:// urls");
 assert.ok(html.includes("Capítulo") || html.includes("Recuerdos"), "day divider");

@@ -254,10 +254,14 @@ export function buildMagazineHero(input: {
 export function buildMagazineNav(
   hasMap: boolean,
   hasJournal: boolean,
-  hasGuide = false
+  hasGuide = false,
+  hasFlightMap = false
 ): string {
+  const mapLinks = hasMap
+    ? `${hasFlightMap ? '<a href="#mapa-trayecto">Trayecto</a>' : ""}<a href="#mapa">${hasFlightMap ? "En destino" : "Mapa"}</a>`
+    : "";
   return `<nav class="mag-section-nav">
-  ${hasMap ? '<a href="#mapa">Mapa</a>' : ""}
+  ${mapLinks}
   <a href="#cronologia">Recorrido</a>
   ${hasJournal ? '<a href="#historia">Crónica</a>' : ""}
   ${hasGuide ? '<a href="#guia">Guía</a>' : ""}

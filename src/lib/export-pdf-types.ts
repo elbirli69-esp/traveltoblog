@@ -47,13 +47,16 @@ export interface PdfExportContext {
   format: PdfPageFormat;
   template: PdfTemplate;
   coverPhotoId?: string | null;
-  /** Relative path to static map PNG inside workDir (e.g. map/route.png). */
+  /** Relative path to destination / combined map PNG (e.g. map/local.png). */
   mapImagePath?: string | null;
+  /** Optional flight-overview map when dual maps apply. */
+  mapFlightImagePath?: string | null;
   /** How the PDF route line was generated. */
   mapRouteMode?: "segmented" | "directions" | "direct" | null;
   mapPointCount?: number;
-  /** Day color legend for the map page. */
+  /** Day color legend for the local/combined map page. */
   mapDayLegend?: { dayKey: string | null; dayIndex: number; color: string; label: string }[];
+  mapFlightPointCount?: number;
 }
 
 export const PDF_TEMPLATES: { id: PdfTemplate; name: string; description: string }[] = [
