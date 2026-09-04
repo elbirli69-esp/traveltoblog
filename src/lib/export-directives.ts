@@ -11,12 +11,20 @@ export type ReelCaptionPlacement = "bottom" | "center" | "side";
 export type ReelTransitionStyle = "softFade" | "mixed" | "fastCut";
 export type ReelDurationPreset = 15 | 30 | 60;
 
+export type HtmlTheme = "light" | "dark";
+
 export interface ExportHtmlDirectives {
   imageEmphasis: Emphasis;
   galleryEmphasis: Emphasis;
   proseDensity: Emphasis;
   placeCallouts: Emphasis;
   mapEmphasis: Emphasis;
+  /**
+   * Soft theme preference from free-text brief.
+   * Applied only when the UI template is still a light default (magazine / editorial-clean):
+   * dark → dark-photo-journey. Explicit UI template choice still wins otherwise.
+   */
+  theme?: HtmlTheme;
   preferSectionOrder?: Array<
     "timeline" | "gallery" | "map" | "guide" | "closing"
   >;
@@ -123,6 +131,10 @@ function clampHtml(
           (SECTION_ORDER as readonly string[]).includes(x)
       )
     : undefined;
+  const theme =
+    raw.theme === "dark" || raw.theme === "light"
+      ? (raw.theme as HtmlTheme)
+      : undefined;
   return {
     imageEmphasis: isEmphasis(raw.imageEmphasis) ? raw.imageEmphasis : d.imageEmphasis,
     galleryEmphasis: isEmphasis(raw.galleryEmphasis)
@@ -131,6 +143,7 @@ function clampHtml(
     proseDensity: isEmphasis(raw.proseDensity) ? raw.proseDensity : d.proseDensity,
     placeCallouts: isEmphasis(raw.placeCallouts) ? raw.placeCallouts : d.placeCallouts,
     mapEmphasis: isEmphasis(raw.mapEmphasis) ? raw.mapEmphasis : d.mapEmphasis,
+    ...(theme ? { theme } : {}),
     ...(order && order.length > 0 ? { preferSectionOrder: order } : {}),
   };
 }
@@ -281,13 +294,16 @@ export function summarizeReelDirectives(reel: ExportReelDirectives): string {
 export function summarizeHtmlDirectives(html: ExportHtmlDirectives): string {
   const label = (e: Emphasis, high: string, low: string, mid: string) =>
     e === "high" ? high : e === "low" ? low : mid;
-  return [
+  const bits = [
     label(html.imageEmphasis, "fotos grandes", "fotos compactas", "fotos medias"),
     label(html.galleryEmphasis, "galería protagonista", "galería discreta", "galería normal"),
     label(html.proseDensity, "más crónica", "poca prosa", "prosa equilibrada"),
     label(html.placeCallouts, "guía destacada", "guía ligera", "guía normal"),
     label(html.mapEmphasis, "mapa grande", "mapa compacto", "mapa normal"),
-  ].join(" · ");
+  ];
+  if (html.theme === "dark") bits.unshift("modo oscuro");
+  if (html.theme === "light") bits.unshift("modo claro");
+  return bits.join(" · ");
 }
 
 /** Body class list from HTML directives (for CSS knobs). */
@@ -299,5 +315,6 @@ export function htmlDirectiveBodyClasses(html: ExportHtmlDirectives): string {
     `export-dir--prose-${html.proseDensity}`,
     `export-dir--callouts-${html.placeCallouts}`,
     `export-dir--map-${html.mapEmphasis}`,
+    ...(html.theme ? [`export-dir--theme-${html.theme}`] : []),
   ].join(" ");
 }

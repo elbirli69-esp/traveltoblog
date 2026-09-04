@@ -203,3 +203,41 @@ export function bodyClassForHtmlDirectives(
 ): string {
   return htmlDirectiveBodyClasses(resolveHtmlDirectives(html));
 }
+
+/**
+ * Soft-apply brief theme onto the UI-selected template.
+ * Only upgrades light defaults (magazine / editorial-clean) → dark-photo-journey.
+ * An explicit dark UI template is left alone; light brief never downgrades a dark UI pick.
+ */
+export function resolveHtmlTemplateFromBrief(
+  selectedTemplate: "magazine" | "visual-journey" | "editorial-clean" | "dark-photo-journey",
+  html?: ExportHtmlDirectives | null
+): "magazine" | "visual-journey" | "editorial-clean" | "dark-photo-journey" {
+  const theme = resolveHtmlDirectives(html).theme;
+  if (
+    theme === "dark" &&
+    (selectedTemplate === "magazine" || selectedTemplate === "editorial-clean")
+  ) {
+    return "dark-photo-journey";
+  }
+  return selectedTemplate;
+}
+
+/**
+ * Photo ids already shown as primary story media (photo cards / flight media).
+ * Place cards and guide thumbs must not reuse these.
+ */
+export function collectPrimaryStoryPhotoIds(
+  events: Array<{ kind: string; meta?: { photoId?: string | null } | null }>
+): Set<string> {
+  const ids = new Set<string>();
+  for (const ev of events) {
+    if (
+      (ev.kind === "photo" || ev.kind === "flight-out" || ev.kind === "flight-in") &&
+      ev.meta?.photoId
+    ) {
+      ids.add(ev.meta.photoId);
+    }
+  }
+  return ids;
+}

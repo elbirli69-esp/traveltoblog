@@ -15,6 +15,8 @@ import {
 import {
   applyHtmlSectionOrderBias,
   clampProseHtml,
+  collectPrimaryStoryPhotoIds,
+  resolveHtmlTemplateFromBrief,
 } from "../src/lib/export-html-directives.ts";
 import { buildExportHtml } from "../src/lib/export-html.ts";
 
@@ -195,6 +197,7 @@ const htmlPhotos = [
     isTransportStart: false,
     isTransportEnd: false,
     highlightScore: 8,
+    placeId: "pl1",
   },
 ];
 const longJournal = `# Krakow
@@ -263,10 +266,94 @@ const galleryIdx = htmlOut.indexOf('id="galeria"');
 const guideIdx = htmlOut.indexOf('id="guia"');
 assert.ok(galleryIdx > 0 && guideIdx > galleryIdx, "gallery before guide by default when high");
 
+// --- dark theme soft-switches magazine → dark-photo-journey ---
+const darkBrief = groundExportBriefHeuristically(
+  "Quiero modo oscuro, fotos grandes y formas destacadas, sin repetir fotos",
+  { target: "html" }
+);
+assert.equal(darkBrief.html?.theme, "dark");
+assert.equal(darkBrief.html?.imageEmphasis, "high");
+assert.ok(summarizeHtmlDirectives(darkBrief.html).includes("modo oscuro"));
+
+assert.equal(
+  resolveHtmlTemplateFromBrief("magazine", darkBrief.html),
+  "dark-photo-journey"
+);
+assert.equal(
+  resolveHtmlTemplateFromBrief("dark-photo-journey", { ...darkBrief.html, theme: "light" }),
+  "dark-photo-journey",
+  "UI dark template wins over light brief"
+);
+
+const darkHtml = buildExportHtml({
+  travel: {
+    id: "t1",
+    title: "Krakow",
+    startDate: new Date("2024-06-01"),
+    endDate: new Date("2024-06-05"),
+    journalMarkdown: longJournal,
+    travelType: "INTERNATIONAL",
+  },
+  users: [{ id: "u1", alias: "Ada" }],
+  photos: htmlPhotos,
+  places: [
+    {
+      id: "pl1",
+      name: "Plaza",
+      type: "MUSEUM",
+      latitude: 50.06,
+      longitude: 19.94,
+      comment: "Nota guía",
+      alias: "Ada",
+      visitedAt: new Date("2024-06-02"),
+      highlightScore: 9,
+    },
+  ],
+  template: "magazine",
+  typology: "INTERNATIONAL",
+  htmlDirectives: darkBrief.html,
+  briefInterpretation: darkBrief.interpretation,
+});
+assert.ok(darkHtml.includes("export-dir--theme-dark"), "dark theme body class");
+assert.ok(
+  /--bg:\s*#0/i.test(darkHtml) || darkHtml.includes("dark-photo-journey") || darkHtml.includes("#0b1120") || darkHtml.includes("#0c0a09"),
+  "dark template palette applied"
+);
+
+const guideSlice =
+  darkHtml.includes('id="guia"')
+    ? darkHtml.slice(darkHtml.indexOf('id="guia"'), darkHtml.indexOf('id="cierre"') >= 0 ? darkHtml.indexOf('id="cierre"') : undefined)
+    : "";
+assert.ok(
+  !guideSlice.includes("002-thumb") && !guideSlice.includes("photos/002"),
+  "guide must not reuse the story photo"
+);
+
+const storySlice = darkHtml.includes('id="cronologia"')
+  ? darkHtml.slice(
+      darkHtml.indexOf('id="cronologia"'),
+      darkHtml.indexOf('id="galeria"') >= 0 ? darkHtml.indexOf('id="galeria"') : undefined
+    )
+  : darkHtml;
+const storyThumbHits = (storySlice.match(/002-thumb\.webp/g) || []).length;
+assert.ok(
+  storyThumbHits <= 1,
+  `story should show each photo at most once, got ${storyThumbHits} thumb hits`
+);
+
+const primary = collectPrimaryStoryPhotoIds([
+  { kind: "photo", meta: { photoId: "p1" } },
+  { kind: "place", meta: { placeId: "pl1", photoId: "p1" } },
+  { kind: "flight-out", meta: { photoId: "p2" } },
+]);
+assert.ok(primary.has("p1") && primary.has("p2"));
+assert.equal(primary.size, 2);
+
 console.log("export-brief ok", {
   fewClips: fewClips.length,
   fastClips: fastClips.length,
   calmSummary: summary,
   selected: selected.length,
   htmlClasses: htmlDirectiveBodyClasses(visual.html),
+  darkTheme: darkBrief.html?.theme,
 });
