@@ -5,7 +5,10 @@ import { resolveFlightLegs } from "@/lib/flights";
 import { placeEmoji, placeLabel } from "@/lib/places";
 import { formatDateKey, isoToDateKey, resolveTravelDayRange } from "@/lib/travel-dates";
 
-type PhotoWithUser = Photo & { user: User };
+type PhotoWithUser = Photo & {
+  user: User;
+  place?: { name: string } | null;
+};
 type NoteWithUser = Note & { user: User; photo: Photo | null };
 type PlaceWithUser = Place & {
   user: User;
@@ -19,6 +22,7 @@ export type JournalPipelineStep =
   | "captions"
   | "conclusion"
   | "assemble"
+  | "refine"
   | "complete";
 
 export interface JournalPipelineEvent {
@@ -35,12 +39,14 @@ export interface EnhancedDayPhoto {
   exifDateTime: string | null;
   isTransportStart: boolean;
   isTransportEnd: boolean;
+  placeName?: string | null;
 }
 
 export interface EnhancedDayBlock {
   date: string;
   dayNotes: { text: string; author: string }[];
   photos: EnhancedDayPhoto[];
+  places: { name: string; type: string; comment: string | null; alias: string }[];
 }
 
 export interface EnhancedJournalContext {
@@ -54,6 +60,8 @@ export interface EnhancedJournalContext {
   places: { name: string; type: string; comment: string | null; alias: string }[];
   days: EnhancedDayBlock[];
   tripNotes: { text: string; author: string }[];
+  /** User free-text: anecdotes, emphasis, tone */
+  brief: string | null;
 }
 
 export type JournalStyle = "narrative" | "factual";
@@ -63,16 +71,24 @@ export const JOURNAL_STYLE_LABELS: Record<
   { title: string; description: string }
 > = {
   narrative: {
-    title: "Narrativo",
+    title: "Vivo",
     description:
-      "Relato más épico y literario. Puede ampliar el ambiente y el tono, inspirándose en las notas.",
+      "Crónica cercana, con ritmo natural. Ambienta solo con lo documentado; prioriza detalle concreto sobre adjetivos.",
   },
   factual: {
     title: "Fiel a las notas",
     description:
-      "Se ciñe a lo que escribisteis. Solo reescribe mejor, sin inventar hechos ni añadir escenas.",
+      "Se ciñe a lo que escribisteis. Solo reescribe con claridad, sin inventar hechos ni escenas.",
   },
 };
+
+const VOICE_RULES = `VOZ Y LENGUAJE:
+- Escribe como un amigo que cuenta el viaje en voz alta: natural, claro, humano.
+- Preferir concreto a abstracto (qué pasó, quién lo dijo, dónde).
+- Conserva el humor y los giros de las notas; cuando cites, usa el alias y, si encaja, comillas con la frase casi literal.
+- PROHIBIDO (y variantes): inolvidable, mágico/a, experiencia única, tejido de recuerdos, odisea, sinfonía de sensaciones, "cada rincón", "momentos que quedarán grabados".
+- Evita párrafos que solo ambientan sin aportar un hecho o una cita de los viajeros.
+- Español peninsular natural; no suenes a folleto turístico ni a IA.`;
 
 interface JournalPromptConfig {
   intro: { system: string; temperature: number };
@@ -81,41 +97,56 @@ interface JournalPromptConfig {
   conclusion: { system: string; temperature: number };
 }
 
+function briefBlock(brief: string | null | undefined): string {
+  const text = brief?.trim();
+  if (!text) return "";
+  return `
+
+INDICACIONES DEL USUARIO (prioridad alta):
+${text}
+Incorpóralas con naturalidad. No inventes nada fuera de estas indicaciones y de los datos del viaje.`;
+}
+
 function getJournalPromptConfig(style: JournalStyle): JournalPromptConfig {
   if (style === "factual") {
     return {
       intro: {
         system: `Eres un editor de diarios de viaje. Escribe SOLO la introducción (1-3 párrafos en Markdown).
+${VOICE_RULES}
 REGLAS ESTRICTAS:
-- Usa ÚNICAMENTE la información explícita en notas_viaje, participantes, fechas y vuelos.
-- Puedes mejorar redacción, orden y claridad, pero NO inventes lugares, anécdotas, emociones ni detalles no mencionados.
-- Si hay poca información, escribe una intro breve y sobria.
+- Usa ÚNICAMENTE notas_viaje, participantes, fechas, vuelos e indicaciones_usuario.
+- Puedes mejorar redacción y claridad; NO inventes lugares, anécdotas ni emociones no dichas.
+- Si hay poca información, intro breve y sobria.
 - No uses encabezados (#).`,
         temperature: 0.35,
       },
       days: {
-        system: `Eres un editor de diarios de viaje. Recibirás días con notas y comentarios de fotos.
+        system: `Eres un editor de diarios de viaje. Recibirás días con notas, lugares y comentarios de fotos.
 Responde SOLO un JSON array: [{"date":"YYYY-MM-DD","summary":"texto markdown"}].
+${VOICE_RULES}
 REGLAS ESTRICTAS:
 - Un elemento por cada día del input.
-- Cada párrafo debe basarse SOLO en notas_dia y comentarios de fotos de ese día.
+- Basa cada párrafo SOLO en notas_dia, lugares_del_dia, comentarios de fotos e indicaciones_usuario.
 - Cita autores cuando corresponda. No añadas clima, reflexiones ni eventos no documentados.
-- Si un día tiene poca información, resume en 1-2 frases sin rellenar.
-- No incluyas imágenes.`,
+- Integra los lugares del día en la narración (no como lista suelta) si aparecen en los datos.
+- Si un día tiene poca información, 1-2 frases sin rellenar.
+- No incluyas imágenes ni URLs.`,
         temperature: 0.3,
       },
       captions: {
         system: `Reescribe leyendas de fotos para un diario de viaje.
 Responde SOLO JSON: [{"url":"...","caption":"leyenda max 120 chars"}].
+${VOICE_RULES}
 REGLAS ESTRICTAS:
-- Basa cada caption en comentarios del usuario. Si hay comentarios, reescríbelos con mejor estilo sin cambiar el significado.
-- Si no hay comentarios, usa una leyenda neutra y breve ("Foto de {autor}") sin inventar el lugar o la escena.`,
+- Basa cada caption en comentarios del usuario; reescribe sin cambiar el significado.
+- Si no hay comentarios, leyenda neutra breve ("Foto de {autor}" o el nombre del lugar si viene en los datos) sin inventar la escena.`,
         temperature: 0.25,
       },
       conclusion: {
         system: `Eres un editor de diarios de viaje. Escribe SOLO la conclusión (1-2 párrafos Markdown).
+${VOICE_RULES}
 REGLAS ESTRICTAS:
-- Cierra el relato usando SOLO lo documentado en intro_resumen y dias_resumen.
+- Cierra usando SOLO intro_resumen, dias_resumen e indicaciones_usuario.
 - No inventes moralejas ni experiencias no mencionadas. Sin encabezados.`,
         temperature: 0.35,
       },
@@ -124,28 +155,36 @@ REGLAS ESTRICTAS:
 
   return {
     intro: {
-      system: `Eres un cronista de viajes con estilo literario. Escribe SOLO la introducción (2-4 párrafos en Markdown) de un artículo de blog colaborativo.
-Puedes dar épica, atmósfera y ritmo narrativo, pero respeta los hechos de las notas y participantes.
+      system: `Eres un cronista de blogs de viaje. Escribe SOLO la introducción (2-4 párrafos en Markdown) de un artículo colaborativo.
+${VOICE_RULES}
+Puedes dar ritmo y calidez, pero solo con hechos de los datos e indicaciones_usuario.
+Empieza cerca de algo concreto (un detalle, una cita, el motivo del viaje), no con una tesis grandilocuente.
 No uses encabezados (#).`,
-      temperature: 0.8,
+      temperature: 0.65,
     },
     days: {
-      system: `Eres un cronista de viajes. Recibirás días del viaje con notas y fotos.
+      system: `Eres un cronista de blogs de viaje. Recibirás días con notas, lugares visitados y fotos.
 Responde SOLO un JSON array: [{"date":"YYYY-MM-DD","summary":"texto markdown 1-3 párrafos"}].
-Un elemento por cada día del input. Integra anécdotas citando autores con tono evocador.
-Puedes ambientar y conectar momentos, pero no contradigas las notas. No incluyas imágenes.`,
-      temperature: 0.75,
+${VOICE_RULES}
+Un elemento por cada día. Integra anécdotas citando aliases; conecta momentos con transiciones naturales (no "Ese día… Ese día…").
+Menciona lugares del día dentro de la escena cuando existan en los datos.
+Puedes ambientar con lo implícito mínimo (mañana/tarde por el orden de fotos), pero no contradigas las notas ni inventes tormentas, discusiones o descubrimientos no escritos.
+Respeta indicaciones_usuario. No incluyas imágenes ni URLs.`,
+      temperature: 0.6,
     },
     captions: {
-      system: `Mejora leyendas de fotos de viaje para un blog con tono evocador.
+      system: `Escribes pies de foto para un blog de viaje, tono cercano.
 Responde SOLO JSON: [{"url":"...","caption":"leyenda max 120 chars"}].
-Basa cada caption en comentarios del usuario; si no hay, describe el momento con sensibilidad sin inventar lugares específicos.`,
-      temperature: 0.8,
+${VOICE_RULES}
+Basa cada caption en comentarios; si no hay, una línea sobria con autor o lugar conocido, sin inventar la escena.`,
+      temperature: 0.55,
     },
     conclusion: {
-      system: `Eres un cronista de viajes. Escribe SOLO la conclusión (1-3 párrafos Markdown) cerrando el relato con tono reflexivo.
-No repitas la intro literalmente. Sin encabezados.`,
-      temperature: 0.75,
+      system: `Eres un cronista de blogs de viaje. Escribe SOLO la conclusión (1-3 párrafos Markdown).
+${VOICE_RULES}
+Cierra con eco de lo vivido (hechos o citas ya aparecidos), sin sermón ni resumen telegráfico de toda la intro.
+Sin encabezados. Respeta indicaciones_usuario.`,
+      temperature: 0.6,
     },
   };
 }
@@ -165,7 +204,8 @@ export function buildEnhancedJournalContext(
   users: User[],
   photos: PhotoWithUser[],
   notes: NoteWithUser[],
-  places: PlaceWithUser[]
+  places: PlaceWithUser[],
+  brief?: string | null
 ): EnhancedJournalContext {
   const selectedPhotos = photos.filter((p) => p.selected);
   const photoNotesByPhotoId = new Map<string, string[]>();
@@ -184,16 +224,56 @@ export function buildEnhancedJournalContext(
     photoExifDates: selectedPhotos.map((p) => p.exifDateTime?.toISOString() ?? null),
   });
 
+  const placesForContext = places.map((p) => {
+    const fromNotes =
+      p.notes
+        ?.filter((n) => n.type === "PLACE")
+        .map((n) => n.text)
+        .filter(Boolean) ?? [];
+    const comment =
+      fromNotes.length > 0 ? fromNotes.join(" · ") : p.comment?.trim() || null;
+    return {
+      name: p.name,
+      type: p.type,
+      comment,
+      alias: p.user.alias,
+      visitedAt: p.visitedAt?.toISOString() ?? null,
+    };
+  });
+
   const daysMap = new Map<string, EnhancedDayBlock>();
   for (const key of range.dayKeys) {
-    daysMap.set(key, { date: key, dayNotes: [], photos: [] });
+    daysMap.set(key, { date: key, dayNotes: [], photos: [], places: [] });
   }
 
   for (const note of notes) {
     if (note.type !== "DAY" || !note.dayDate) continue;
     const key = isoToDateKey(note.dayDate.toISOString());
-    const block = daysMap.get(key) ?? { date: key, dayNotes: [], photos: [] };
+    const block = daysMap.get(key) ?? {
+      date: key,
+      dayNotes: [],
+      photos: [],
+      places: [],
+    };
     block.dayNotes.push({ text: note.text, author: note.user.alias });
+    daysMap.set(key, block);
+  }
+
+  for (const place of placesForContext) {
+    if (!place.visitedAt) continue;
+    const key = isoToDateKey(place.visitedAt);
+    const block = daysMap.get(key) ?? {
+      date: key,
+      dayNotes: [],
+      photos: [],
+      places: [],
+    };
+    block.places.push({
+      name: place.name,
+      type: place.type,
+      comment: place.comment,
+      alias: place.alias,
+    });
     daysMap.set(key, block);
   }
 
@@ -201,7 +281,12 @@ export function buildEnhancedJournalContext(
     const key = photo.exifDateTime
       ? isoToDateKey(photo.exifDateTime.toISOString())
       : range.startKey;
-    const block = daysMap.get(key) ?? { date: key, dayNotes: [], photos: [] };
+    const block = daysMap.get(key) ?? {
+      date: key,
+      dayNotes: [],
+      photos: [],
+      places: [],
+    };
     block.photos.push({
       url: photo.url,
       author: photo.user.alias,
@@ -209,6 +294,7 @@ export function buildEnhancedJournalContext(
       exifDateTime: photo.exifDateTime?.toISOString() ?? null,
       isTransportStart: photo.isTransportStart,
       isTransportEnd: photo.isTransportEnd,
+      placeName: photo.place?.name ?? null,
     });
     daysMap.set(key, block);
   }
@@ -249,29 +335,19 @@ export function buildEnhancedJournalContext(
           }
         : null,
     },
-    places: places.map((p) => {
-      const fromNotes =
-        p.notes
-          ?.filter((n) => n.type === "PLACE")
-          .map((n) => n.text)
-          .filter(Boolean) ?? [];
-      const comment =
-        fromNotes.length > 0
-          ? fromNotes.join(" · ")
-          : p.comment?.trim() || null;
-      return {
-        name: p.name,
-        type: p.type,
-        comment,
-        alias: p.user.alias,
-      };
-    }),
+    places: placesForContext.map(({ name, type, comment, alias }) => ({
+      name,
+      type,
+      comment,
+      alias,
+    })),
     days: [...daysMap.values()]
-      .filter((d) => d.dayNotes.length > 0 || d.photos.length > 0)
+      .filter((d) => d.dayNotes.length > 0 || d.photos.length > 0 || d.places.length > 0)
       .sort((a, b) => a.date.localeCompare(b.date)),
     tripNotes: notes
       .filter((n) => n.type === "TRIP")
       .map((n) => ({ text: n.text, author: n.user.alias })),
+    brief: brief?.trim() || travel.journalBrief?.trim() || null,
   };
 }
 
@@ -303,6 +379,119 @@ function extractJsonArray<T>(text: string): T[] {
   }
 }
 
+export interface JournalPipelineOptions {
+  /** When set, refine this markdown instead of generating from scratch. */
+  existingMarkdown?: string | null;
+}
+
+const MAX_EXISTING_MARKDOWN_CHARS = 60_000;
+
+function getRefineSystemPrompt(style: JournalStyle): { system: string; temperature: number } {
+  const base = `Eres un editor de crónicas de viaje colaborativas.
+Te dan la crónica Markdown YA ESCRITA (puede incluir ediciones humanas) y el contexto actualizado del viaje (notas, fotos, lugares, vuelos) más indicaciones_usuario si existen.
+
+Tu tarea: devolver UNA única crónica Markdown completa REFINADA.
+
+${VOICE_RULES}
+
+REGLAS DE REFINAMIENTO:
+- Parte de la crónica existente: conserva el tono, la estructura y las formulaciones que ya funcionan.
+- Incorpora notas, fotos o lugares NUEVOS que falten en el texto.
+- Corrige solo lo contradictorio, vacío o claramente peor que el contexto nuevo.
+- NO tires el texto para reescribirlo de cero si no hace falta.
+- PRESERVA todas las imágenes Markdown existentes (![alt](url)) y sus URLs; puedes mejorar el alt/caption.
+- Añade imágenes de fotos nuevas del contexto si aún no están en la crónica, con caption breve.
+- Mantén el título (# …), secciones por día y conclusión.
+- Respeta indicaciones_usuario con prioridad alta.
+- Responde SOLO con el Markdown final, sin explicaciones ni fences \`\`\`.`;
+
+  if (style === "factual") {
+    return {
+      system: `${base}
+ESTILO FIEL A LAS NOTAS:
+- No inventes hechos, emociones ni escenas no documentadas.
+- Prefiere pulir y completar con material real del contexto.`,
+      temperature: 0.35,
+    };
+  }
+
+  return {
+    system: `${base}
+ESTILO VIVO:
+- Puedes enriquecer atmósfera y ritmo, sin contradecir notas ni ediciones humanas claras.`,
+    temperature: 0.65,
+  };
+}
+
+function stripMarkdownFences(text: string): string {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:markdown|md)?\s*([\s\S]*?)```$/i);
+  return (fenced?.[1] ?? trimmed).trim();
+}
+
+function buildRefineUserPayload(
+  ctx: EnhancedJournalContext,
+  existingMarkdown: string
+): string {
+  const clipped =
+    existingMarkdown.length > MAX_EXISTING_MARKDOWN_CHARS
+      ? `${existingMarkdown.slice(0, MAX_EXISTING_MARKDOWN_CHARS)}\n\n…[crónica truncada por longitud]`
+      : existingMarkdown;
+
+  return JSON.stringify(
+    {
+      cronica_actual: clipped,
+      indicaciones_usuario: ctx.brief,
+      contexto_viaje: {
+        titulo: ctx.title,
+        participantes: ctx.participants,
+        fechas: ctx.dateRange,
+        vuelos: ctx.flights,
+        notas_viaje: ctx.tripNotes,
+        lugares: ctx.places,
+        dias: ctx.days.map((d) => ({
+          date: d.date,
+          notas_dia: d.dayNotes,
+          lugares_del_dia: d.places,
+          fotos: d.photos.map((p) => ({
+            url: p.url,
+            autor: p.author,
+            comentarios: p.comments,
+            lugar: p.placeName ?? null,
+            ida: p.isTransportStart,
+            vuelta: p.isTransportEnd,
+            fecha: p.exifDateTime,
+          })),
+        })),
+      },
+    },
+    null,
+    2
+  );
+}
+
+export async function refineJournalMarkdown(
+  ai: OpenAI,
+  model: string,
+  ctx: EnhancedJournalContext,
+  existingMarkdown: string,
+  style: JournalStyle = "narrative"
+): Promise<string> {
+  const { system, temperature } = getRefineSystemPrompt(style);
+  const raw = await callAi(
+    ai,
+    model,
+    system + briefBlock(ctx.brief),
+    buildRefineUserPayload(ctx, existingMarkdown),
+    temperature
+  );
+  const refined = stripMarkdownFences(raw);
+  if (!refined || refined.length < 40) {
+    throw new Error("La IA devolvió una crónica vacía al refinar");
+  }
+  return refined;
+}
+
 export async function generateIntroduction(
   ai: OpenAI,
   model: string,
@@ -318,11 +507,18 @@ export async function generateIntroduction(
       vuelos: ctx.flights,
       notas_viaje: ctx.tripNotes,
       num_lugares: ctx.places.length,
+      indicaciones_usuario: ctx.brief,
     },
     null,
     2
   );
-  return callAi(ai, model, prompts.intro.system, user, prompts.intro.temperature);
+  return callAi(
+    ai,
+    model,
+    prompts.intro.system + briefBlock(ctx.brief),
+    user,
+    prompts.intro.temperature
+  );
 }
 
 export async function generateDaySummaries(
@@ -335,21 +531,32 @@ export async function generateDaySummaries(
 
   const prompts = getJournalPromptConfig(style);
   const user = JSON.stringify(
-    ctx.days.map((d) => ({
-      date: d.date,
-      notas_dia: d.dayNotes,
-      fotos: d.photos.map((p) => ({
-        autor: p.author,
-        comentarios: p.comments,
-        ida: p.isTransportStart,
-        vuelta: p.isTransportEnd,
+    {
+      indicaciones_usuario: ctx.brief,
+      dias: ctx.days.map((d) => ({
+        date: d.date,
+        notas_dia: d.dayNotes,
+        lugares_del_dia: d.places,
+        fotos: d.photos.map((p) => ({
+          autor: p.author,
+          comentarios: p.comments,
+          lugar: p.placeName ?? null,
+          ida: p.isTransportStart,
+          vuelta: p.isTransportEnd,
+        })),
       })),
-    })),
+    },
     null,
     2
   );
 
-  const raw = await callAi(ai, model, prompts.days.system, user, prompts.days.temperature);
+  const raw = await callAi(
+    ai,
+    model,
+    prompts.days.system + briefBlock(ctx.brief),
+    user,
+    prompts.days.temperature
+  );
   const parsed = extractJsonArray<DaySummaryRow>(raw);
 
   if (parsed.length > 0) return parsed;
@@ -374,14 +581,25 @@ export async function generatePhotoCaptions(
       autor: p.author,
       comentarios: p.comments,
       fecha: p.exifDateTime,
+      lugar: p.placeName ?? null,
     }))
   );
 
   if (allPhotos.length === 0) return [];
 
   const prompts = getJournalPromptConfig(style);
-  const user = JSON.stringify(allPhotos, null, 2);
-  const raw = await callAi(ai, model, prompts.captions.system, user, prompts.captions.temperature);
+  const user = JSON.stringify(
+    { indicaciones_usuario: ctx.brief, fotos: allPhotos },
+    null,
+    2
+  );
+  const raw = await callAi(
+    ai,
+    model,
+    prompts.captions.system + briefBlock(ctx.brief),
+    user,
+    prompts.captions.temperature
+  );
   const parsed = extractJsonArray<PhotoCaptionRow>(raw);
 
   if (parsed.length > 0) return parsed;
@@ -390,7 +608,7 @@ export async function generatePhotoCaptions(
     url: p.url,
     caption:
       p.comentarios.join(" · ") ||
-      `Momento capturado por ${p.autor}`,
+      (p.lugar ? `${p.lugar} — ${p.autor}` : `Momento capturado por ${p.autor}`),
   }));
 }
 
@@ -408,13 +626,23 @@ export async function generateConclusion(
       titulo: ctx.title,
       participantes: ctx.participants,
       intro_resumen: intro.slice(0, 500),
-      dias_resumen: daySummaries.map((d) => ({ date: d.date, preview: d.summary.slice(0, 200) })),
+      dias_resumen: daySummaries.map((d) => ({
+        date: d.date,
+        preview: d.summary.slice(0, 200),
+      })),
       lugares: ctx.places.length,
+      indicaciones_usuario: ctx.brief,
     },
     null,
     2
   );
-  return callAi(ai, model, prompts.conclusion.system, user, prompts.conclusion.temperature);
+  return callAi(
+    ai,
+    model,
+    prompts.conclusion.system + briefBlock(ctx.brief),
+    user,
+    prompts.conclusion.temperature
+  );
 }
 
 export function assembleJournalMarkdown(
@@ -427,7 +655,16 @@ export function assembleJournalMarkdown(
   const captionByUrl = new Map(captions.map((c) => [c.url, c.caption]));
   const summaryByDate = new Map(daySummaries.map((d) => [d.date, d.summary]));
 
-  const lines: string[] = [`# ${ctx.title}`, "", intro.trim(), "", "---", "", "## Calendario del viaje", ""];
+  const lines: string[] = [
+    `# ${ctx.title}`,
+    "",
+    intro.trim(),
+    "",
+    "---",
+    "",
+    "## El viaje día a día",
+    "",
+  ];
 
   const daysToRender =
     ctx.days.length > 0
@@ -436,6 +673,7 @@ export function assembleJournalMarkdown(
           date: d.date,
           dayNotes: [],
           photos: [] as EnhancedDayPhoto[],
+          places: [] as EnhancedDayBlock["places"],
         }));
 
   for (const day of daysToRender) {
@@ -556,15 +794,40 @@ export function buildLocalJournalMarkdown(ctx: EnhancedJournalContext): string {
 export async function runJournalPipeline(
   ctx: EnhancedJournalContext,
   onProgress?: PipelineProgressCallback,
-  style: JournalStyle = "narrative"
+  style: JournalStyle = "narrative",
+  options: JournalPipelineOptions = {}
 ): Promise<string> {
   const emit = (event: JournalPipelineEvent) => onProgress?.(event);
+  const existingMarkdown = options.existingMarkdown?.trim() || null;
 
   try {
     const ai = createAiClient();
     const { model } = getAiConfig();
 
     emit({ step: "context", status: "done", message: "Datos del viaje preparados" });
+
+    if (existingMarkdown) {
+      emit({
+        step: "refine",
+        status: "running",
+        message: "Refinando la crónica existente…",
+      });
+      const markdown = await refineJournalMarkdown(
+        ai,
+        model,
+        ctx,
+        existingMarkdown,
+        style
+      );
+      emit({ step: "refine", status: "done" });
+      emit({
+        step: "complete",
+        status: "done",
+        markdown,
+        message: "Crónica refinada a partir del texto anterior",
+      });
+      return markdown;
+    }
 
     emit({ step: "intro", status: "running", message: "Escribiendo introducción…" });
     const intro = await generateIntroduction(ai, model, ctx, style);
@@ -590,6 +853,13 @@ export async function runJournalPipeline(
     return markdown;
   } catch (error) {
     if (!isAiUnreachableError(error)) throw error;
+
+    // Refining without AI must not wipe the user's chronicle with a local template.
+    if (existingMarkdown) {
+      throw new Error(
+        "Sin conexión a la IA; se mantiene tu crónica actual. Reintenta cuando haya red."
+      );
+    }
 
     console.warn("IA no disponible, usando crónica local:", error);
     emit({

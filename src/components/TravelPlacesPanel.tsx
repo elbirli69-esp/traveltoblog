@@ -115,6 +115,7 @@ export default function TravelPlacesPanel({
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [linkBusy, setLinkBusy] = useState(false);
+  const [showPhotoPicker, setShowPhotoPicker] = useState(false);
   const [draft, setDraft] = useState<DraftPlace | null>(null);
   const [editForm, setEditForm] = useState<{
     id: string;
@@ -152,6 +153,16 @@ export default function TravelPlacesPanel({
 
   const selectedPlace = places.find((p) => p.id === selectedPlaceId) ?? null;
   const { outbound, inbound } = resolveFlightLegs(photos);
+  const hasFlightGps = Boolean(outbound?.hasGps || inbound?.hasGps);
+  const hasLocalMapContent =
+    photos.some(
+      (p) =>
+        p.latitude != null &&
+        p.longitude != null &&
+        !p.isTransportStart &&
+        !p.isTransportEnd
+    ) || places.length > 0;
+  const showDualMaps = hasFlightGps && hasLocalMapContent;
   const placesPageCount = totalPages(places.length, PLACES_PAGE_SIZE);
   const visiblePlaces = pageSlice(places, placesPage, PLACES_PAGE_SIZE);
 
@@ -182,6 +193,35 @@ export default function TravelPlacesPanel({
     );
   }, [selectedPlace, photos]);
 
+  const photoCountByPlace = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const photo of photos) {
+      if (!photo.placeId || photo.isTransportStart || photo.isTransportEnd) continue;
+      counts.set(photo.placeId, (counts.get(photo.placeId) ?? 0) + 1);
+    }
+    return counts;
+  }, [photos]);
+
+  /** Unlinked (or linked elsewhere) photos that can be manually attached to this place. */
+  const linkablePhotosForSelected = useMemo(() => {
+    if (!selectedPlace) return [];
+    return photos.filter(
+      (p) =>
+        !p.isTransportStart &&
+        !p.isTransportEnd &&
+        p.placeId !== selectedPlace.id
+    );
+  }, [selectedPlace, photos]);
+
+  const unlinkedPhotosForSelected = useMemo(
+    () => linkablePhotosForSelected.filter((p) => !p.placeId),
+    [linkablePhotosForSelected]
+  );
+
+  useEffect(() => {
+    setShowPhotoPicker(false);
+  }, [selectedPlaceId]);
+
   const linkPhotosToPlace = async (photoIds: string[]) => {
     if (!selectedPlace || photoIds.length === 0) return;
     setLinkBusy(true);
@@ -193,6 +233,7 @@ export default function TravelPlacesPanel({
         body: JSON.stringify({ linkPhotoIds: photoIds }),
       });
       if (!res.ok) throw new Error("fail");
+      setShowPhotoPicker(false);
       onChanged?.();
     } catch {
       setError("No se pudieron asociar las fotos");
@@ -458,7 +499,7 @@ export default function TravelPlacesPanel({
         <h3 className="text-sm font-semibold text-accent-blue">Vuelos ida / vuelta</h3>
         <p className="mt-1 text-xs text-fg-secondary">
           Derivado de fotos marcadas como Ida o Vuelta en la pestaña Fotos (no se crean aquí).
-          Si tienen GPS de aeropuerto, aparecen en el mapa con línea discontinua.
+          Si tienen GPS de aeropuerto, el trayecto se muestra en un mapa aparte del recorrido en destino.
         </p>
         {onOpenFotosTab && (
           <button
@@ -475,26 +516,78 @@ export default function TravelPlacesPanel({
         </div>
       </section>
 
-      <TravelPlacesMap
-        places={places}
-        photos={photos}
-        selectedPlaceId={selectedPlaceId}
-        selectedPhotoId={selectedPhotoId}
-        addMode={addMode}
-        clickToPlace={addMode && pickOnMap}
-        locateSignal={locateSignal}
-        draftPin={draft ? { lat: draft.lat, lng: draft.lng } : null}
-        onMapClick={handleMapClick}
-        onPlaceClick={(id) => {
-          setSelectedPlaceId(id);
-          setSelectedPhotoId(null);
-          setEditForm(null);
-        }}
-        onPhotoClick={(id) => {
-          setSelectedPhotoId(id);
-          onOpenPhoto?.(id);
-        }}
-      />
+      {showDualMaps ? (
+        <div className="space-y-4">
+          <TravelPlacesMap
+            scope="flights"
+            compact
+            title="Trayecto / llegada"
+            subtitle="Vuelos de ida y vuelta — contexto del destino"
+            places={places}
+            photos={photos}
+            selectedPlaceId={selectedPlaceId}
+            selectedPhotoId={selectedPhotoId}
+            addMode={false}
+            clickToPlace={false}
+            locateSignal={0}
+            draftPin={null}
+            onMapClick={handleMapClick}
+            onPlaceClick={(id) => {
+              setSelectedPlaceId(id);
+              setSelectedPhotoId(null);
+              setEditForm(null);
+            }}
+            onPhotoClick={(id) => {
+              setSelectedPhotoId(id);
+              onOpenPhoto?.(id);
+            }}
+          />
+          <TravelPlacesMap
+            scope="local"
+            title="En destino"
+            subtitle="Recorrido del viaje — sin el zoom de los vuelos"
+            places={places}
+            photos={photos}
+            selectedPlaceId={selectedPlaceId}
+            selectedPhotoId={selectedPhotoId}
+            addMode={addMode}
+            clickToPlace={addMode && pickOnMap}
+            locateSignal={locateSignal}
+            draftPin={draft ? { lat: draft.lat, lng: draft.lng } : null}
+            onMapClick={handleMapClick}
+            onPlaceClick={(id) => {
+              setSelectedPlaceId(id);
+              setSelectedPhotoId(null);
+              setEditForm(null);
+            }}
+            onPhotoClick={(id) => {
+              setSelectedPhotoId(id);
+              onOpenPhoto?.(id);
+            }}
+          />
+        </div>
+      ) : (
+        <TravelPlacesMap
+          places={places}
+          photos={photos}
+          selectedPlaceId={selectedPlaceId}
+          selectedPhotoId={selectedPhotoId}
+          addMode={addMode}
+          clickToPlace={addMode && pickOnMap}
+          locateSignal={locateSignal}
+          draftPin={draft ? { lat: draft.lat, lng: draft.lng } : null}
+          onMapClick={handleMapClick}
+          onPlaceClick={(id) => {
+            setSelectedPlaceId(id);
+            setSelectedPhotoId(null);
+            setEditForm(null);
+          }}
+          onPhotoClick={(id) => {
+            setSelectedPhotoId(id);
+            onOpenPhoto?.(id);
+          }}
+        />
+      )}
 
       {draft && (
         <div className="form-panel space-y-3">
@@ -681,6 +774,11 @@ export default function TravelPlacesPanel({
                     ? ` · ${formatVisitedAt(place.visitedAt)}`
                     : ""}
                   {placeNotes(place).length > 0 ? " · con nota" : ""}
+                  {(photoCountByPlace.get(place.id) ?? 0) > 0
+                    ? ` · ${photoCountByPlace.get(place.id)} foto${
+                        (photoCountByPlace.get(place.id) ?? 0) !== 1 ? "s" : ""
+                      }`
+                    : ""}
                 </p>
               </button>
               <div className="flex shrink-0 flex-col items-end gap-1">
@@ -767,11 +865,23 @@ export default function TravelPlacesPanel({
             placeId={selectedPlace.id}
             onCreated={onChanged}
           />
-          {linkedPhotosForSelected.length > 0 && (
-            <div className="border-t border-divider pt-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-secondary">
+          <div className="border-t border-divider pt-3 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-fg-secondary">
                 Fotos asociadas ({linkedPhotosForSelected.length})
               </p>
+              {linkablePhotosForSelected.length > 0 && (
+                <button
+                  type="button"
+                  disabled={linkBusy}
+                  onClick={() => setShowPhotoPicker((v) => !v)}
+                  className="chip-btn disabled:opacity-50"
+                >
+                  {showPhotoPicker ? "Cerrar" : "+ Foto"}
+                </button>
+              )}
+            </div>
+            {linkedPhotosForSelected.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {linkedPhotosForSelected.map((photo) => (
                   <div key={photo.id} className="group relative">
@@ -798,8 +908,68 @@ export default function TravelPlacesPanel({
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="text-xs text-fg-secondary">
+                Ninguna foto vinculada todavía.
+                {unlinkedPhotosForSelected.length > 0
+                  ? " Usa «+ Foto» o asocia las cercanas por GPS."
+                  : onOpenFotosTab
+                    ? " Sube fotos y vuelve para asociarlas."
+                    : ""}
+              </p>
+            )}
+            {showPhotoPicker && linkablePhotosForSelected.length > 0 && (
+              <div className="surface-inset space-y-2 p-3">
+                <p className="text-xs font-medium text-fg-secondary">
+                  Elige una foto para vincular
+                  {unlinkedPhotosForSelected.length > 0
+                    ? ` (${unlinkedPhotosForSelected.length} sin lugar)`
+                    : " (todas ya tienen otro lugar)"}
+                </p>
+                <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto">
+                  {(unlinkedPhotosForSelected.length > 0
+                    ? unlinkedPhotosForSelected
+                    : linkablePhotosForSelected
+                  )
+                    .slice(0, 24)
+                    .map((photo) => (
+                      <button
+                        key={photo.id}
+                        type="button"
+                        disabled={linkBusy}
+                        onClick={() => void linkPhotosToPlace([photo.id])}
+                        className="ring-photo relative disabled:opacity-50"
+                        title={
+                          photo.placeId
+                            ? "Ya tiene otro lugar — se reasignará"
+                            : "Vincular a este lugar"
+                        }
+                      >
+                        <PhotoImage
+                          photoId={photo.id}
+                          url={photo.url}
+                          className="h-14 w-14 object-cover"
+                        />
+                        {!photo.placeId && (
+                          <span className="absolute bottom-0 inset-x-0 bg-black/55 px-0.5 text-center text-[9px] text-white">
+                            sin lugar
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                </div>
+                {onOpenFotosTab && (
+                  <button
+                    type="button"
+                    onClick={onOpenFotosTab}
+                    className="text-link-subtle"
+                  >
+                    Ir a la galería →
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           {nearbyPhotosForSelected.length > 0 && (
             <div className="border-t border-divider pt-3">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

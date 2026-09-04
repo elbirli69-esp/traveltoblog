@@ -16,8 +16,10 @@ import {
   buildRouteNodesFromPhotosAndPlaces,
   coalesceRouteNodes,
   dayKeyFromAt,
+  filterGeometryByScope,
   resolveSegmentedRouteGeometry,
   routeDayColor,
+  type MapRouteScope,
   type RouteDayLegendEntry,
   type SegmentedRouteGeometry,
 } from "@/lib/mapbox-route";
@@ -55,6 +57,15 @@ interface TravelPlacesMapProps {
   onMapClick: (lat: number, lng: number) => void;
   onPlaceClick: (id: string) => void;
   onPhotoClick?: (id: string) => void;
+  /**
+   * Which layers to show. Use "flights" + "local" as two maps when long-haul
+   * legs would crush the destination zoom.
+   */
+  scope?: MapRouteScope;
+  /** Compact height for stacked dual maps. */
+  compact?: boolean;
+  title?: string;
+  subtitle?: string;
 }
 
 export default function TravelPlacesMap({
@@ -69,6 +80,10 @@ export default function TravelPlacesMap({
   onMapClick,
   onPlaceClick,
   onPhotoClick,
+  scope = "all",
+  compact = false,
+  title,
+  subtitle,
 }: TravelPlacesMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
@@ -270,8 +285,11 @@ export default function TravelPlacesMap({
       const accentCyan = getThemeColor("--accent-cyan", "#5de4ff");
 
       const bounds: [number, number][] = [];
+      const scopedGeometry = filterGeometryByScope(routeGeometry, scope);
+      const showFlights = scope === "all" || scope === "flights";
+      const showLocal = scope === "all" || scope === "local";
 
-      const roadFeatures = (routeGeometry?.roadSegments ?? [])
+      const roadFeatures = (showLocal ? scopedGeometry?.roadSegments ?? [] : [])
         .filter((segment) => segment.coordinates.length > 1)
         .map((segment) => ({
           type: "Feature" as const,
@@ -309,8 +327,8 @@ export default function TravelPlacesMap({
         });
       }
 
-      const flightCoords = (routeGeometry?.flightLegs ?? []).map((leg) =>
-        leg.map((point) => [point.lng, point.lat] as [number, number])
+      const flightCoords = (showFlights ? scopedGeometry?.flightLegs ?? [] : []).map(
+        (leg) => leg.map((point) => [point.lng, point.lat] as [number, number])
       );
 
       const flightFeature = {
@@ -338,18 +356,34 @@ export default function TravelPlacesMap({
         });
       }
 
-      const chronoPhotos = [...routePhotos].sort((a, b) => {
-        const aAt = a.exifDateTime ? new Date(a.exifDateTime).getTime() : Number.POSITIVE_INFINITY;
-        const bAt = b.exifDateTime ? new Date(b.exifDateTime).getTime() : Number.POSITIVE_INFINITY;
-        return aAt - bAt;
-      });
+      // Include flight leg endpoints in bounds for the flights map.
+      if (showFlights) {
+        for (const leg of scopedGeometry?.flightLegs ?? []) {
+          for (const point of leg) {
+            bounds.push([point.lng, point.lat]);
+          }
+        }
+      }
+
+      const chronoPhotos = showLocal
+        ? [...routePhotos].sort((a, b) => {
+            const aAt = a.exifDateTime
+              ? new Date(a.exifDateTime).getTime()
+              : Number.POSITIVE_INFINITY;
+            const bAt = b.exifDateTime
+              ? new Date(b.exifDateTime).getTime()
+              : Number.POSITIVE_INFINITY;
+            return aAt - bAt;
+          })
+        : [];
 
       chronoPhotos.forEach((photo, index) => {
         bounds.push([photo.longitude!, photo.latitude!]);
         const isSelected = photo.id === selectedPhotoId;
         const dayKey = dayKeyFromAt(photo.exifDateTime);
         const dayIndex = dayKey
-          ? (routeGeometry?.dayLegend.find((d) => d.dayKey === dayKey)?.dayIndex ?? index)
+          ? (scopedGeometry?.dayLegend.find((d) => d.dayKey === dayKey)?.dayIndex ??
+            index)
           : index;
         const pinColor = routeDayColor(dayIndex);
         const el = document.createElement("div");
@@ -364,7 +398,9 @@ export default function TravelPlacesMap({
         el.style.display = "flex";
         el.style.alignItems = "center";
         el.style.justifyContent = "center";
-        el.style.border = isSelected ? `2px solid ${accentCyan}` : "2px solid rgba(255,255,255,.85)";
+        el.style.border = isSelected
+          ? `2px solid ${accentCyan}`
+          : "2px solid rgba(255,255,255,.85)";
         el.style.boxShadow = "0 1px 4px rgba(0,0,0,.35)";
         el.style.cursor = "pointer";
         el.title = `Parada ${index + 1}`;
@@ -388,6 +424,7 @@ export default function TravelPlacesMap({
         leg: NonNullable<typeof outbound>,
         emoji: string
       ) => {
+        if (!showFlights) return;
         const { photo } = leg;
         bounds.push([photo.longitude!, photo.latitude!]);
         const el = createEmojiMarkerElement(emoji, 30);
@@ -404,7 +441,7 @@ export default function TravelPlacesMap({
       if (outbound?.hasGps) addFlight(outbound, FLIGHT_OUT_EMOJI);
       if (inbound?.hasGps) addFlight(inbound, FLIGHT_IN_EMOJI);
 
-      for (const place of places) {
+      for (const place of showLocal ? places : []) {
         bounds.push([place.longitude, place.latitude]);
         const isSelected = place.id === selectedPlaceId;
         const el = createEmojiMarkerElement(placeEmoji(place.type), isSelected ? 30 : 24);
@@ -427,7 +464,7 @@ export default function TravelPlacesMap({
         );
       }
 
-      if (draftPin) {
+      if (draftPin && showLocal) {
         bounds.push([draftPin.lng, draftPin.lat]);
         const el = createEmojiMarkerElement("📍", 30);
         markersRef.current.push(
@@ -443,9 +480,17 @@ export default function TravelPlacesMap({
             (acc, [lng, lat]) => acc.extend([lng, lat]),
             new mapboxgl.LngLatBounds(bounds[0], bounds[0])
           );
-          map.fitBounds(b, { padding: 48, maxZoom: 14, duration: 600 });
+          map.fitBounds(b, {
+            padding: 48,
+            maxZoom: scope === "flights" ? 6 : 14,
+            duration: 600,
+          });
         } else if (bounds.length === 1) {
-          map.easeTo({ center: bounds[0], zoom: 13, duration: 600 });
+          map.easeTo({
+            center: bounds[0],
+            zoom: scope === "flights" ? 5 : 13,
+            duration: 600,
+          });
         }
       }
     });
@@ -461,6 +506,7 @@ export default function TravelPlacesMap({
     inbound,
     routeGeometry,
     mapReady,
+    scope,
   ]);
 
   const clearMarkers = () => {
@@ -492,8 +538,15 @@ export default function TravelPlacesMap({
     }
   }, []);
 
-  const hasFlightLine = (routeGeometry?.flightLegs.length ?? 0) > 0;
-  const dayLegend: RouteDayLegendEntry[] = routeGeometry?.dayLegend ?? [];
+  const scopedGeometry = filterGeometryByScope(routeGeometry, scope);
+  const hasFlightLine =
+    (scope === "all" || scope === "flights") &&
+    (scopedGeometry?.flightLegs.length ?? 0) > 0;
+  const dayLegend: RouteDayLegendEntry[] =
+    scope === "flights" ? [] : (scopedGeometry?.dayLegend ?? []);
+  const showFlightLegend = scope === "all" || scope === "flights";
+  const showLocalLegend = scope === "all" || scope === "local";
+  const mapHeight = compact ? "h-[280px]" : "h-[420px]";
 
   if (mapError) {
     return (
@@ -505,10 +558,21 @@ export default function TravelPlacesMap({
   }
 
   return (
-    <div className="relative">
+    <div className="relative space-y-2">
+      {(title || subtitle) && (
+        <div>
+          {title && (
+            <h3 className="text-sm font-semibold text-fg">{title}</h3>
+          )}
+          {subtitle && (
+            <p className="mt-0.5 text-xs text-fg-secondary">{subtitle}</p>
+          )}
+        </div>
+      )}
+      <div className="relative">
       <div
         ref={containerRef}
-        className={`h-[420px] w-full overflow-hidden rounded-2xl border border-[var(--border)] ${
+        className={`${mapHeight} w-full overflow-hidden rounded-2xl border border-[var(--border)] ${
           clickToPlace ? "ring-2 ring-[var(--accent-cyan)]/40" : ""
         }`}
       />
@@ -518,7 +582,8 @@ export default function TravelPlacesMap({
         </div>
       )}
       <div className="pointer-events-none absolute left-3 top-3 max-w-[200px] space-y-1 rounded-lg border border-[var(--border)] bg-[var(--card-elevated)]/90 px-2.5 py-2 text-[10px] font-medium text-fg-secondary backdrop-blur-sm">
-        {dayLegend.map((entry) => (
+        {showLocalLegend &&
+          dayLegend.map((entry) => (
           <span key={`${entry.dayKey ?? "none"}-${entry.dayIndex}`} className="flex items-center gap-1.5">
             <span
               className="inline-block h-0.5 w-4 shrink-0 rounded-full"
@@ -527,12 +592,12 @@ export default function TravelPlacesMap({
             {entry.label}
           </span>
         ))}
-        {outbound && (
+        {showFlightLegend && outbound && (
           <span className="flex items-center gap-1">
             {FLIGHT_OUT_EMOJI} Ida{outbound.hasGps ? "" : " (sin GPS)"}
           </span>
         )}
-        {inbound && (
+        {showFlightLegend && inbound && (
           <span className="flex items-center gap-1">
             {FLIGHT_IN_EMOJI} Vuelta{inbound.hasGps ? "" : " (sin GPS)"}
           </span>
@@ -543,7 +608,7 @@ export default function TravelPlacesMap({
             Trayecto aéreo
           </span>
         )}
-        {routePhotos.length > 0 && (
+        {showLocalLegend && routePhotos.length > 0 && (
           <span className="flex items-center gap-1">
             <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--accent-mint)] text-[8px] font-bold text-[var(--background)]">
               1
@@ -581,6 +646,7 @@ export default function TravelPlacesMap({
           Haz clic en el mapa para colocar el pin
         </p>
       )}
+      </div>
     </div>
   );
 }

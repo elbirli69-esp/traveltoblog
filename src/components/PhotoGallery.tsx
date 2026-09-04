@@ -155,10 +155,51 @@ export default function PhotoGallery({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const pageRef = useRef(page);
   pageRef.current = page;
+  const parentRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadGenRef = useRef(0);
+
+  /** Soft parent refresh — avoids slamming NAS with full travel reload on every keystroke-save. */
+  const scheduleParentRefresh = useCallback(() => {
+    if (!onNoteCreated) return;
+    if (parentRefreshTimer.current) clearTimeout(parentRefreshTimer.current);
+    parentRefreshTimer.current = setTimeout(() => {
+      parentRefreshTimer.current = null;
+      onNoteCreated();
+    }, 1200);
+  }, [onNoteCreated]);
+
+  useEffect(() => {
+    return () => {
+      if (parentRefreshTimer.current) clearTimeout(parentRefreshTimer.current);
+    };
+  }, []);
+
+  const patchPhotoNotes = useCallback(
+    (
+      photoId: string,
+      updater: (
+        notes: GalleryPhoto["notes"]
+      ) => GalleryPhoto["notes"]
+    ) => {
+      setPhotos((prev) =>
+        prev.map((p) =>
+          p.id === photoId ? { ...p, notes: updater(p.notes) } : p
+        )
+      );
+    },
+    []
+  );
 
   const loadPage = useCallback(
-    async (nextPage: number, focusId?: string | null) => {
-      setLoading(true);
+    async (
+      nextPage: number,
+      focusId?: string | null,
+      opts?: { silent?: boolean }
+    ) => {
+      // Silent refresh keeps the grid mounted so scroll / expanded photo stay put
+      // (e.g. after adding a note — otherwise height collapses to "Cargando…").
+      const gen = ++loadGenRef.current;
+      if (!opts?.silent) setLoading(true);
       setLoadError(null);
       try {
         const params = new URLSearchParams({
@@ -170,14 +211,18 @@ export default function PhotoGallery({
         const res = await fetch(`/api/travels/${travelId}/photos?${params}`);
         if (!res.ok) throw new Error("No se pudieron cargar las fotos");
         const data = await res.json();
+        if (gen !== loadGenRef.current) return;
         setPhotos(data.photos ?? []);
         setPage(data.pagination?.page ?? nextPage);
         setTotal(data.pagination?.total ?? 0);
         setTotalPages(data.pagination?.totalPages ?? 1);
       } catch {
+        if (gen !== loadGenRef.current) return;
         setLoadError("No se pudieron cargar las fotos");
       } finally {
-        setLoading(false);
+        // Always clear loading for the latest request (avoids stuck "Cargando…"
+        // if a silent refresh interleaved with a normal one).
+        if (gen === loadGenRef.current) setLoading(false);
       }
     },
     [travelId]
@@ -189,7 +234,7 @@ export default function PhotoGallery({
 
   useEffect(() => {
     if (refreshSignal === 0) return;
-    void loadPage(pageRef.current);
+    void loadPage(pageRef.current, null, { silent: true });
   }, [refreshSignal, loadPage]);
 
   useEffect(() => {
@@ -229,6 +274,44 @@ export default function PhotoGallery({
       setTransportError("No se pudo marcar Ida/Vuelta");
     } finally {
       setTransportBusy(null);
+    }
+  };
+
+  const applyPlaceLink = async (
+    photo: GalleryPhoto,
+    nextPlaceId: string | null
+  ) => {
+    const placeMeta =
+      nextPlaceId != null
+        ? places.find((p) => p.id === nextPlaceId) ?? null
+        : null;
+    setPhotos((prev) =>
+      prev.map((p) =>
+        p.id === photo.id
+          ? {
+              ...p,
+              placeId: nextPlaceId,
+              place: placeMeta
+                ? {
+                    id: placeMeta.id,
+                    name: placeMeta.name,
+                    type: placeMeta.type,
+                  }
+                : null,
+            }
+          : p
+      )
+    );
+    try {
+      const res = await fetch(`/api/photos/${photo.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placeId: nextPlaceId }),
+      });
+      if (!res.ok) throw new Error("fail");
+      onNoteCreated?.();
+    } catch {
+      await loadPage(pageRef.current);
     }
   };
 
@@ -303,7 +386,11 @@ export default function PhotoGallery({
             if (photo.isTransportEnd) badges.push("Vuelta");
             if (photo.mediaType === "VIDEO") badges.push("Vídeo");
             if (isValidGps(photo.latitude, photo.longitude)) badges.push("GPS");
-            if (photo.placeId) badges.push("Lugar");
+            const placeName =
+              photo.place?.name ??
+              (photo.placeId
+                ? places.find((p) => p.id === photo.placeId)?.name
+                : undefined);
 
             const nearby =
               isValidGps(photo.latitude, photo.longitude)
@@ -355,6 +442,11 @@ export default function PhotoGallery({
                           {badge}
                         </span>
                       ))}
+                      {placeName && (
+                        <span className="tag-mint max-w-[12rem] truncate" title={placeName}>
+                          {placeName}
+                        </span>
+                      )}
                       {photoNotes.length > 0 && (
                         <span className="tag-mint">
                           {photoNotes.length} nota{photoNotes.length !== 1 ? "s" : ""}
@@ -428,19 +520,9 @@ export default function PhotoGallery({
                         <select
                           className="form-input form-input-sm w-full"
                           value={photo.placeId ?? ""}
-                          onChange={async (e) => {
+                          onChange={(e) => {
                             const nextPlaceId = e.target.value || null;
-                            try {
-                              const res = await fetch(`/api/photos/${photo.id}`, {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ placeId: nextPlaceId }),
-                              });
-                              if (!res.ok) throw new Error("fail");
-                              onNoteCreated?.();
-                            } catch {
-                              /* keep UI; next refresh fixes */
-                            }
+                            void applyPlaceLink(photo, nextPlaceId);
                           }}
                         >
                           <option value="">Sin lugar</option>
@@ -479,30 +561,29 @@ export default function PhotoGallery({
                       }}
                     />
 
-                    {nearby.length > 0 && onOpenPlace && !photo.placeId && (
+                    {nearby.length > 0 && !photo.placeId && (
                       <div className="callout callout-success text-xs">
                         <p className="mb-1.5 font-semibold">Cerca de un lugar marcado</p>
                         <ul className="space-y-1">
                           {nearby.slice(0, 3).map((place) => (
                             <li key={place.id} className="flex flex-wrap items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => onOpenPlace(place.id)}
-                                className="font-medium text-accent-mint underline-offset-2 hover:underline"
-                              >
-                                {place.name} ({formatDistanceM(place.distanceM)})
-                              </button>
+                              {onOpenPlace ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenPlace(place.id)}
+                                  className="font-medium text-accent-mint underline-offset-2 hover:underline"
+                                >
+                                  {place.name} ({formatDistanceM(place.distanceM)})
+                                </button>
+                              ) : (
+                                <span className="font-medium text-fg">
+                                  {place.name} ({formatDistanceM(place.distanceM)})
+                                </span>
+                              )}
                               <button
                                 type="button"
                                 className="chip-btn"
-                                onClick={async () => {
-                                  const res = await fetch(`/api/photos/${photo.id}`, {
-                                    method: "PATCH",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ placeId: place.id }),
-                                  });
-                                  if (res.ok) onNoteCreated?.();
-                                }}
+                                onClick={() => void applyPlaceLink(photo, place.id)}
                               >
                                 Asociar
                               </button>
@@ -512,7 +593,7 @@ export default function PhotoGallery({
                       </div>
                     )}
 
-                    {nearby.length > 0 && onOpenPlace && photo.placeId && (
+                    {nearby.length > 0 && photo.placeId && (
                       <div className="callout callout-success text-xs">
                         <p className="mb-1.5 font-semibold">Otros lugares cerca</p>
                         <ul className="space-y-1">
@@ -520,13 +601,29 @@ export default function PhotoGallery({
                             .filter((place) => place.id !== photo.placeId)
                             .slice(0, 2)
                             .map((place) => (
-                              <li key={place.id}>
+                              <li
+                                key={place.id}
+                                className="flex flex-wrap items-center gap-2"
+                              >
+                                {onOpenPlace ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenPlace(place.id)}
+                                    className="font-medium text-accent-mint underline-offset-2 hover:underline"
+                                  >
+                                    {place.name} ({formatDistanceM(place.distanceM)})
+                                  </button>
+                                ) : (
+                                  <span className="font-medium text-fg">
+                                    {place.name} ({formatDistanceM(place.distanceM)})
+                                  </span>
+                                )}
                                 <button
                                   type="button"
-                                  onClick={() => onOpenPlace(place.id)}
-                                  className="font-medium text-accent-mint underline-offset-2 hover:underline"
+                                  className="chip-btn"
+                                  onClick={() => void applyPlaceLink(photo, place.id)}
                                 >
-                                  {place.name} ({formatDistanceM(place.distanceM)})
+                                  Cambiar
                                 </button>
                               </li>
                             ))}
@@ -534,7 +631,13 @@ export default function PhotoGallery({
                       </div>
                     )}
 
-                    <PhotoDateEditor photo={photo} onSaved={onNoteCreated} />
+                    <PhotoDateEditor
+                      photo={photo}
+                      onSaved={() => {
+                        // Date change still needs a real refresh for timeline ordering.
+                        onNoteCreated?.();
+                      }}
+                    />
 
                     {photoNotes.length > 0 && (
                       <ul className="space-y-2">
@@ -542,7 +645,13 @@ export default function PhotoGallery({
                           <EditableNote
                             key={note.id}
                             note={note}
-                            onChanged={onNoteCreated}
+                            onChanged={() => {
+                              // After edit/delete, soft-refresh parent later; keep UI snappy.
+                              scheduleParentRefresh();
+                              void loadPage(pageRef.current, null, {
+                                silent: true,
+                              });
+                            }}
                           />
                         ))}
                       </ul>
@@ -552,7 +661,24 @@ export default function PhotoGallery({
                       userId={userId}
                       photoId={photo.id}
                       type="PHOTO"
-                      onCreated={onNoteCreated}
+                      onCreated={(note) => {
+                        if (note) {
+                          patchPhotoNotes(photo.id, (notes) => {
+                            if (notes.some((n) => n.id === note.id)) return notes;
+                            return [
+                              ...notes,
+                              {
+                                id: note.id,
+                                text: note.text,
+                                type: note.type,
+                                user: { alias: note.user.alias },
+                              },
+                            ];
+                          });
+                        }
+                        // Don't block the form on a full travel reload.
+                        scheduleParentRefresh();
+                      }}
                     />
                   </div>
                 )}

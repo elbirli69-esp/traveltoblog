@@ -76,6 +76,35 @@ const summary = summarizeUnlinkedPhotos(
 );
 assert.equal(summary.unlinked, 1);
 assert.equal(summary.matchable, 1);
+assert.equal(summary.withGpsFar, 0);
+assert.equal(summary.withoutGps, 0);
+
+const summaryMixed = summarizeUnlinkedPhotos(
+  [
+    nearMadrid,
+    {
+      id: "ph-far",
+      latitude: 48.8566,
+      longitude: 2.3522,
+      placeId: null,
+      isTransportStart: false,
+      isTransportEnd: false,
+    },
+    {
+      id: "ph-nogps",
+      latitude: null,
+      longitude: null,
+      placeId: null,
+      isTransportStart: false,
+      isTransportEnd: false,
+    },
+  ],
+  places
+);
+assert.equal(summaryMixed.unlinked, 3);
+assert.equal(summaryMixed.matchable, 1);
+assert.equal(summaryMixed.withGpsFar, 1);
+assert.equal(summaryMixed.withoutGps, 1);
 
 const warnings = buildExportWarnings({
   startDate: new Date("2024-06-01"),

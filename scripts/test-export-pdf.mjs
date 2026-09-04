@@ -1,5 +1,15 @@
 import assert from "node:assert/strict";
-import { buildPrintHtml, planPdfPages } from "../src/lib/export-pdf-layout.ts";
+import {
+  buildPrintHtml,
+  clampPdfNote,
+  planPdfPages,
+  photoNoteCaption,
+} from "../src/lib/export-pdf-layout.ts";
+
+assert.equal(clampPdfNote(""), "");
+assert.equal(clampPdfNote("  Hola   mundo  "), "Hola mundo");
+assert.ok(clampPdfNote("x".repeat(200)).endsWith("…"));
+assert.ok(clampPdfNote("x".repeat(200)).length <= 151);
 
 const basePhoto = {
   url: "/x",
@@ -15,31 +25,76 @@ const basePhoto = {
   notes: ["Qué vista"],
 };
 
+const longNote =
+  "Esta es una nota muy larga sobre la foto que antes se metía en una columna de crónica y atravesaba varias páginas del álbum impreso sin control visual alguno.";
+assert.ok(photoNoteCaption({ ...basePhoto, id: "n", notes: [longNote] }).endsWith("…"));
+assert.ok(photoNoteCaption({ ...basePhoto, id: "n", notes: [longNote] }).length <= 151);
+
 const html = buildPrintHtml({
   travel: {
     id: "t1",
     title: "Viaje prueba",
     startDate: new Date("2024-06-01"),
     endDate: new Date("2024-06-05"),
-    journalMarkdown: "## Día 1\n\nLlegamos al aeropuerto.\n\n## Día 2\n\nPaseo por el centro.",
+    journalMarkdown:
+      "## Día 1\n\nLlegamos al aeropuerto con mucho texto de crónica que ya no debe aparecer junto a las fotos featured.\n\n## Día 2\n\nPaseo por el centro.",
   },
   users: [{ alias: "Ana" }],
-  photos: [{ id: "p1", ...basePhoto }],
+  photos: [
+    { id: "p1", ...basePhoto },
+    {
+      id: "p2",
+      ...basePhoto,
+      filename: "002.jpg",
+      imagePath: "photos/002.jpg",
+      bleedImagePath: "photos/002-bleed.jpg",
+      highlightScore: 6,
+      notes: [longNote],
+      exifDateTime: new Date("2024-06-02T15:00:00Z"),
+    },
+    {
+      id: "p3",
+      ...basePhoto,
+      filename: "003.jpg",
+      imagePath: "photos/003.jpg",
+      bleedImagePath: "photos/003-bleed.jpg",
+      highlightScore: 6,
+      notes: ["Corta"],
+      exifDateTime: new Date("2024-06-02T16:00:00Z"),
+    },
+  ],
   notes: [],
   format: "a4-landscape",
   template: "classic",
   mapImagePath: "map/route.png",
   mapRouteMode: "segmented",
   mapPointCount: 3,
+  mapDayLegend: [
+    { dayKey: "2024-06-02", dayIndex: 0, color: "#2dd4bf", label: "Día 1 · 2 jun" },
+    { dayKey: "2024-06-03", dayIndex: 1, color: "#f59e0b", label: "Día 2 · 3 jun" },
+  ],
 });
 
 assert.ok(html.includes('src="photos/001-bleed.jpg"'), "bleed image on cover");
 assert.ok(html.includes("page-cover"), "cover page");
 assert.ok(html.includes("page-map"), "map page");
 assert.ok(html.includes("map/route.png"), "map image path");
+assert.ok(html.includes("map-legend"), "day legend container on map page");
+assert.ok(html.includes("Día 1 · 2 jun"), "day 1 legend label");
+assert.ok(html.includes("Día 2 · 3 jun"), "day 2 legend label");
+assert.ok(html.includes("#2dd4bf"), "day 1 legend color");
 assert.ok(html.includes("page-bleed") || html.includes("page-featured"), "interior layouts");
 assert.ok(!html.includes("file://"), "no file:// urls");
 assert.ok(html.includes("Capítulo") || html.includes("Recuerdos"), "day divider");
+assert.ok(html.includes("divider-intro") || html.includes("Llegamos"), "crónica on day divider");
+assert.ok(!html.includes("featured-narrative"), "no crónica wall on featured pages");
+assert.ok(!html.includes("featured-text-col"), "no side text column on featured");
+assert.ok(
+  html.includes("featured-note") || html.includes("pair-note") || html.includes("caption-sub"),
+  "note near photo"
+);
+assert.ok(!html.includes(longNote), "long notes are clamped in output");
+assert.ok(html.includes("…"), "ellipsis for clamped notes");
 
 const pages = planPdfPages({
   travel: {
@@ -47,7 +102,7 @@ const pages = planPdfPages({
     title: "Viaje prueba",
     startDate: new Date("2024-06-01"),
     endDate: new Date("2024-06-05"),
-    journalMarkdown: "## Día 1\n\nTexto.",
+    journalMarkdown: "## Día 1\n\nTexto largo de crónica para el separador.",
   },
   users: [{ alias: "Ana" }],
   photos: [
@@ -88,7 +143,7 @@ const pages = planPdfPages({
       exifDateTime: new Date("2024-06-02"),
       alias: "Ana",
       highlightScore: 3,
-      notes: [],
+      notes: ["Nota media"],
     },
     {
       id: "p4",
@@ -119,10 +174,17 @@ const pages = planPdfPages({
   ],
   notes: [],
   format: "a4-landscape",
-  template: "minimal",
+  template: "classic",
 });
-assert.ok(pages.some((p) => p.kind === "mosaic"), "mosaic for busy day low-score photos");
-assert.ok(pages.some((p) => p.kind === "map") === false, "no map without path");
+assert.ok(pages.some((p) => p.kind === "mosaic"), "busy day uses mosaic");
+assert.ok(
+  pages.filter((p) => p.kind === "featured").every((p) => !p.narrative && !p.quote),
+  "featured pages carry no journal narrative"
+);
+assert.ok(
+  pages.some((p) => p.kind === "day-divider" && p.narrative),
+  "day divider keeps crónica"
+);
 
 const coverPages = planPdfPages({
   travel: {

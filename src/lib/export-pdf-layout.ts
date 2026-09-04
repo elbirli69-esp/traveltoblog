@@ -1,11 +1,19 @@
 import { marked } from "marked";
 import { formatDateKey, isoToDateKey } from "@/lib/travel-dates";
 import { getPdfThemeCss, pageDimensions } from "@/lib/export-pdf-themes";
+import {
+  buildDayLegend,
+  buildRouteNodesFromPhotosAndPlaces,
+  coalesceRouteNodes,
+  resolveDayLegend,
+  type RouteDayLegendEntry,
+} from "@/lib/mapbox-route";
 import type { PdfExportContext, PdfPageFormat, PdfPhotoAsset } from "@/lib/export-pdf-types";
 
 export type PdfPageKind =
   | "cover"
   | "map"
+  | "map-flights"
   | "day-divider"
   | "full-bleed"
   | "featured"
@@ -31,6 +39,36 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function resolvePdfMapDayLegend(ctx: PdfExportContext): RouteDayLegendEntry[] {
+  const existing = resolveDayLegend(ctx.mapDayLegend ?? []);
+  if (existing.length > 0) return existing;
+  const nodes = coalesceRouteNodes(
+    buildRouteNodesFromPhotosAndPlaces(
+      ctx.photos.map((photo) => ({
+        latitude: photo.latitude,
+        longitude: photo.longitude,
+        exifDateTime: photo.exifDateTime,
+        isTransportStart: photo.isTransportStart,
+        isTransportEnd: photo.isTransportEnd,
+      })),
+      []
+    )
+  );
+  return buildDayLegend(nodes);
+}
+
+function buildPdfDayLegendHtml(entries: RouteDayLegendEntry[]): string {
+  if (entries.length === 0) {
+    return `<span class="map-legend-item"><i style="background:#2dd4bf"></i>Ruta por carretera</span>`;
+  }
+  return entries
+    .map(
+      (entry) =>
+        `<span class="map-legend-item"><i style="background:${escapeHtml(entry.color)}"></i>${escapeHtml(entry.label)}</span>`
+    )
+    .join("");
+}
+
 function formatDateRange(start: Date | null, end: Date | null): string {
   const fmt = (d: Date) =>
     new Intl.DateTimeFormat("es-ES", { dateStyle: "long" }).format(d);
@@ -38,6 +76,22 @@ function formatDateRange(start: Date | null, end: Date | null): string {
   if (start) return `Desde ${fmt(start)}`;
   if (end) return `Hasta ${fmt(end)}`;
   return "";
+}
+
+/** Soft cap for photo notes so captions stay under the image, not a text column. */
+export const PDF_NOTE_MAX_CHARS = 150;
+
+export function clampPdfNote(
+  text: string | null | undefined,
+  maxChars = PDF_NOTE_MAX_CHARS
+): string {
+  const cleaned = (text ?? "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  if (cleaned.length <= maxChars) return cleaned;
+  const slice = cleaned.slice(0, Math.max(0, maxChars - 1));
+  const broken = slice.replace(/\s+\S*$/, "").trimEnd();
+  const base = broken.length >= Math.floor(maxChars * 0.6) ? broken : slice.trimEnd();
+  return `${base}…`;
 }
 
 function photoDayKey(photo: PdfPhotoAsset): string | null {
@@ -60,8 +114,14 @@ function photoCaption(photo: PdfPhotoAsset): string {
   return parts.join(" · ") || photo.alias;
 }
 
+/** Traveler note under a photo (clamped). Empty when there is no note. */
+export function photoNoteCaption(photo: PdfPhotoAsset): string {
+  return clampPdfNote(photo.notes[0]);
+}
+
 function photoSubcaption(photo: PdfPhotoAsset): string {
-  if (photo.notes[0]) return photo.notes[0];
+  const note = photoNoteCaption(photo);
+  if (note) return note;
   return `@${photo.alias}`;
 }
 
@@ -136,6 +196,9 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
 
   push({ kind: "cover", photos: [pickHeroPhoto(photos, ctx.coverPhotoId)] });
 
+  if (ctx.mapFlightImagePath) {
+    push({ kind: "map-flights" });
+  }
   if (ctx.mapImagePath) {
     push({ kind: "map" });
   }
@@ -186,13 +249,10 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
         continue;
       }
 
-      const section =
-        narratives[Math.min(narrativeIndex, narratives.length - 1)] ?? narratives[0];
+      // Featured is photo-led: crónica stays on the day-divider only.
       push({
         kind: "featured",
         photos: [photo],
-        narrative: section,
-        quote: photo.notes[0] ?? undefined,
       });
       i += 1;
     }
@@ -241,37 +301,53 @@ function renderMap(
   ctx: PdfExportContext,
   page: PdfPlannedPage,
   format: PdfPageFormat,
-  totalPages: number
+  totalPages: number,
+  variant: "local" | "flights" = "local"
 ): string {
-  if (!ctx.mapImagePath) return "";
+  const imagePath =
+    variant === "flights" ? ctx.mapFlightImagePath : ctx.mapImagePath;
+  if (!imagePath) return "";
   const { width, height } = pageDimensions(format);
-  const gpsCount = ctx.mapPointCount ?? ctx.photos.filter(
-    (p) => p.latitude != null && p.longitude != null
-  ).length;
+  const gpsCount =
+    variant === "flights"
+      ? ctx.mapFlightPointCount ?? 2
+      : ctx.mapPointCount ??
+        ctx.photos.filter((p) => p.latitude != null && p.longitude != null).length;
   const routeHint =
-    ctx.mapRouteMode === "segmented"
-      ? "Color por día · carretera entre paradas · vuelos en línea directa"
-      : ctx.mapRouteMode === "directions"
-        ? "Color por día · ruta por carretera"
-        : "Color por día · ruta cronológica";
-  const legend = (ctx.mapDayLegend ?? [])
-    .map(
-      (entry) =>
-        `<span class="map-legend-item"><i style="background:${escapeHtml(entry.color)}"></i>${escapeHtml(entry.label)}</span>`
-    )
-    .join("");
+    variant === "flights"
+      ? "Trayecto aéreo · ida y vuelta"
+      : ctx.mapRouteMode === "segmented"
+        ? "Color por día · carretera entre paradas"
+        : ctx.mapRouteMode === "directions"
+          ? "Color por día · ruta por carretera"
+          : "Color por día · ruta cronológica";
+  const legend =
+    variant === "flights"
+      ? `<span class="map-legend-item"><i style="background:#818cf8;height:0;border-top:1.2mm dashed #818cf8;border-radius:0"></i>Vuelo ida / vuelta</span>`
+      : buildPdfDayLegendHtml(resolvePdfMapDayLegend(ctx));
+  const dualLocal = Boolean(ctx.mapFlightImagePath);
+  const eyebrow =
+    variant === "flights"
+      ? "Trayecto / llegada"
+      : dualLocal
+        ? "En destino"
+        : "Mapa del viaje";
+  const caption =
+    variant === "flights"
+      ? `${gpsCount} puntos · vuelos`
+      : `${gpsCount} paradas · A→B · ${routeHint}`;
 
   return `
   <section class="page page-map" style="width:${width};height:${height}">
     <div class="map-inner">
       <div class="map-content">
-        <p class="map-eyebrow">Ruta del viaje</p>
+        <p class="map-eyebrow">${eyebrow}</p>
         <h2 class="map-title">${escapeHtml(ctx.travel.title)}</h2>
         <div class="map-frame">
-          <img src="${escapeHtml(ctx.mapImagePath)}" alt="Mapa de la ruta" />
+          <img src="${escapeHtml(imagePath)}" alt="${escapeHtml(eyebrow)}" />
         </div>
-        ${legend ? `<div class="map-legend">${legend}</div>` : ""}
-        <p class="map-caption">${gpsCount} paradas · A→B · ${routeHint}</p>
+        <div class="map-legend">${legend}</div>
+        <p class="map-caption">${caption}</p>
       </div>
     </div>
     ${renderPageFooter(page.pageNumber, totalPages)}
@@ -355,20 +431,18 @@ function renderFeatured(
   const photo = page.photos?.[0];
   if (!photo) return "";
   const { width, height } = pageDimensions(format);
+  const note = photoNoteCaption(photo);
   return `
   <section class="page page-featured" style="width:${width};height:${height}">
-    <div class="featured-photo-col">
-      <div class="photo-mat">
+    <div class="featured-inner">
+      <div class="photo-mat featured-mat">
         <img src="${escapeHtml(photoSrc(photo))}" alt="" />
       </div>
       <p class="featured-caption">${escapeHtml(photoCaption(photo))}</p>
-    </div>
-    <div class="featured-text-col">
-      ${page.narrative ? `<div class="featured-narrative">${page.narrative}</div>` : ""}
       ${
-        page.quote
-          ? `<blockquote class="featured-quote">«${escapeHtml(page.quote)}»</blockquote>`
-          : ""
+        note
+          ? `<p class="featured-note">«${escapeHtml(note)}»</p>`
+          : `<p class="featured-byline">@${escapeHtml(photo.alias)}</p>`
       }
     </div>
     ${renderPageFooter(page.pageNumber, totalPages)}
@@ -383,18 +457,17 @@ function renderPair(
   const [left, right] = page.photos ?? [];
   if (!left || !right) return "";
   const { width, height } = pageDimensions(format);
-  const cell = (photo: PdfPhotoAsset) => `
+  const cell = (photo: PdfPhotoAsset) => {
+    const note = photoNoteCaption(photo);
+    return `
     <div class="pair-cell">
       <div class="photo-mat pair-mat">
         <img src="${escapeHtml(photoSrc(photo))}" alt="" />
       </div>
       <p class="pair-caption">${escapeHtml(photoCaption(photo))}</p>
-      ${
-        photo.notes[0]
-          ? `<p class="pair-note">${escapeHtml(photo.notes[0])}</p>`
-          : ""
-      }
+      ${note ? `<p class="pair-note">«${escapeHtml(note)}»</p>` : ""}
     </div>`;
+  };
 
   return `
   <section class="page page-pair" style="width:${width};height:${height}">
@@ -433,7 +506,9 @@ function renderPage(
     case "cover":
       return renderCover(ctx, page, format, totalPages);
     case "map":
-      return renderMap(ctx, page, format, totalPages);
+      return renderMap(ctx, page, format, totalPages, "local");
+    case "map-flights":
+      return renderMap(ctx, page, format, totalPages, "flights");
     case "day-divider":
       return renderDayDivider(page, format, totalPages);
     case "full-bleed":

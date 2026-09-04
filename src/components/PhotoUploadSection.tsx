@@ -43,7 +43,7 @@ export default function PhotoUploadSection({
 }: PhotoUploadSectionProps) {
   const handlePhotosConfirmed = useCallback(
     async (photos: ParsedPhoto[]) => {
-      if (!navigator.onLine) {
+      const queueOffline = async () => {
         for (const photo of photos) {
           await savePendingPhoto({
             localId: photo.id,
@@ -63,68 +63,79 @@ export default function PhotoUploadSection({
             isTransportStart: photo.isTransportStart,
             isTransportEnd: photo.isTransportEnd,
             createdAt: new Date().toISOString(),
+            syncStatus: "pending",
+            lastError: null,
           });
         }
+      };
+
+      if (!navigator.onLine) {
+        await queueOffline();
         return;
       }
 
-      if (shareBundleId) {
-        const res = await fetch(`/api/travels/${travelId}/photos/import-shared`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            bundleId: shareBundleId,
-            userId,
-            photos: photos.map((p) => ({
-              sourceName: p.file.name,
-              localId: p.id,
-              selected: p.selected,
-              isTransportStart: p.isTransportStart,
-              isTransportEnd: p.isTransportEnd,
-            })),
-          }),
-        });
-        if (!res.ok) throw new Error("Import failed");
-        onSyncComplete?.();
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append("travelId", travelId);
-      formData.append("userId", userId);
-
-      const metadata = photos.map((p) => ({
-        localId: p.id,
-        exifDateTime: p.exif.dateTime?.toISOString() ?? null,
-        latitude: p.exif.latitude,
-        longitude: p.exif.longitude,
-        placeId: p.placeId ?? null,
-        mediaType: p.mediaType ?? "IMAGE",
-        durationMs: p.durationMs ?? null,
-        selected: p.selected,
-        isTransportStart: p.isTransportStart,
-        isTransportEnd: p.isTransportEnd,
-      }));
-
-      formData.append("metadata", JSON.stringify(metadata));
-
-      photos.forEach((p) => {
-        formData.append(`file_${p.id}`, p.file, p.file.name);
-        if (p.posterBlob) {
-          formData.append(`poster_${p.id}`, p.posterBlob, `${p.id}.poster.jpg`);
+      try {
+        if (shareBundleId) {
+          const res = await fetch(`/api/travels/${travelId}/photos/import-shared`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              bundleId: shareBundleId,
+              userId,
+              photos: photos.map((p) => ({
+                sourceName: p.file.name,
+                localId: p.id,
+                selected: p.selected,
+                isTransportStart: p.isTransportStart,
+                isTransportEnd: p.isTransportEnd,
+              })),
+            }),
+          });
+          if (!res.ok) throw new Error("Import failed");
+          onSyncComplete?.();
+          return;
         }
-      });
 
-      const res = await fetch("/api/photos", {
-        method: "POST",
-        body: formData,
-      });
+        const formData = new FormData();
+        formData.append("travelId", travelId);
+        formData.append("userId", userId);
 
-      if (!res.ok) {
-        throw new Error("Upload failed");
+        const metadata = photos.map((p) => ({
+          localId: p.id,
+          exifDateTime: p.exif.dateTime?.toISOString() ?? null,
+          latitude: p.exif.latitude,
+          longitude: p.exif.longitude,
+          placeId: p.placeId ?? null,
+          mediaType: p.mediaType ?? "IMAGE",
+          durationMs: p.durationMs ?? null,
+          selected: p.selected,
+          isTransportStart: p.isTransportStart,
+          isTransportEnd: p.isTransportEnd,
+        }));
+
+        formData.append("metadata", JSON.stringify(metadata));
+
+        photos.forEach((p) => {
+          formData.append(`file_${p.id}`, p.file, p.file.name);
+          if (p.posterBlob) {
+            formData.append(`poster_${p.id}`, p.posterBlob, `${p.id}.poster.jpg`);
+          }
+        });
+
+        const res = await fetch("/api/photos", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!res.ok) {
+          throw new Error("Upload failed");
+        }
+
+        onSyncComplete?.();
+      } catch {
+        // Network blip or server error: keep memories in the offline queue.
+        await queueOffline();
       }
-
-      onSyncComplete?.();
     },
     [travelId, userId, shareBundleId, onSyncComplete]
   );

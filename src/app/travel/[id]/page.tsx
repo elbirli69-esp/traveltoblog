@@ -196,6 +196,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
         setIncomingFiles(files);
         setIncomingExifByName(exifByName);
         setActiveShareId(bundleId);
+        setActiveTab("photos");
         setSharedNotice(
           `${files.length} foto${files.length === 1 ? "" : "s"} compartida${files.length === 1 ? "" : "s"} lista${files.length === 1 ? "" : "s"} para revisar.`
         );
@@ -514,6 +515,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
               travelId={travelId}
               activeEventId={activeTimelineEventId}
               onEventSelect={handleTimelineEvent}
+              refreshSignal={refreshKey}
             />
             <GpsTrailRecorder
               travelId={travelId}

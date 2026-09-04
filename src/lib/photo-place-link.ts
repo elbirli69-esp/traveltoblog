@@ -56,6 +56,10 @@ export interface UnlinkedPhotosSummary {
   eligible: number;
   /** Photos with GPS in range of a place but still unlinked (subset of eligible). */
   matchable: number;
+  /** Eligible photos with GPS but farther than threshold from every place. */
+  withGpsFar: number;
+  /** Eligible photos without usable GPS (manual link only). */
+  withoutGps: number;
 }
 
 export function summarizeUnlinkedPhotos(
@@ -64,20 +68,38 @@ export function summarizeUnlinkedPhotos(
   thresholdM: number = NEARBY_THRESHOLD_M
 ): UnlinkedPhotosSummary {
   if (!places.length) {
-    return { unlinked: 0, eligible: 0, matchable: 0 };
+    return {
+      unlinked: 0,
+      eligible: 0,
+      matchable: 0,
+      withGpsFar: 0,
+      withoutGps: 0,
+    };
   }
 
   const eligiblePhotos = photos.filter(
     (p) => !p.isTransportStart && !p.isTransportEnd && !p.placeId
   );
   let matchable = 0;
+  let withGpsFar = 0;
+  let withoutGps = 0;
   for (const photo of eligiblePhotos) {
-    if (matchPhotoToPlaceId(photo, places, thresholdM)) matchable += 1;
+    if (!isValidGps(photo.latitude, photo.longitude)) {
+      withoutGps += 1;
+      continue;
+    }
+    if (matchPhotoToPlaceId(photo, places, thresholdM)) {
+      matchable += 1;
+    } else {
+      withGpsFar += 1;
+    }
   }
 
   return {
     unlinked: eligiblePhotos.length,
     eligible: eligiblePhotos.length,
     matchable,
+    withGpsFar,
+    withoutGps,
   };
 }

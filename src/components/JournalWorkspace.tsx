@@ -14,6 +14,8 @@ interface JournalWorkspaceProps {
   endDate: string | null;
   journalMarkdown: string | null;
   journalGeneratedAt: string | null;
+  journalMarkdownPrevious?: string | null;
+  journalBrief?: string | null;
   photos: {
     exifDateTime: string | null;
     isTransportStart: boolean;
@@ -30,6 +32,8 @@ export default function JournalWorkspace({
   endDate,
   journalMarkdown,
   journalGeneratedAt,
+  journalMarkdownPrevious = null,
+  journalBrief = null,
   photos,
   dayNotes,
   tripNoteCount,
@@ -47,16 +51,17 @@ export default function JournalWorkspace({
       <header className="mb-6 border-b border-[var(--border)] pb-6">
         <h1 className="heading-page">{title}</h1>
         <p className="mt-2 text-sm text-fg-secondary">
-          Genera y edita la crónica del viaje con IA. Las notas, fotos y fechas del viaje son la
-          materia prima.
+          Genera y edita la crónica con IA. Puedes dejar indicaciones libres (tono, anécdotas,
+          énfasis) y refinarla en varias pasadas.
         </p>
       </header>
 
       <section className="surface mb-8 p-6">
         <h2 className="heading-section mb-2 text-accent-cyan">Generar crónica</h2>
         <p className="mb-4 text-sm text-fg-secondary">
-          Elige el estilo y genera un artículo en varios pasos: introducción, resumen por día,
-          leyendas de fotos y conclusión.
+          {journalMarkdown
+            ? "Refina la crónica existente: conserva tus ediciones, aplica las indicaciones e incorpora notas y fotos nuevas."
+            : "Añade indicaciones si quieres, elige el estilo y genera (introducción, días, leyendas y conclusión)."}
         </p>
         <JournalReadinessChecklist
           startDate={startDate}
@@ -69,6 +74,8 @@ export default function JournalWorkspace({
         <GenerateJournalButton
           travelId={travelId}
           hasExistingJournal={Boolean(journalMarkdown)}
+          hasPreviousJournal={Boolean(journalMarkdownPrevious)}
+          initialBrief={journalBrief ?? ""}
         />
       </section>
 

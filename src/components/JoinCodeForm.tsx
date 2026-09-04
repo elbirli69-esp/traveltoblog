@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import PendingShareBanner from "@/components/PendingShareBanner";
 
 export default function JoinCodeForm() {
   const router = useRouter();
@@ -21,6 +22,8 @@ export default function JoinCodeForm() {
       <p className="mb-6 text-fg-secondary">
         Pega el código que te compartió el organizador (está en «Invitar al grupo» en el móvil).
       </p>
+
+      <PendingShareBanner />
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <label className="block text-sm">

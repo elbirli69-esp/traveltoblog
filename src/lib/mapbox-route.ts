@@ -322,6 +322,26 @@ export function buildDayLegend(nodes: MapRouteNode[]): RouteDayLegendEntry[] {
   return entries;
 }
 
+/** Prefer explicit legend; else derive unique days from colored road segments. */
+export function resolveDayLegend(
+  dayLegend: RouteDayLegendEntry[] | null | undefined,
+  roadSegments: Array<Pick<ColoredRouteSegment, "dayKey" | "dayIndex" | "color" | "label">> = []
+): RouteDayLegendEntry[] {
+  if (dayLegend && dayLegend.length > 0) return dayLegend;
+  const seen = new Map<string, RouteDayLegendEntry>();
+  for (const seg of roadSegments) {
+    const key = seg.dayKey ?? `idx:${seg.dayIndex}`;
+    if (seen.has(key)) continue;
+    seen.set(key, {
+      dayKey: seg.dayKey,
+      dayIndex: seg.dayIndex,
+      color: seg.color,
+      label: seg.label,
+    });
+  }
+  return [...seen.values()].sort((a, b) => a.dayIndex - b.dayIndex);
+}
+
 function isTransportKind(kind: MapRouteNodeKind): boolean {
   return kind === "transport-out" || kind === "transport-in";
 }
@@ -486,6 +506,14 @@ export function buildFlightPathOverlay(encodedPolyline: string): string {
   });
 }
 
+export function buildGpsTrailPathOverlay(encodedPolyline: string): string {
+  return buildPathOverlay(encodedPolyline, {
+    width: 3,
+    color: "64748b",
+    opacity: 0.85,
+  });
+}
+
 export function buildRouteMarkerOverlays(waypoints: MapRouteWaypoint[]): string {
   if (waypoints.length === 0) return "";
   const start = waypoints[0]!;
@@ -508,13 +536,15 @@ export function buildRouteMarkerOverlays(waypoints: MapRouteWaypoint[]): string 
 export function buildSegmentedPathOverlays(
   roadPolylines: string[],
   flightPolylines: string[],
-  roadColors?: string[]
+  roadColors?: string[],
+  trailPolylines: string[] = []
 ): string {
   return [
     ...roadPolylines.map((polyline, i) =>
       buildRoutePathOverlay(polyline, roadColors?.[i] ?? DAY_ROUTE_COLORS[0])
     ),
     ...flightPolylines.map(buildFlightPathOverlay),
+    ...trailPolylines.map(buildGpsTrailPathOverlay),
   ].join(",");
 }
 
@@ -531,9 +561,15 @@ export function buildMapboxStaticOverlaysSegmented(
   markerWaypoints: MapRouteWaypoint[],
   roadPolylines: string[],
   flightPolylines: string[],
-  roadColors?: string[]
+  roadColors?: string[],
+  trailPolylines: string[] = []
 ): string {
-  const paths = buildSegmentedPathOverlays(roadPolylines, flightPolylines, roadColors);
+  const paths = buildSegmentedPathOverlays(
+    roadPolylines,
+    flightPolylines,
+    roadColors,
+    trailPolylines
+  );
   const markers = buildRouteMarkerOverlays(markerWaypoints);
   return markers ? `${markers},${paths}` : paths;
 }
@@ -578,6 +614,60 @@ export function buildDirectRouteGeometry(
     dayLegend: buildDayLegend(nodes),
     mode: "direct",
   };
+}
+
+/** Which layers a map canvas should show. */
+export type MapRouteScope = "all" | "flights" | "local";
+
+export function hasFlightOverview(
+  geometry: SegmentedRouteGeometry | null | undefined
+): boolean {
+  return (geometry?.flightLegs ?? []).some((leg) => leg.length > 1);
+}
+
+export function hasLocalActivity(
+  geometry: SegmentedRouteGeometry | null | undefined
+): boolean {
+  return (geometry?.roadSegments ?? []).some((seg) => seg.coordinates.length > 1);
+}
+
+/** True when long-haul flights would squash local day routes on one map. */
+export function shouldShowDualMaps(
+  geometry: SegmentedRouteGeometry | null | undefined
+): boolean {
+  return hasFlightOverview(geometry) && hasLocalActivity(geometry);
+}
+
+export function partitionSegmentedRouteGeometry(
+  geometry: SegmentedRouteGeometry
+): {
+  flights: SegmentedRouteGeometry;
+  local: SegmentedRouteGeometry;
+} {
+  return {
+    flights: {
+      roadSegments: [],
+      flightLegs: geometry.flightLegs,
+      dayLegend: [],
+      mode: geometry.mode,
+    },
+    local: {
+      roadSegments: geometry.roadSegments,
+      flightLegs: [],
+      dayLegend: geometry.dayLegend,
+      mode: geometry.mode,
+    },
+  };
+}
+
+export function filterGeometryByScope(
+  geometry: SegmentedRouteGeometry | null,
+  scope: MapRouteScope
+): SegmentedRouteGeometry | null {
+  if (!geometry) return null;
+  if (scope === "all") return geometry;
+  const parts = partitionSegmentedRouteGeometry(geometry);
+  return scope === "flights" ? parts.flights : parts.local;
 }
 
 /** Ground runs via Directions; transport legs as straight encoded polylines. */

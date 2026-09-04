@@ -1,5 +1,6 @@
 import { MAPBOX_STYLE_LIGHT, MAPBOX_TOKEN } from "@/lib/mapbox";
 import { sanitizeGpsPair } from "@/lib/exif";
+import type { GpsTrailPolyline } from "@/lib/gps-track-map";
 
 export interface ReelMapPoint {
   lat: number;
@@ -19,6 +20,8 @@ export interface ReelMapPlan {
   /** CSS pixel size of the static image (before @2x) */
   imageWidth: number;
   imageHeight: number;
+  /** Animated GPS trails drawn client-side over the basemap */
+  gpsTrails: GpsTrailPolyline[];
 }
 
 function mapboxStylePath(styleUrl: string): string {
@@ -106,17 +109,38 @@ export function buildReelMapStaticUrl(
   return `https://api.mapbox.com/styles/v1/${stylePath}/static/${center.lng},${center.lat},${zoom},0/${STATIC_CSS_W}x${STATIC_CSS_H}@2x?access_token=${encodeURIComponent(token)}&logo=false&attribution=false`;
 }
 
-export function buildReelMapPlan(rawPoints: ReelMapPoint[]): ReelMapPlan | null {
+export function buildReelMapPlan(
+  rawPoints: ReelMapPoint[],
+  gpsTrails: GpsTrailPolyline[] = []
+): ReelMapPlan | null {
   const points = coalesceMapPoints(rawPoints);
-  if (points.length < 2) return null;
-  const view = computeMapView(points);
+  if (points.length < 2 && gpsTrails.every((t) => t.coords.length < 2)) {
+    return null;
+  }
+  if (points.length < 2 && gpsTrails.length === 0) return null;
+  // If we only have trails, synthesize view from trail coords.
+  const viewPoints =
+    points.length >= 2
+      ? points
+      : gpsTrails.flatMap((t) =>
+          t.coords.map(([lat, lng]) => ({
+            lat,
+            lng,
+            kind: "photo" as const,
+            label: null,
+            at: null,
+          }))
+        );
+  if (viewPoints.length < 2) return null;
+  const view = computeMapView(viewPoints);
   return {
-    points,
+    points: points.length >= 2 ? points : coalesceMapPoints(viewPoints),
     staticUrl: buildReelMapStaticUrl(view.center, view.zoom),
     center: view.center,
     zoom: view.zoom,
     imageWidth: STATIC_CSS_W,
     imageHeight: STATIC_CSS_H,
+    gpsTrails,
   };
 }
 

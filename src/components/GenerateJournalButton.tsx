@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   JOURNAL_STYLE_LABELS,
@@ -8,7 +8,7 @@ import {
   type JournalStyle,
 } from "@/lib/journal-pipeline";
 
-const STEP_LABELS: Record<string, string> = {
+const GENERATE_STEP_LABELS: Record<string, string> = {
   context: "Preparando datos",
   intro: "Introducción",
   days: "Resúmenes por día",
@@ -18,26 +18,49 @@ const STEP_LABELS: Record<string, string> = {
   complete: "Listo",
 };
 
+const REFINE_STEP_LABELS: Record<string, string> = {
+  context: "Preparando datos",
+  refine: "Refinando crónica existente",
+  complete: "Listo",
+};
+
 export default function GenerateJournalButton({
   travelId,
   hasExistingJournal = false,
+  hasPreviousJournal = false,
+  initialBrief = "",
 }: {
   travelId: string;
   hasExistingJournal?: boolean;
+  hasPreviousJournal?: boolean;
+  initialBrief?: string;
 }) {
   const router = useRouter();
-  const [style, setStyle] = useState<JournalStyle>("factual");
+  const [style, setStyle] = useState<JournalStyle>("narrative");
+  const [brief, setBrief] = useState(initialBrief);
   const [loading, setLoading] = useState(false);
+  const [undoBusy, setUndoBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<string | null>(null);
   const [stepMessage, setStepMessage] = useState<string | null>(null);
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
+  const [canUndo, setCanUndo] = useState(hasPreviousJournal);
+
+  useEffect(() => {
+    setCanUndo(hasPreviousJournal);
+  }, [hasPreviousJournal]);
+
+  useEffect(() => {
+    setBrief(initialBrief);
+  }, [initialBrief]);
+
+  const stepLabels = hasExistingJournal ? REFINE_STEP_LABELS : GENERATE_STEP_LABELS;
 
   const handleGenerate = async () => {
     if (hasExistingJournal) {
       const ok = confirm(
-        "Ya hay una crónica guardada (puede incluir ediciones manuales). Regenerar la sobrescribirá. ¿Continuar?"
+        "La IA refinará la crónica actual: conservará tus ediciones e incorporará notas/fotos nuevas y tus indicaciones. Se guarda una copia para poder deshacer. ¿Continuar?"
       );
       if (!ok) return;
     }
@@ -53,7 +76,12 @@ export default function GenerateJournalButton({
       const res = await fetch("/api/generate-journal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ travelId, stream: true, style }),
+        body: JSON.stringify({
+          travelId,
+          stream: true,
+          style,
+          brief: brief.trim() || null,
+        }),
       });
 
       if (!res.ok) {
@@ -98,6 +126,9 @@ export default function GenerateJournalButton({
             if (event.message?.includes("sin IA")) {
               setWarning(event.message);
             }
+            if (hasExistingJournal) {
+              setCanUndo(true);
+            }
             router.push(`/travel/${travelId}/journal`);
             router.refresh();
           }
@@ -111,9 +142,53 @@ export default function GenerateJournalButton({
     }
   };
 
+  const handleUndo = async () => {
+    const ok = confirm(
+      "¿Restaurar la versión anterior a la última regeneración? La crónica actual se guarda por si quieres volver."
+    );
+    if (!ok) return;
+
+    setUndoBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/travels/${travelId}/journal/restore-previous`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "No se pudo deshacer");
+      }
+      setCanUndo(true);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al deshacer");
+    } finally {
+      setUndoBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
-      <fieldset className="space-y-2" disabled={loading}>
+      <div className="space-y-1.5">
+        <label htmlFor="journal-brief" className="block text-sm font-medium text-accent-cyan">
+          Indicaciones para la IA{" "}
+          <span className="font-normal text-fg-secondary">(opcional)</span>
+        </label>
+        <textarea
+          id="journal-brief"
+          value={brief}
+          onChange={(e) => setBrief(e.target.value.slice(0, 4000))}
+          disabled={loading || undoBusy}
+          rows={4}
+          placeholder="Anécdotas, énfasis o tono. Ej.: Cuenta lo de la tormenta en la playa; tono cercano, sin frases grandilocuentes; dale más peso al último día."
+          className="form-input w-full resize-y text-sm"
+        />
+        <p className="text-xs text-fg-secondary">
+          Se guarda con el viaje y se reutiliza al generar o refinar. {brief.length}/4000
+        </p>
+      </div>
+
+      <fieldset className="space-y-2" disabled={loading || undoBusy}>
         <legend className="mb-2 text-sm font-medium text-accent-cyan">
           Estilo de la crónica
         </legend>
@@ -144,20 +219,40 @@ export default function GenerateJournalButton({
 
       <button
         type="button"
-        onClick={handleGenerate}
-        disabled={loading}
+        onClick={() => void handleGenerate()}
+        disabled={loading || undoBusy}
         className="btn-primary w-full py-3 text-sm disabled:opacity-50"
       >
         {loading
-          ? "Generando crónica…"
+          ? hasExistingJournal
+            ? "Refinando crónica…"
+            : "Generando crónica…"
           : hasExistingJournal
-            ? "✨ Regenerar diario con IA"
+            ? "✨ Refinar crónica con IA"
             : "✨ Generar diario con IA"}
       </button>
 
+      {hasExistingJournal && (
+        <p className="text-xs text-fg-secondary">
+          Cada refinamiento parte del texto actual (incluidas tus ediciones), aplica las
+          indicaciones e incorpora material nuevo. Se guarda una copia para deshacer.
+        </p>
+      )}
+
+      {canUndo && (
+        <button
+          type="button"
+          onClick={() => void handleUndo()}
+          disabled={loading || undoBusy}
+          className="btn-secondary w-full py-2 text-sm disabled:opacity-50"
+        >
+          {undoBusy ? "Restaurando…" : "↩ Deshacer última regeneración"}
+        </button>
+      )}
+
       {loading && (
         <ul className="progress-panel space-y-1.5">
-          {Object.entries(STEP_LABELS).map(([key, label]) => {
+          {Object.entries(stepLabels).map(([key, label]) => {
             if (key === "complete") return null;
             const done = completedSteps.includes(key);
             const active = currentStep === key;
@@ -174,17 +269,17 @@ export default function GenerateJournalButton({
               >
                 <span>{done ? "✓" : active ? "…" : "○"}</span>
                 {label}
+                {active && stepMessage ? (
+                  <span className="text-xs text-fg-tertiary">— {stepMessage}</span>
+                ) : null}
               </li>
             );
           })}
-          {stepMessage && (
-            <li className="progress-step-active font-medium">{stepMessage}</li>
-          )}
         </ul>
       )}
 
+      {warning && <p className="text-sm text-amber-200">{warning}</p>}
       {error && <p className="text-sm text-danger">{error}</p>}
-      {warning && !loading && <p className="callout callout-warning text-sm">{warning}</p>}
     </div>
   );
 }

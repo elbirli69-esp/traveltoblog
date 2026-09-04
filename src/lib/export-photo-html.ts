@@ -47,7 +47,18 @@ export function buildExportPhotoBootScript(): string {
 
   document.querySelectorAll("[data-export-src]").forEach(function (el) {
     var key = el.getAttribute("data-export-src");
-    if (key) el.src = resolveExportAsset(key);
+    if (!key) return;
+    var resolved = resolveExportAsset(key);
+    if (el.tagName === "VIDEO" || el.tagName === "SOURCE") {
+      el.src = resolved;
+    } else if ("src" in el) {
+      el.src = resolved;
+    }
+  });
+
+  document.querySelectorAll("video[data-export-poster]").forEach(function (el) {
+    var key = el.getAttribute("data-export-poster");
+    if (key) el.setAttribute("poster", resolveExportAsset(key));
   });
 
   document.querySelectorAll("img[src^='photos/']").forEach(function (el) {
@@ -90,7 +101,7 @@ export function buildExportPhotoBootScript(): string {
     document.body.style.overflow = "hidden";
   }
 
-  document.querySelectorAll(".photo-block img, .gallery-tile img").forEach(function (img) {
+  document.querySelectorAll(".photo-block img, .gallery-tile:not(.gallery-tile--video) img").forEach(function (img) {
     img.addEventListener("click", function () { openLightboxFromImg(img); });
   });
 

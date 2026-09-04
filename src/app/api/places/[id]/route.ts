@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PlaceType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { clampHighlightScore } from "@/lib/highlight-score";
+import { autoLinkPhotosForTravel } from "@/lib/photo-place-auto-link";
 import { PLACE_TYPES } from "@/lib/places";
 
 export async function PATCH(
@@ -60,6 +61,10 @@ export async function PATCH(
       data.highlightScore = clampHighlightScore(highlightScore);
     }
 
+    const coordsChanged =
+      (data.latitude != null && data.latitude !== existing.latitude) ||
+      (data.longitude != null && data.longitude !== existing.longitude);
+
     const place = await prisma.place.update({
       where: { id },
       data,
@@ -81,6 +86,10 @@ export async function PATCH(
         },
         data: { placeId: null },
       });
+    }
+
+    if (coordsChanged) {
+      await autoLinkPhotosForTravel(place.travelId);
     }
 
     await prisma.travel.update({

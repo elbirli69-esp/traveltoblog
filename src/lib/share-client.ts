@@ -53,13 +53,33 @@ export async function fetchSharedFiles(bundleId: string): Promise<FetchedSharedB
 }
 
 export function storePendingShareId(bundleId: string): void {
+  if (typeof window === "undefined") return;
   sessionStorage.setItem(PENDING_SHARE_KEY, bundleId);
 }
 
+export function peekPendingShareId(): string | null {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem(PENDING_SHARE_KEY);
+}
+
 export function consumePendingShareId(): string | null {
+  if (typeof window === "undefined") return null;
   const id = sessionStorage.getItem(PENDING_SHARE_KEY);
   if (id) sessionStorage.removeItem(PENDING_SHARE_KEY);
   return id;
+}
+
+export function clearPendingShareId(): void {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem(PENDING_SHARE_KEY);
+}
+
+export function travelUrlWithShare(travelId: string, bundleId?: string | null): string {
+  const pending = bundleId ?? peekPendingShareId();
+  if (pending) {
+    return `/travel/${travelId}?shared=${encodeURIComponent(pending)}`;
+  }
+  return `/travel/${travelId}`;
 }
 
 export function buildTravelUrlWithPendingShare(travelId: string): string {
