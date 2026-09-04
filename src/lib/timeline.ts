@@ -18,6 +18,10 @@ export interface TimelineEventMeta {
   photoId?: string;
   placeId?: string;
   trackId?: string;
+  mediaType?: "IMAGE" | "VIDEO";
+  /** Relative path to playable video inside ZIP exports. */
+  videoPath?: string | null;
+  durationMs?: number | null;
 }
 
 export interface TimelineEvent {
@@ -45,6 +49,9 @@ export interface TimelinePhotoInput {
   isTransportEnd: boolean;
   selected?: boolean;
   alias: string;
+  mediaType?: "IMAGE" | "VIDEO";
+  videoPath?: string | null;
+  durationMs?: number | null;
 }
 
 export interface TimelinePlaceInput {
@@ -226,10 +233,16 @@ export function buildTimeline(input: BuildTimelineInput): TimelineResult {
       dayKey: dayKeyFrom(at),
       lat: photo.latitude ?? undefined,
       lng: photo.longitude ?? undefined,
-      title: "Foto",
+      title: photo.mediaType === "VIDEO" ? "Vídeo" : "Foto",
       mediaUrl: photo.url,
       author: photo.alias,
-      meta: { photoId: photo.id, visitedAtSource: photo.exifDateTime ? "exif" : undefined },
+      meta: {
+        photoId: photo.id,
+        visitedAtSource: photo.exifDateTime ? "exif" : undefined,
+        mediaType: photo.mediaType === "VIDEO" ? "VIDEO" : "IMAGE",
+        videoPath: photo.videoPath ?? null,
+        durationMs: photo.durationMs ?? null,
+      },
     });
   }
 

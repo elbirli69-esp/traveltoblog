@@ -52,6 +52,7 @@ import {
 } from "@/lib/export/magazine-html";
 import { buildGallerySection, galleryExportStyles } from "@/lib/export/gallery-html";
 import { buildMapTileLayerScript } from "@/lib/export/map-tiles";
+import { fetchHtmlStaticMapImages } from "@/lib/export-html-map";
 import { exportPhotoPaths, EXPORT_IMAGE_MIME } from "@/lib/export-images";
 import { getOrCreateExportImageSet } from "@/lib/export-image-cache";
 import {
@@ -129,6 +130,10 @@ export interface ExportContext {
   includeGpsTrail?: boolean;
   /** Precomputed road + flight segments for the interactive map (from Mapbox Directions). */
   mapRouteGeometry?: SegmentedRouteGeometry;
+  /** Static Mapbox PNG for offline fallback (destination / combined). */
+  mapStaticLocalPath?: string | null;
+  /** Static Mapbox PNG for flight overview when dual maps apply. */
+  mapStaticFlightPath?: string | null;
 }
 
 export function getExportMapPhotos(ctx: ExportContext): ExportPhoto[] {
@@ -679,6 +684,24 @@ export function mapExportStyles(): string {
 .legend-route { display: inline-block; width: 22px; height: 0; border-top: 3px dashed #f59e0b; }
 .legend-dash { display: inline-block; width: 22px; height: 0; border-top: 3px dashed #818cf8; }
 .legend-gps { display: inline-block; width: 22px; height: 0; border-top: 3px dotted #64748b; }
+.map-frame-wrap { position: relative; }
+.map-static-fallback {
+  display: none;
+  width: 100%;
+  height: auto;
+  max-height: min(62vh, 520px);
+  object-fit: cover;
+  border-radius: 14px;
+  background: #292524;
+}
+.map-static-fallback.is-visible { display: block; }
+.map-offline-note {
+  display: none;
+  margin: .65rem 0 0;
+  font-size: .8rem;
+  color: var(--muted);
+}
+.map-offline-note.is-visible { display: block; }
 #map {
   height: min(62vh, 520px);
   min-height: 320px;
@@ -686,6 +709,7 @@ export function mapExportStyles(): string {
   overflow: hidden;
   background: #292524;
 }
+#map.map-canvas--hidden { display: none; }
 .route-pin-wrap { background: none; border: none; }
 .route-pin {
   width: 28px; height: 28px;
@@ -1212,7 +1236,20 @@ function resolveExportGpsTrails(ctx: ExportContext): GpsTrailPolyline[] {
   return buildGpsTrailPolylines(selected);
 }
 
-function buildFlightOverviewSection(mapLead: string): string {
+function buildMapStaticFallbackHtml(
+  staticPath: string | null | undefined,
+  alt: string
+): string {
+  if (!staticPath) return "";
+  return `
+<img class="map-static-fallback" data-export-src="${escapeHtml(staticPath)}" alt="${escapeHtml(alt)}" width="1280" height="720">
+<p class="map-offline-note">Sin conexión a tiles: mostrando mapa estático incluido en el export.</p>`;
+}
+
+function buildFlightOverviewSection(
+  mapLead: string,
+  staticPath?: string | null
+): string {
   return `
 <section class="map-section reveal" id="mapa-trayecto">
   <div class="map-section-inner">
@@ -1222,7 +1259,10 @@ function buildFlightOverviewSection(mapLead: string): string {
       <span><i class="legend-dash"></i> Vuelo ida/vuelta</span>
       <span>✈️ Aeropuertos</span>
     </div>
-    <div id="map-trayecto" class="map-canvas" style="min-height:300px;height:320px;border-radius:16px"></div>
+    <div class="map-frame-wrap">
+      ${buildMapStaticFallbackHtml(staticPath, "Mapa estático del trayecto aéreo")}
+      <div id="map-trayecto" class="map-canvas" style="min-height:300px;height:320px;border-radius:16px"></div>
+    </div>
   </div>
 </section>`;
 }
@@ -1232,7 +1272,7 @@ function buildFullscreenMapSection(
   mapLead: string,
   dayLegend: LeafletRouteSegments["dayLegend"] = [],
   hasGpsTrails = false,
-  options?: { localOnly?: boolean }
+  options?: { localOnly?: boolean; staticPath?: string | null }
 ): string {
   const localOnly = Boolean(options?.localOnly);
   return `
@@ -1251,7 +1291,10 @@ function buildFullscreenMapSection(
   </div>
   <div class="map-explorer-body">
     ${buildMapSidebarHtml(dayGroups)}
-    <div id="map" class="map-canvas"></div>
+    <div class="map-frame-wrap" style="min-height:420px">
+      ${buildMapStaticFallbackHtml(options?.staticPath, "Mapa estático del viaje")}
+      <div id="map" class="map-canvas"></div>
+    </div>
   </div>
 </section>`;
 }
@@ -1260,7 +1303,7 @@ function buildCompactMapSection(
   mapLead: string,
   dayLegend: LeafletRouteSegments["dayLegend"] = [],
   hasGpsTrails = false,
-  options?: { localOnly?: boolean }
+  options?: { localOnly?: boolean; staticPath?: string | null }
 ): string {
   const localOnly = Boolean(options?.localOnly);
   return `
@@ -1274,7 +1317,10 @@ function buildCompactMapSection(
       ${hasGpsTrails ? '<span><i class="legend-gps"></i> Recorrido GPS</span>' : ""}
       <span>📍 Lugares · nº = orden</span>
     </div>
-    <div id="map"></div>
+    <div class="map-frame-wrap">
+      ${buildMapStaticFallbackHtml(options?.staticPath, "Mapa estático del viaje")}
+      <div id="map"></div>
+    </div>
   </div>
 </section>`;
 }
@@ -1290,9 +1336,11 @@ function buildMapScript(
     dualMaps?: boolean;
     flightPoints?: MapPoint[];
     flightLegs?: [number, number][][];
+    showRoute?: boolean;
   }
 ): string {
   const dualMaps = Boolean(options?.dualMaps);
+  const showRoute = options?.showRoute !== false;
   const flightPoints = options?.flightPoints ?? [];
   const flightOnlyLegs = options?.flightLegs ?? routeSegments.flightLegs;
   const localPoints = dualMaps
@@ -1300,11 +1348,14 @@ function buildMapScript(
     : points;
   const localSegments: LeafletRouteSegments = dualMaps
     ? {
-        roadSegments: routeSegments.roadSegments,
+        roadSegments: showRoute ? routeSegments.roadSegments : [],
         flightLegs: [],
         dayLegend: routeSegments.dayLegend,
       }
-    : routeSegments;
+    : {
+        ...routeSegments,
+        roadSegments: showRoute ? routeSegments.roadSegments : [],
+      };
 
   const data = JSON.stringify(localPoints);
   const groupsData = JSON.stringify(
@@ -1330,22 +1381,61 @@ function buildMapScript(
     mapEl.innerHTML = '<div class="map-load-error">' + message + "</div>";
   }
 
+  function showStaticFallback(mapEl) {
+    if (!mapEl) return false;
+    var wrap = mapEl.closest(".map-frame-wrap") || mapEl.parentElement;
+    if (!wrap) return false;
+    var fallback = wrap.querySelector(".map-static-fallback");
+    var note = wrap.querySelector(".map-offline-note");
+    if (!fallback) return false;
+    if (window.__resolveExportAsset) {
+      var key = fallback.getAttribute("data-export-src");
+      if (key && !fallback.getAttribute("src")) fallback.src = window.__resolveExportAsset(key);
+    } else if (!fallback.getAttribute("src")) {
+      var raw = fallback.getAttribute("data-export-src");
+      if (raw) fallback.src = raw;
+    }
+    fallback.classList.add("is-visible");
+    if (note) note.classList.add("is-visible");
+    mapEl.classList.add("map-canvas--hidden");
+    return true;
+  }
+
+  function preferStaticOffline(mapEl) {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return showStaticFallback(mapEl);
+    }
+    return false;
+  }
+
+  function watchTileErrors(map, mapEl) {
+    var errors = 0;
+    map.on("tileerror", function () {
+      errors += 1;
+      if (errors >= 4) showStaticFallback(mapEl);
+    });
+  }
+
   function initFlightOverviewMap() {
     if (!${dualFlag}) return;
     var mapEl = document.getElementById("map-trayecto");
     if (!mapEl || window.__travelFlightMap) return;
+    if (preferStaticOffline(mapEl)) return;
     var points = ${flightPointsData}.filter(function (p) {
       return typeof p.lat === "number" && typeof p.lng === "number" && isFinite(p.lat) && isFinite(p.lng);
     });
     var flightLegs = ${flightLegsData};
     if (!points.length && !flightLegs.length) return;
     if (typeof L === "undefined") {
-      showMapLoadError(mapEl, "No se pudo cargar el motor del mapa.");
+      if (!showStaticFallback(mapEl)) {
+        showMapLoadError(mapEl, "No se pudo cargar el motor del mapa.");
+      }
       return;
     }
     var map = L.map(mapEl, { scrollWheelZoom: true, zoomControl: true });
     window.__travelFlightMap = map;
     ${tileLayerScript.replace(/\.addTo\(map\)/g, ".addTo(map)")}
+    watchTileErrors(map, mapEl);
     flightLegs.forEach(function (leg) {
       if (leg.length > 1) {
         L.polyline(leg, { color: "#818cf8", weight: 3, opacity: 0.85, dashArray: "10 8", lineJoin: "round" }).addTo(map);
@@ -1379,20 +1469,25 @@ function buildMapScript(
     var dayGroups = ${groupsData};
     var mapEl = document.getElementById("map");
     if (!mapEl || window.__travelMap) return;
+    if (preferStaticOffline(mapEl)) return;
 
     var hasGpsTrails = gpsTrails.some(function (t) { return t.coords && t.coords.length > 1; });
     if (!points.length && !hasGpsTrails) {
-      showMapLoadError(
-        mapEl,
-        "No hay coordenadas GPS en las fotos de este export. Comprueba que las fotos tengan ubicación en la app."
-      );
+      if (!showStaticFallback(mapEl)) {
+        showMapLoadError(
+          mapEl,
+          "No hay coordenadas GPS en las fotos de este export. Comprueba que las fotos tengan ubicación en la app."
+        );
+      }
       return;
     }
     if (typeof L === "undefined") {
-      showMapLoadError(
-        mapEl,
-        "No se pudo cargar el motor del mapa. Vuelve a exportar o abre el archivo en Chrome/Firefox de un ordenador."
-      );
+      if (!showStaticFallback(mapEl)) {
+        showMapLoadError(
+          mapEl,
+          "No se pudo cargar el motor del mapa. Vuelve a exportar o abre el archivo en Chrome/Firefox de un ordenador."
+        );
+      }
       return;
     }
 
@@ -1438,6 +1533,7 @@ function buildMapScript(
       if (!document.hidden) refreshMap();
     });
     ${tileLayerScript}
+    watchTileErrors(map, mapEl);
 
     var flightOut = points.find(function (p) { return p.kind === "flight-out"; });
     var flightIn = points.find(function (p) { return p.kind === "flight-in"; });
@@ -1472,7 +1568,7 @@ function buildMapScript(
       }
     });
 
-    if (roadSegments.length === 0 && photoPoints.length > 1) {
+    if (roadSegments.length === 0 && photoPoints.length > 1 && ${showRoute ? "true" : "false"}) {
       L.polyline(photoPoints.map(function (p) { return [p.lat, p.lng]; }), { color: "#2dd4bf", weight: 4, opacity: 0.9, lineJoin: "round" }).addTo(map);
     }
 
@@ -1624,6 +1720,9 @@ function buildExportTimelineEvents(ctx: ExportContext): TimelineEvent[] {
       isTransportEnd: p.isTransportEnd,
       selected: true,
       alias: p.alias,
+      mediaType: p.mediaType,
+      videoPath: p.videoPath,
+      durationMs: p.durationMs,
     })),
     places: (ctx.places ?? []).map((p) => ({
       id: p.id ?? p.name,
@@ -1841,25 +1940,46 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide, dualMaps)}`
     : mapLead;
   const flightMapLead =
     "Trayecto aéreo de ida y vuelta — contexto del destino del viaje.";
+  const useExplorerMap =
+    (isVisual || isMagazine) && profile.mapConfig.showDaySidebar;
   const localMapBlock = hasMap
-    ? isVisual || isMagazine
+    ? useExplorerMap
       ? buildFullscreenMapSection(
           dualMaps ? mapDayGroups.filter((g) => g.id !== "flights") : mapDayGroups,
           localMapLead,
           routeSegments.dayLegend,
           hasGpsTrails,
-          { localOnly: dualMaps }
+          {
+            localOnly: dualMaps,
+            staticPath: ctx.mapStaticLocalPath,
+          }
         )
       : buildCompactMapSection(localMapLead, routeSegments.dayLegend, hasGpsTrails, {
           localOnly: dualMaps,
+          staticPath: ctx.mapStaticLocalPath,
         })
     : "";
   const mapBlock = hasMap
-    ? `${dualMaps ? buildFlightOverviewSection(flightMapLead) : ""}${localMapBlock}`
+    ? `${dualMaps ? buildFlightOverviewSection(flightMapLead, ctx.mapStaticFlightPath) : ""}${localMapBlock}`
     : "";
 
   const galleryBlock = isVisual || isMagazine
-    ? buildGallerySection(photos, travel.startDate, travel.endDate)
+    ? buildGallerySection(
+        photos.map((p) => ({
+          localPath: p.localPath,
+          thumbPath: p.thumbPath,
+          exifDateTime: p.exifDateTime,
+          alias: p.alias,
+          isTransportStart: p.isTransportStart,
+          isTransportEnd: p.isTransportEnd,
+          highlightScore: p.highlightScore,
+          mediaType: p.mediaType,
+          videoPath: p.videoPath,
+          durationMs: p.durationMs,
+        })),
+        travel.startDate,
+        travel.endDate
+      )
     : "";
   const storyAnchor = isVisual || isMagazine ? ' id="historia"' : "";
   const timelineBlock = buildTimelineSectionHtml(timelineEvents, storyTimelineOptions);
@@ -1903,13 +2023,10 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide, dualMaps)}`
     : "";
   const playBlock = profile.playProfile.showScrubber && !isMagazine ? buildPlayModeSectionHtml() : "";
 
-  const magazineSectionOrder: typeof profile.sectionOrder = [
-    "stats",
-    "map",
-    "timeline",
-    "journal",
-    "gallery",
-  ];
+  // Magazine honors typology section order (play mode stays deferred for Magazine).
+  const magazineSectionOrder = profile.sectionOrder.filter(
+    (id) => id !== "hero" && id !== "play"
+  );
 
   const sectionBlocks: Record<string, string> = {
     hero: "",
@@ -1925,7 +2042,8 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide, dualMaps)}`
   };
 
   const sectionOrder = isMagazine ? magazineSectionOrder : profile.sectionOrder;
-  const showMapOuter = (isVisual || isMagazine) && hasMap;
+  // Visual templates keep a full-bleed top map; Magazine/Editorial place map via sectionOrder.
+  const showMapOuter = isVisual && hasMap;
 
   const orderedMiddle = [
     ...sectionOrder
@@ -1957,7 +2075,7 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide, dualMaps)}`
       : "";
 
   const mapOuter = showMapOuter ? mapBlock : "";
-  const mapInner = !showMapOuter ? mapBlock : "";
+  const mapInner = "";
   const headMeta = isMagazine
     ? buildHeadMeta({
         title: travel.title,
@@ -1993,6 +2111,7 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide, dualMaps)}`
     dualMaps,
     flightPoints,
     flightLegs: routeSegments.flightLegs,
+    showRoute: profile.mapConfig.showRoute,
   })}</script>` : ""}
   ${playScript}
   ${interactiveScript}
@@ -2215,7 +2334,12 @@ async function prepareExportPhotoBuffers(
 function buildPhotoRegistry(files: Map<string, Buffer>): Record<string, string> {
   const registry: Record<string, string> = {};
   for (const [filePath, buffer] of files) {
-    registry[filePath] = `data:${EXPORT_IMAGE_MIME};base64,${buffer.toString("base64")}`;
+    const mime = filePath.endsWith(".png")
+      ? "image/png"
+      : filePath.match(/\.(mp4|webm|mov|m4v)$/i)
+        ? "video/mp4"
+        : EXPORT_IMAGE_MIME;
+    registry[filePath] = `data:${mime};base64,${buffer.toString("base64")}`;
   }
   return registry;
 }
@@ -2225,9 +2349,12 @@ function addCommonZipFiles(zip: JSZip, ctx: ExportContext, html: string): void {
 
   const explicitType =
     ctx.typology && ctx.typology !== "auto" ? ctx.typology : ctx.travel.travelType ?? "GENERIC";
+  const staticNote = ctx.mapStaticLocalPath
+    ? "\nMapa: interactivo online + PNG estático offline (map/*.png)."
+    : "";
   zip.file(
     "README.txt",
-    `TravelToBlog export\nTipología: ${explicitType}\nPlantilla: ${ctx.template}\nGenerado: ${new Date().toISOString()}\n`
+    `TravelToBlog export\nTipología: ${explicitType}\nPlantilla: ${ctx.template}\nGenerado: ${new Date().toISOString()}${staticNote}\nLos vídeos del ZIP se reproducen en Recorrido y Galería (carpeta videos/).\n`
   );
 
   const timelineEvents = buildExportTimelineEvents(ctx);
@@ -2293,6 +2420,11 @@ L.Icon.Default.mergeOptions({
     (routeSegments.roadSegments.length > 0 ||
       mapPoints.some((p) => p.kind === "photo" || p.kind === "place") ||
       gpsTrailsHaveGeometry(gpsTrails));
+  const explicitType =
+    ctx.typology && ctx.typology !== "auto"
+      ? ctx.typology
+      : (ctx.travel.travelType ?? "GENERIC");
+  const profile = getTypologyProfile(explicitType);
   const mapScriptBody = buildMapScript(
     mapPoints,
     mapDayGroups,
@@ -2304,6 +2436,7 @@ L.Icon.Default.mergeOptions({
       dualMaps,
       flightPoints,
       flightLegs: routeSegments.flightLegs,
+      showRoute: profile.mapConfig.showRoute,
     }
   ).replace(
     /delete L\.Icon\.Default\.prototype\._getIconUrl;[\s\S]*?}\);/,
@@ -2340,6 +2473,25 @@ export async function buildExportZip(
     preparedCtx = await prepareExportMapRouteGeometry(ctx);
     emit({ step: "map", status: "done" });
   }
+
+  let staticMapFiles = new Map<string, Buffer>();
+  if (exportHasMap(preparedCtx)) {
+    emit({ step: "map", status: "running", message: "Generando mapas estáticos offline…" });
+    const staticMaps = await fetchHtmlStaticMapImages(
+      getExportMapPhotos(preparedCtx),
+      preparedCtx.places ?? [],
+      preparedCtx.gpsTracks ?? [],
+      Boolean(preparedCtx.includeGpsTrail)
+    );
+    staticMapFiles = staticMaps.files;
+    preparedCtx = {
+      ...preparedCtx,
+      mapStaticLocalPath: staticMaps.localPath,
+      mapStaticFlightPath: staticMaps.flightPath,
+    };
+    emit({ step: "map", status: "done" });
+  }
+
   let html = buildExportHtml(preparedCtx);
 
   if (exportHasMap(ctx)) {
@@ -2348,11 +2500,15 @@ export async function buildExportZip(
     emit({ step: "map", status: "done" });
   }
 
-  addCommonZipFiles(zip, ctx, html);
+  addCommonZipFiles(zip, preparedCtx, html);
   emit({ step: "html", status: "done" });
 
   if (exportHasMap(ctx)) {
     await addLeafletToZip(zip);
+  }
+
+  for (const [filePath, buffer] of staticMapFiles) {
+    zip.file(filePath, buffer, { compression: "STORE" });
   }
 
   const total = ctx.photos.length;
@@ -2398,6 +2554,25 @@ export async function buildSingleFileHtml(
     preparedCtx = await prepareExportMapRouteGeometry(ctx);
     emit({ step: "map", status: "done" });
   }
+
+  let staticMapFiles = new Map<string, Buffer>();
+  if (exportHasMap(preparedCtx)) {
+    emit({ step: "map", status: "running", message: "Generando mapas estáticos offline…" });
+    const staticMaps = await fetchHtmlStaticMapImages(
+      getExportMapPhotos(preparedCtx),
+      preparedCtx.places ?? [],
+      preparedCtx.gpsTracks ?? [],
+      Boolean(preparedCtx.includeGpsTrail)
+    );
+    staticMapFiles = staticMaps.files;
+    preparedCtx = {
+      ...preparedCtx,
+      mapStaticLocalPath: staticMaps.localPath,
+      mapStaticFlightPath: staticMaps.flightPath,
+    };
+    emit({ step: "map", status: "done" });
+  }
+
   let html = buildExportHtml(preparedCtx);
   emit({ step: "html", status: "done" });
 
@@ -2420,6 +2595,9 @@ export async function buildSingleFileHtml(
     },
     { includeVideoOriginals: false }
   );
+  for (const [filePath, buffer] of staticMapFiles) {
+    photoFiles.set(filePath, buffer);
+  }
   emit({ step: "pack", status: "done" });
 
   emit({
