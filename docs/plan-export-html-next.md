@@ -32,3 +32,6 @@ Continuación de `plan-export-magazine.md` y del ciclo **HTML P1** (mapa offline
 - El mapa offline P1 es **fallback estático**, no tiles embebidos. Bundling de tiles sigue siendo opción “large” si hace falta zoom offline real.
 - Los vídeos en HTML único siguen siendo solo poster (tamaño); el archivo canónico es el ZIP.
 - Magazine sigue sin Play mode a propósito hasta el ítem A1.
+
+## Relacionado
+- Brief creativo de export (IA → énfasis visual / ritmo de reel): [`plan-export-ai-brief.md`](./plan-export-ai-brief.md)

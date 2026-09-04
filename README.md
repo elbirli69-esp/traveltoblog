@@ -103,6 +103,9 @@ docker-compose.yml                   # Despliegue NAS
 ## Roadmap de producto
 
 Dirección acordada (ver [`docs/plan-producto-escala.md`](docs/plan-producto-escala.md)):
+escala pública, freemium y tipologías de experiencia más allá del viaje.
+
+Exports con dirección creativa en lenguaje natural (HTML / vídeo / PDF): ver [`docs/plan-export-ai-brief.md`](docs/plan-export-ai-brief.md).
 
 1. **Público general** — SaaS/cloud además del self-host en Synology.
 2. **Freemium** — free usable + Plus de pago.
