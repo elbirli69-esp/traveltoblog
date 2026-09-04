@@ -6,6 +6,7 @@ import type { PdfExportContext, PdfPageFormat, PdfPhotoAsset } from "@/lib/expor
 export type PdfPageKind =
   | "cover"
   | "map"
+  | "map-flights"
   | "day-divider"
   | "full-bleed"
   | "featured"
@@ -136,6 +137,9 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
 
   push({ kind: "cover", photos: [pickHeroPhoto(photos, ctx.coverPhotoId)] });
 
+  if (ctx.mapFlightImagePath) {
+    push({ kind: "map-flights" });
+  }
   if (ctx.mapImagePath) {
     push({ kind: "map" });
   }
@@ -241,37 +245,58 @@ function renderMap(
   ctx: PdfExportContext,
   page: PdfPlannedPage,
   format: PdfPageFormat,
-  totalPages: number
+  totalPages: number,
+  variant: "local" | "flights" = "local"
 ): string {
-  if (!ctx.mapImagePath) return "";
+  const imagePath =
+    variant === "flights" ? ctx.mapFlightImagePath : ctx.mapImagePath;
+  if (!imagePath) return "";
   const { width, height } = pageDimensions(format);
-  const gpsCount = ctx.mapPointCount ?? ctx.photos.filter(
-    (p) => p.latitude != null && p.longitude != null
-  ).length;
+  const gpsCount =
+    variant === "flights"
+      ? ctx.mapFlightPointCount ?? 2
+      : ctx.mapPointCount ??
+        ctx.photos.filter((p) => p.latitude != null && p.longitude != null).length;
   const routeHint =
-    ctx.mapRouteMode === "segmented"
-      ? "Color por día · carretera entre paradas · vuelos en línea directa"
-      : ctx.mapRouteMode === "directions"
-        ? "Color por día · ruta por carretera"
-        : "Color por día · ruta cronológica";
-  const legend = (ctx.mapDayLegend ?? [])
-    .map(
-      (entry) =>
-        `<span class="map-legend-item"><i style="background:${escapeHtml(entry.color)}"></i>${escapeHtml(entry.label)}</span>`
-    )
-    .join("");
+    variant === "flights"
+      ? "Trayecto aéreo · ida y vuelta"
+      : ctx.mapRouteMode === "segmented"
+        ? "Color por día · carretera entre paradas"
+        : ctx.mapRouteMode === "directions"
+          ? "Color por día · ruta por carretera"
+          : "Color por día · ruta cronológica";
+  const legend =
+    variant === "flights"
+      ? ""
+      : (ctx.mapDayLegend ?? [])
+          .map(
+            (entry) =>
+              `<span class="map-legend-item"><i style="background:${escapeHtml(entry.color)}"></i>${escapeHtml(entry.label)}</span>`
+          )
+          .join("");
+  const dualLocal = Boolean(ctx.mapFlightImagePath);
+  const eyebrow =
+    variant === "flights"
+      ? "Trayecto / llegada"
+      : dualLocal
+        ? "En destino"
+        : "Mapa del viaje";
+  const caption =
+    variant === "flights"
+      ? `${gpsCount} puntos · vuelos`
+      : `${gpsCount} paradas · A→B · ${routeHint}`;
 
   return `
   <section class="page page-map" style="width:${width};height:${height}">
     <div class="map-inner">
       <div class="map-content">
-        <p class="map-eyebrow">Ruta del viaje</p>
+        <p class="map-eyebrow">${eyebrow}</p>
         <h2 class="map-title">${escapeHtml(ctx.travel.title)}</h2>
         <div class="map-frame">
-          <img src="${escapeHtml(ctx.mapImagePath)}" alt="Mapa de la ruta" />
+          <img src="${escapeHtml(imagePath)}" alt="${escapeHtml(eyebrow)}" />
         </div>
         ${legend ? `<div class="map-legend">${legend}</div>` : ""}
-        <p class="map-caption">${gpsCount} paradas · A→B · ${routeHint}</p>
+        <p class="map-caption">${caption}</p>
       </div>
     </div>
     ${renderPageFooter(page.pageNumber, totalPages)}
@@ -433,7 +458,9 @@ function renderPage(
     case "cover":
       return renderCover(ctx, page, format, totalPages);
     case "map":
-      return renderMap(ctx, page, format, totalPages);
+      return renderMap(ctx, page, format, totalPages, "local");
+    case "map-flights":
+      return renderMap(ctx, page, format, totalPages, "flights");
     case "day-divider":
       return renderDayDivider(page, format, totalPages);
     case "full-bleed":

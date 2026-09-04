@@ -1204,22 +1204,39 @@ function resolveExportGpsTrails(ctx: ExportContext): GpsTrailPolyline[] {
   return buildGpsTrailPolylines(selected);
 }
 
+function buildFlightOverviewSection(mapLead: string): string {
+  return `
+<section class="map-section reveal" id="mapa-trayecto">
+  <div class="map-section-inner">
+    <h2>Trayecto / llegada</h2>
+    <p class="map-lead">${escapeHtml(mapLead)}</p>
+    <div class="map-legend">
+      <span><i class="legend-dash"></i> Vuelo ida/vuelta</span>
+      <span>✈️ Aeropuertos</span>
+    </div>
+    <div id="map-trayecto" class="map-canvas" style="min-height:300px;height:320px;border-radius:16px"></div>
+  </div>
+</section>`;
+}
+
 function buildFullscreenMapSection(
   dayGroups: ExportMapDayGroup[],
   mapLead: string,
   dayLegend: LeafletRouteSegments["dayLegend"] = [],
-  hasGpsTrails = false
+  hasGpsTrails = false,
+  options?: { localOnly?: boolean }
 ): string {
+  const localOnly = Boolean(options?.localOnly);
   return `
 <section class="map-explorer reveal" id="mapa">
   <div class="map-explorer-header">
     <div>
-      <h2>Mapa del viaje</h2>
+      <h2>${localOnly ? "En destino" : "Mapa del viaje"}</h2>
       <p class="map-lead">${escapeHtml(mapLead)}</p>
     </div>
     <div class="map-legend">
       ${buildMapDayLegendHtml(dayLegend)}
-      <span><i class="legend-dash"></i> Vuelos</span>
+      ${localOnly ? "" : "<span><i class=\"legend-dash\"></i> Vuelos</span>"}
       ${hasGpsTrails ? '<span><i class="legend-gps"></i> Recorrido GPS</span>' : ""}
       <span>📍 Lugares · nº = orden</span>
     </div>
@@ -1234,16 +1251,18 @@ function buildFullscreenMapSection(
 function buildCompactMapSection(
   mapLead: string,
   dayLegend: LeafletRouteSegments["dayLegend"] = [],
-  hasGpsTrails = false
+  hasGpsTrails = false,
+  options?: { localOnly?: boolean }
 ): string {
+  const localOnly = Boolean(options?.localOnly);
   return `
 <section class="map-section reveal" id="mapa">
   <div class="map-section-inner">
-    <h2>Mapa del viaje</h2>
+    <h2>${localOnly ? "En destino" : "Mapa del viaje"}</h2>
     <p class="map-lead">${escapeHtml(mapLead)}</p>
     <div class="map-legend">
       ${buildMapDayLegendHtml(dayLegend)}
-      <span><i class="legend-dash"></i> Vuelo ida/vuelta</span>
+      ${localOnly ? "" : "<span><i class=\"legend-dash\"></i> Vuelo ida/vuelta</span>"}
       ${hasGpsTrails ? '<span><i class="legend-gps"></i> Recorrido GPS</span>' : ""}
       <span>📍 Lugares · nº = orden</span>
     </div>
@@ -1258,16 +1277,42 @@ function buildMapScript(
   routeSegments: LeafletRouteSegments,
   assetPrefix = "assets/images",
   template: ExportTemplateId = "magazine",
-  gpsTrails: GpsTrailPolyline[] = []
+  gpsTrails: GpsTrailPolyline[] = [],
+  options?: {
+    dualMaps?: boolean;
+    flightPoints?: MapPoint[];
+    flightLegs?: [number, number][][];
+  }
 ): string {
-  const data = JSON.stringify(points);
-  const groupsData = JSON.stringify(dayGroups);
-  const roadData = JSON.stringify(routeSegments.roadSegments);
-  const flightData = JSON.stringify(routeSegments.flightLegs);
+  const dualMaps = Boolean(options?.dualMaps);
+  const flightPoints = options?.flightPoints ?? [];
+  const flightOnlyLegs = options?.flightLegs ?? routeSegments.flightLegs;
+  const localPoints = dualMaps
+    ? points.filter((p) => p.kind !== "flight-out" && p.kind !== "flight-in")
+    : points;
+  const localSegments: LeafletRouteSegments = dualMaps
+    ? {
+        roadSegments: routeSegments.roadSegments,
+        flightLegs: [],
+        dayLegend: routeSegments.dayLegend,
+      }
+    : routeSegments;
+
+  const data = JSON.stringify(localPoints);
+  const groupsData = JSON.stringify(
+    dualMaps
+      ? dayGroups.filter((g) => g.id !== "flights")
+      : dayGroups
+  );
+  const roadData = JSON.stringify(localSegments.roadSegments);
+  const flightData = JSON.stringify(localSegments.flightLegs);
   const gpsData = JSON.stringify(gpsTrails);
+  const flightPointsData = JSON.stringify(flightPoints);
+  const flightLegsData = JSON.stringify(flightOnlyLegs);
   const gpsColor = gpsTrailMapColor();
   const tileLayerScript = buildMapTileLayerScript(template);
   const dayColors = ["#2dd4bf", "#f59e0b", "#818cf8", "#f472b6", "#34d399", "#fb7185"];
+  const dualFlag = dualMaps ? "true" : "false";
 
   return `
 (function () {
@@ -1275,6 +1320,46 @@ function buildMapScript(
     if (!mapEl || mapEl.dataset.mapError) return;
     mapEl.dataset.mapError = "1";
     mapEl.innerHTML = '<div class="map-load-error">' + message + "</div>";
+  }
+
+  function initFlightOverviewMap() {
+    if (!${dualFlag}) return;
+    var mapEl = document.getElementById("map-trayecto");
+    if (!mapEl || window.__travelFlightMap) return;
+    var points = ${flightPointsData}.filter(function (p) {
+      return typeof p.lat === "number" && typeof p.lng === "number" && isFinite(p.lat) && isFinite(p.lng);
+    });
+    var flightLegs = ${flightLegsData};
+    if (!points.length && !flightLegs.length) return;
+    if (typeof L === "undefined") {
+      showMapLoadError(mapEl, "No se pudo cargar el motor del mapa.");
+      return;
+    }
+    var map = L.map(mapEl, { scrollWheelZoom: true, zoomControl: true });
+    window.__travelFlightMap = map;
+    ${tileLayerScript.replace(/\.addTo\(map\)/g, ".addTo(map)")}
+    flightLegs.forEach(function (leg) {
+      if (leg.length > 1) {
+        L.polyline(leg, { color: "#818cf8", weight: 3, opacity: 0.85, dashArray: "10 8", lineJoin: "round" }).addTo(map);
+      }
+    });
+    points.forEach(function (p) {
+      var size = "28";
+      var emojiIcon = L.divIcon({
+        html: '<div style="font-size:' + size + 'px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">' + (p.emoji || "✈️") + '</div>',
+        className: "",
+        iconSize: [0, 0],
+        iconAnchor: [14, 14]
+      });
+      L.marker([p.lat, p.lng], { icon: emojiIcon }).addTo(map).bindPopup("<strong>" + (p.label || "Vuelo") + "</strong>");
+    });
+    var latLngs = points.map(function (p) { return [p.lat, p.lng]; });
+    flightLegs.forEach(function (leg) { leg.forEach(function (c) { latLngs.push(c); }); });
+    if (latLngs.length === 1) map.setView(latLngs[0], 5);
+    else if (latLngs.length > 1) {
+      var b = L.latLngBounds(latLngs);
+      if (b.isValid()) map.fitBounds(b.pad(0.25));
+    }
   }
 
   function initTravelMap() {
@@ -1337,6 +1422,7 @@ function buildMapScript(
     function refreshMap() {
       map.invalidateSize(true);
       fitAllPoints();
+      if (window.__travelFlightMap) window.__travelFlightMap.invalidateSize(true);
     }
     window.__refreshTravelMap = refreshMap;
     window.addEventListener("load", function () { setTimeout(refreshMap, 150); });
@@ -1474,10 +1560,14 @@ function buildMapScript(
   }
 
   function scheduleMapInit() {
+    initFlightOverviewMap();
     initTravelMap();
     if (!window.__travelMap) {
       window.setTimeout(initTravelMap, 350);
       window.setTimeout(initTravelMap, 1500);
+    }
+    if (${dualFlag} && !window.__travelFlightMap) {
+      window.setTimeout(initFlightOverviewMap, 350);
     }
   }
 
@@ -1492,19 +1582,22 @@ function buildMapScript(
   });
 
   if ("IntersectionObserver" in window) {
-    var mapSection = document.getElementById("mapa");
-    if (mapSection) {
-      var mapObs = new IntersectionObserver(function (entries) {
-        entries.forEach(function (entry) {
-          if (!entry.isIntersecting) return;
-          scheduleMapInit();
-          if (window.__refreshTravelMap) {
-            window.setTimeout(function () { window.__refreshTravelMap(); }, 120);
-          }
-        });
-      }, { threshold: 0.08, rootMargin: "0px 0px -5% 0px" });
-      mapObs.observe(mapSection);
-    }
+    var mapObs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        scheduleMapInit();
+        if (window.__refreshTravelMap) {
+          window.setTimeout(function () { window.__refreshTravelMap(); }, 120);
+        }
+        if (window.__travelFlightMap) {
+          window.setTimeout(function () { window.__travelFlightMap.invalidateSize(true); }, 120);
+        }
+      });
+    }, { threshold: 0.08, rootMargin: "0px 0px -5% 0px" });
+    ["mapa", "mapa-trayecto"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) mapObs.observe(el);
+    });
   }
 })();
 `;
@@ -1685,6 +1778,20 @@ export function buildExportHtml(ctx: ExportContext): string {
     : "";
   const heroPhotoPath = coverPhoto?.localPath ?? null;
 
+  const mapDayGroups = hasMap ? buildMapDayGroups(mapPoints) : [];
+  const flightPoints = buildFlightMapPoints(mapPhotos);
+  const dualMaps =
+    flightPoints.length > 0 &&
+    routeSegments.flightLegs.length > 0 &&
+    (routeSegments.roadSegments.length > 0 ||
+      mapPoints.some((p) => p.kind === "photo" || p.kind === "place") ||
+      hasGpsTrails);
+  const mapNavLinks = hasMap
+    ? dualMaps
+      ? '<a href="#mapa-trayecto">Trayecto</a><a href="#mapa">En destino</a>'
+      : '<a href="#mapa">Mapa</a>'
+    : "";
+
   const headerBlock = isMagazine
     ? `${buildMagazineHero({
         title: travel.title,
@@ -1696,7 +1803,7 @@ export function buildExportHtml(ctx: ExportContext): string {
         heroGradient,
       })}
 ${buildTocHtml(timelineEvents)}
-${buildMagazineNav(hasMap, hasJournalArticle, hasGuide)}`
+${buildMagazineNav(hasMap, hasJournalArticle, hasGuide, dualMaps)}`
     : isVisual
       ? `<header class="hero"${heroPhotoPath ? ` data-export-hero="${escapeHtml(heroPhotoPath)}" data-export-hero-gradient="${escapeHtml(heroGradient)}"` : ""}>
       <div class="hero-content reveal">
@@ -1711,7 +1818,7 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide)}`
       </div>
     </header>
     <nav class="section-nav">
-      ${hasMap ? '<a href="#mapa">Mapa</a>' : ""}
+      ${mapNavLinks}
       <a href="#cronologia">Recorrido</a>
       ${hasJournalArticle ? '<a href="#historia">Crónica</a>' : ""}
       <a href="#galeria">Galería</a>
@@ -1721,12 +1828,26 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide)}`
       <h1>${escapeHtml(travel.title)}</h1>
       <p class="meta">${escapeHtml(dateRange)} · ${users.map((u) => escapeHtml(u.alias)).join(", ")} · ${escapeHtml(profile.label)}</p>
     </header>`;
-
-  const mapDayGroups = hasMap ? buildMapDayGroups(mapPoints) : [];
-  const mapBlock = hasMap
+  const localMapLead = dualMaps
+    ? "Recorrido en destino — sin el zoom de los vuelos. Pulsa un día o «Lugares» para acercarte."
+    : mapLead;
+  const flightMapLead =
+    "Trayecto aéreo de ida y vuelta — contexto del destino del viaje.";
+  const localMapBlock = hasMap
     ? isVisual || isMagazine
-      ? buildFullscreenMapSection(mapDayGroups, mapLead, routeSegments.dayLegend, hasGpsTrails)
-      : buildCompactMapSection(mapLead, routeSegments.dayLegend, hasGpsTrails)
+      ? buildFullscreenMapSection(
+          dualMaps ? mapDayGroups.filter((g) => g.id !== "flights") : mapDayGroups,
+          localMapLead,
+          routeSegments.dayLegend,
+          hasGpsTrails,
+          { localOnly: dualMaps }
+        )
+      : buildCompactMapSection(localMapLead, routeSegments.dayLegend, hasGpsTrails, {
+          localOnly: dualMaps,
+        })
+    : "";
+  const mapBlock = hasMap
+    ? `${dualMaps ? buildFlightOverviewSection(flightMapLead) : ""}${localMapBlock}`
     : "";
 
   const galleryBlock = isVisual || isMagazine
@@ -1860,7 +1981,11 @@ ${buildMagazineNav(hasMap, hasJournalArticle, hasGuide)}`
   </div>
   ${lightboxBlock}
   ${timelineScript}
-  ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, routeSegments, "assets/images", template, gpsTrails)}</script>` : ""}
+  ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, routeSegments, "assets/images", template, gpsTrails, {
+    dualMaps,
+    flightPoints,
+    flightLegs: routeSegments.flightLegs,
+  })}</script>` : ""}
   ${playScript}
   ${interactiveScript}
   ${exportBootScript}
@@ -2153,13 +2278,25 @@ L.Icon.Default.mergeOptions({
   const mapDayGroups = buildMapDayGroups(mapPoints);
   const routeSegments = resolveLeafletRouteSegments(ctx, mapPhotos, ctx.places ?? []);
   const gpsTrails = resolveExportGpsTrails(ctx);
+  const flightPoints = buildFlightMapPoints(mapPhotos);
+  const dualMaps =
+    flightPoints.length > 0 &&
+    routeSegments.flightLegs.length > 0 &&
+    (routeSegments.roadSegments.length > 0 ||
+      mapPoints.some((p) => p.kind === "photo" || p.kind === "place") ||
+      gpsTrailsHaveGeometry(gpsTrails));
   const mapScriptBody = buildMapScript(
     mapPoints,
     mapDayGroups,
     routeSegments,
     "assets/images",
     ctx.template,
-    gpsTrails
+    gpsTrails,
+    {
+      dualMaps,
+      flightPoints,
+      flightLegs: routeSegments.flightLegs,
+    }
   ).replace(
     /delete L\.Icon\.Default\.prototype\._getIconUrl;[\s\S]*?}\);/,
     iconScript

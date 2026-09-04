@@ -596,6 +596,60 @@ export function buildDirectRouteGeometry(
   };
 }
 
+/** Which layers a map canvas should show. */
+export type MapRouteScope = "all" | "flights" | "local";
+
+export function hasFlightOverview(
+  geometry: SegmentedRouteGeometry | null | undefined
+): boolean {
+  return (geometry?.flightLegs ?? []).some((leg) => leg.length > 1);
+}
+
+export function hasLocalActivity(
+  geometry: SegmentedRouteGeometry | null | undefined
+): boolean {
+  return (geometry?.roadSegments ?? []).some((seg) => seg.coordinates.length > 1);
+}
+
+/** True when long-haul flights would squash local day routes on one map. */
+export function shouldShowDualMaps(
+  geometry: SegmentedRouteGeometry | null | undefined
+): boolean {
+  return hasFlightOverview(geometry) && hasLocalActivity(geometry);
+}
+
+export function partitionSegmentedRouteGeometry(
+  geometry: SegmentedRouteGeometry
+): {
+  flights: SegmentedRouteGeometry;
+  local: SegmentedRouteGeometry;
+} {
+  return {
+    flights: {
+      roadSegments: [],
+      flightLegs: geometry.flightLegs,
+      dayLegend: [],
+      mode: geometry.mode,
+    },
+    local: {
+      roadSegments: geometry.roadSegments,
+      flightLegs: [],
+      dayLegend: geometry.dayLegend,
+      mode: geometry.mode,
+    },
+  };
+}
+
+export function filterGeometryByScope(
+  geometry: SegmentedRouteGeometry | null,
+  scope: MapRouteScope
+): SegmentedRouteGeometry | null {
+  if (!geometry) return null;
+  if (scope === "all") return geometry;
+  const parts = partitionSegmentedRouteGeometry(geometry);
+  return scope === "flights" ? parts.flights : parts.local;
+}
+
 /** Ground runs via Directions; transport legs as straight encoded polylines. */
 export async function resolveSegmentedRoute(
   nodes: MapRouteNode[]
