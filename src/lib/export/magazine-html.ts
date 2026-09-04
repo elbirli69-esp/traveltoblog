@@ -543,8 +543,6 @@ body {
 }
 .story-quote { background: rgba(13,148,136,.08); color: var(--text); }
 .story-place-note p, .story-note-body p, .story-journal-body p { color: var(--text); opacity: 1; }
-.story-rail-line { background: linear-gradient(180deg, rgba(28,25,23,.12), rgba(28,25,23,.04)); }
-.story-dot { border-color: var(--bg); }
 
 .section-title {
   font-size: 1.6rem;

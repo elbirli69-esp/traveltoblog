@@ -242,5 +242,41 @@ export function galleryExportStyles(): string {
   color: var(--muted);
   line-height: 1.3;
 }
+
+/* Lightbox gallery navigation (swipe / arrows) */
+#lightbox { touch-action: pan-y; }
+#lightbox img { user-select: none; -webkit-user-drag: none; }
+.lightbox-counter {
+  margin: .75rem 0 0;
+  color: #a8a29e;
+  font-size: .8rem;
+  letter-spacing: .06em;
+  font-family: system-ui, sans-serif;
+}
+.lightbox-prev,
+.lightbox-next {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255,255,255,.14);
+  color: #fff;
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+}
+.lightbox-prev { left: max(12px, env(safe-area-inset-left)); }
+.lightbox-next { right: max(12px, env(safe-area-inset-right)); }
+.lightbox-prev:hover,
+.lightbox-next:hover { background: rgba(255,255,255,.24); }
+.lightbox-prev[hidden],
+.lightbox-next[hidden] { display: none !important; }
+@media (max-width: 640px) {
+  .lightbox-prev, .lightbox-next { width: 40px; height: 40px; font-size: 1.6rem; }
+}
 `;
 }

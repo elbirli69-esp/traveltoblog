@@ -131,8 +131,7 @@ function renderDayBoundary(
 
 function renderPhotoCard(
   ev: TimelineEvent,
-  notes: string[],
-  index: number
+  notes: string[]
 ): string {
   const isVideo = ev.meta?.mediaType === "VIDEO";
   const videoPath = ev.meta?.videoPath ?? null;
@@ -171,15 +170,9 @@ function renderPhotoCard(
     ? `<div class="story-quotes">${notes.map((n) => `<blockquote class="story-quote">${escapeHtml(n)}</blockquote>`).join("")}</div>`
     : "";
 
-  const side = index % 2 === 1 ? " story-card--flip" : "";
-
   return `
-<article ${eventAttrs(ev)}${side}>
+<article ${eventAttrs(ev)}>
   <div class="story-card-inner reveal">
-    <div class="story-card-rail">
-      <span class="story-dot story-dot--photo" aria-hidden="true"></span>
-      <span class="story-rail-line" aria-hidden="true"></span>
-    </div>
     <div class="story-card-content">
       <header class="story-card-head">
         <span class="story-kind">${isVideo ? "🎬 Momento en vídeo" : "📷 Momento capturado"}</span>
@@ -205,10 +198,6 @@ function renderPlaceCard(ev: TimelineEvent): string {
   return `
 <article ${eventAttrs(ev)}>
   <div class="story-card-inner reveal">
-    <div class="story-card-rail">
-      <span class="story-dot story-dot--place" aria-hidden="true"></span>
-      <span class="story-rail-line" aria-hidden="true"></span>
-    </div>
     <div class="story-card-content story-card-content--place">
       <header class="story-card-head">
         <span class="story-kind">${emoji} ${escapeHtml(typeLabel)}</span>
@@ -232,10 +221,6 @@ function renderNoteCard(ev: TimelineEvent): string {
   return `
 <article ${eventAttrs(ev)}${variant}>
   <div class="story-card-inner reveal">
-    <div class="story-card-rail">
-      <span class="story-dot story-dot--note" aria-hidden="true"></span>
-      <span class="story-rail-line" aria-hidden="true"></span>
-    </div>
     <div class="story-card-content story-card-content--note">
       <header class="story-card-head">
         <span class="story-kind">✍️ ${escapeHtml(label)}</span>
@@ -261,10 +246,6 @@ function renderFlightCard(ev: TimelineEvent): string {
   return `
 <article ${eventAttrs(ev)}>
   <div class="story-card-inner reveal story-card-inner--flight">
-    <div class="story-card-rail">
-      <span class="story-dot story-dot--flight" aria-hidden="true"></span>
-      <span class="story-rail-line" aria-hidden="true"></span>
-    </div>
     <div class="story-card-content story-card-content--flight">
       <header class="story-card-head">
         <span class="story-kind">${icon} ${label}</span>
@@ -282,10 +263,6 @@ function renderGpsCard(ev: TimelineEvent): string {
   return `
 <article ${eventAttrs(ev)}>
   <div class="story-card-inner reveal">
-    <div class="story-card-rail">
-      <span class="story-dot story-dot--gps" aria-hidden="true"></span>
-      <span class="story-rail-line" aria-hidden="true"></span>
-    </div>
     <div class="story-card-content story-card-content--gps">
       <header class="story-card-head">
         <span class="story-kind">🛤️ Recorrido GPS</span>
@@ -305,10 +282,6 @@ function renderJournalChunk(ev: TimelineEvent): string {
   return `
 <article ${eventAttrs(ev)}>
   <div class="story-card-inner reveal">
-    <div class="story-card-rail">
-      <span class="story-dot story-dot--journal" aria-hidden="true"></span>
-      <span class="story-rail-line" aria-hidden="true"></span>
-    </div>
     <div class="story-card-content story-card-content--journal">
       <header class="story-card-head">
         <span class="story-kind">📖 Crónica</span>
@@ -339,7 +312,6 @@ export function buildVisualStoryTimelineHtml(
     return "";
   }
 
-  let photoIndex = 0;
   let dayOrdinal = 0;
   const cards = storyEvents
     .map((ev) => {
@@ -352,7 +324,7 @@ export function buildVisualStoryTimelineHtml(
       if (ev.kind === "photo") {
         const pid = ev.meta?.photoId ?? "";
         const notes = pid ? photoNotes.get(pid) ?? [] : [];
-        return renderPhotoCard(ev, notes, photoIndex++);
+        return renderPhotoCard(ev, notes);
       }
       if (ev.kind === "place") return renderPlaceCard(ev);
       if (ev.kind === "note") return renderNoteCard(ev);
@@ -474,34 +446,8 @@ export function storyTimelineStyles(): string {
 
 .story-card { margin: 0 0 1.5rem; scroll-margin-top: 5rem; }
 .story-card-inner {
-  display: grid;
-  grid-template-columns: 28px 1fr;
-  gap: 1rem;
-  align-items: stretch;
+  display: block;
 }
-.story-card-rail { position: relative; display: flex; flex-direction: column; align-items: center; }
-.story-dot {
-  width: 14px; height: 14px;
-  border-radius: 50%;
-  border: 3px solid var(--bg, #0c0a09);
-  flex-shrink: 0;
-  z-index: 1;
-}
-.story-dot--photo { background: linear-gradient(135deg, #2dd4bf, #0d9488); box-shadow: 0 0 0 4px rgba(45,212,191,.2); }
-.story-dot--place { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 0 0 4px rgba(245,158,11,.2); }
-.story-dot--note { background: linear-gradient(135deg, #a78bfa, #7c3aed); box-shadow: 0 0 0 4px rgba(167,139,250,.2); }
-.story-dot--flight { background: linear-gradient(135deg, #818cf8, #4f46e5); box-shadow: 0 0 0 4px rgba(129,140,248,.2); }
-.story-dot--gps { background: #64748b; }
-.story-dot--journal { background: #f472b6; }
-.story-rail-line {
-  flex: 1;
-  width: 2px;
-  min-height: 24px;
-  margin-top: 4px;
-  background: linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.04));
-  border-radius: 2px;
-}
-
 .story-card-content {
   padding: 1.1rem 1.15rem 1.15rem;
   border-radius: 18px;
@@ -509,6 +455,26 @@ export function storyTimelineStyles(): string {
   border: 1px solid rgba(255,255,255,.08);
   backdrop-filter: blur(10px);
   transition: border-color .2s, box-shadow .2s, transform .2s;
+}
+.story-card-content .story-media {
+  margin-left: -1.15rem;
+  margin-right: -1.15rem;
+  width: calc(100% + 2.3rem);
+  max-width: none;
+}
+.story-card-content .story-media img,
+.story-card-content .story-media video,
+.story-card-content .story-photo-img {
+  width: 100%;
+  border-radius: 0;
+}
+.story-card-content .story-media--compact {
+  margin-left: 0;
+  margin-right: 0;
+  width: 100%;
+}
+.story-card-content .story-media--compact img {
+  border-radius: 12px;
 }
 .story-card:hover .story-card-content,
 .story-card.active .story-card-content {
@@ -638,14 +604,16 @@ export function storyTimelineStyles(): string {
 .story-card-inner--flight { cursor: default; }
 
 @media (min-width: 768px) {
-  .story-card--flip .story-card-inner { direction: rtl; }
-  .story-card--flip .story-card-content { direction: ltr; }
   .story-card-content { padding: 1.25rem 1.35rem 1.35rem; }
+  .story-card-content .story-media {
+    margin-left: -1.35rem;
+    margin-right: -1.35rem;
+    width: calc(100% + 2.7rem);
+  }
   .story-photo-img { aspect-ratio: 16/10; }
 }
 
 @media (max-width: 640px) {
-  .story-card-inner { grid-template-columns: 20px 1fr; gap: .65rem; }
   .story-day-inner { width: 100%; }
 }
 `;
