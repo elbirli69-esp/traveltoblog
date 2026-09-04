@@ -34,7 +34,7 @@ export const TYPOLOGY_PROFILES: Record<TravelType, TypologyProfile> = {
     id: "GENERIC",
     label: "Genérico",
     description: "Recorrido cronológico, mapa y galería",
-    sectionOrder: ["hero", "stats", "map", "timeline", "journal", "gallery", "play"],
+    sectionOrder: ["hero", "stats", "map", "timeline", "gallery", "play"],
     mapConfig: {
       showRoute: true,
       showDaySidebar: true,
@@ -47,7 +47,7 @@ export const TYPOLOGY_PROFILES: Record<TravelType, TypologyProfile> = {
     id: "CITY_BREAK",
     label: "Ciudad",
     description: "Cronología densa de lugares, mapa de POIs",
-    sectionOrder: ["hero", "timeline", "map", "gallery", "journal", "play"],
+    sectionOrder: ["hero", "timeline", "map", "gallery", "play"],
     mapConfig: {
       showRoute: false,
       showDaySidebar: true,
@@ -74,7 +74,7 @@ export const TYPOLOGY_PROFILES: Record<TravelType, TypologyProfile> = {
     id: "INTERNATIONAL",
     label: "Internacional",
     description: "Tres actos: ida, destino y vuelta",
-    sectionOrder: ["hero", "flights", "map", "timeline", "journal", "gallery", "play"],
+    sectionOrder: ["hero", "flights", "map", "timeline", "gallery", "play"],
     mapConfig: {
       showRoute: false,
       showDaySidebar: false,
@@ -87,7 +87,7 @@ export const TYPOLOGY_PROFILES: Record<TravelType, TypologyProfile> = {
     id: "BEACH_RESORT",
     label: "Playa / resort",
     description: "Días en la misma zona, galería protagonista",
-    sectionOrder: ["hero", "gallery", "timeline", "map", "journal", "play"],
+    sectionOrder: ["hero", "gallery", "timeline", "map", "play"],
     mapConfig: {
       showRoute: false,
       showDaySidebar: true,
@@ -114,7 +114,7 @@ export const TYPOLOGY_PROFILES: Record<TravelType, TypologyProfile> = {
     id: "SLOW_TRAVEL",
     label: "Estancia larga",
     description: "Ritmo lento, cronología por semanas",
-    sectionOrder: ["hero", "timeline", "gallery", "map", "journal", "play"],
+    sectionOrder: ["hero", "timeline", "gallery", "map", "play"],
     mapConfig: {
       showRoute: false,
       showDaySidebar: true,

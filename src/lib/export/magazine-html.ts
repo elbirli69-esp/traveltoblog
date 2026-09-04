@@ -253,7 +253,6 @@ export function buildMagazineHero(input: {
 
 export function buildMagazineNav(
   hasMap: boolean,
-  hasJournal: boolean,
   hasGuide = false,
   hasFlightMap = false
 ): string {
@@ -262,8 +261,7 @@ export function buildMagazineNav(
     : "";
   return `<nav class="mag-section-nav">
   ${mapLinks}
-  <a href="#cronologia">Recorrido</a>
-  ${hasJournal ? '<a href="#historia">Crónica</a>' : ""}
+  <a href="#cronologia">El viaje</a>
   ${hasGuide ? '<a href="#guia">Guía</a>' : ""}
   <a href="#cierre">Cierre</a>
   <a href="#galeria">Galería</a>
@@ -388,10 +386,18 @@ body {
 #mapa,
 #galeria,
 #guia,
-#cierre,
-#historia,
-.journal-section {
+#cierre {
   scroll-margin-top: 4.5rem;
+}
+
+/* Unified story prose on light magazine background */
+.story-intro,
+.story-conclusion,
+.story-day-prose {
+  color: var(--text);
+}
+.story-conclusion {
+  border-top-color: var(--border);
 }
 
 .mag-toc {
