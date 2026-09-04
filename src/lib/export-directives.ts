@@ -276,3 +276,28 @@ export function summarizeReelDirectives(reel: ExportReelDirectives): string {
   if (reel.heroBias === "low") bits.push("mezcla abierta");
   return bits.join(" · ");
 }
+
+/** Human-readable chip summary of HTML directives. */
+export function summarizeHtmlDirectives(html: ExportHtmlDirectives): string {
+  const label = (e: Emphasis, high: string, low: string, mid: string) =>
+    e === "high" ? high : e === "low" ? low : mid;
+  return [
+    label(html.imageEmphasis, "fotos grandes", "fotos compactas", "fotos medias"),
+    label(html.galleryEmphasis, "galería protagonista", "galería discreta", "galería normal"),
+    label(html.proseDensity, "más crónica", "poca prosa", "prosa equilibrada"),
+    label(html.placeCallouts, "guía destacada", "guía ligera", "guía normal"),
+    label(html.mapEmphasis, "mapa grande", "mapa compacto", "mapa normal"),
+  ].join(" · ");
+}
+
+/** Body class list from HTML directives (for CSS knobs). */
+export function htmlDirectiveBodyClasses(html: ExportHtmlDirectives): string {
+  return [
+    "export-dir",
+    `export-dir--images-${html.imageEmphasis}`,
+    `export-dir--gallery-${html.galleryEmphasis}`,
+    `export-dir--prose-${html.proseDensity}`,
+    `export-dir--callouts-${html.placeCallouts}`,
+    `export-dir--map-${html.mapEmphasis}`,
+  ].join(" ");
+}

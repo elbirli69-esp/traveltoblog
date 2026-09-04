@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { interpretExportBrief } from "@/lib/export-brief";
 import {
+  summarizeHtmlDirectives,
   summarizeReelDirectives,
   type ReelDurationPreset,
 } from "@/lib/export-directives";
@@ -31,18 +32,26 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const target = body.target ?? "all";
     const durationSeconds = parseReelDuration(body.durationSeconds);
     const result = await interpretExportBrief(brief, {
-      target: body.target ?? "all",
+      target,
       durationSeconds,
       photoCount: body.photoCount,
       hasJournal: body.hasJournal,
       travelTitle: body.travelTitle,
     });
 
-    const summary = result.directives.reel
-      ? summarizeReelDirectives(result.directives.reel)
-      : null;
+    const summary =
+      target === "html" && result.directives.html
+        ? summarizeHtmlDirectives(result.directives.html)
+        : target === "reel" && result.directives.reel
+          ? summarizeReelDirectives(result.directives.reel)
+          : result.directives.html
+            ? summarizeHtmlDirectives(result.directives.html)
+            : result.directives.reel
+              ? summarizeReelDirectives(result.directives.reel)
+              : null;
 
     return NextResponse.json({
       directives: result.directives,

@@ -18,6 +18,10 @@ export interface ExportPipelineEvent {
   filename?: string;
   contentType?: string;
   blobBase64?: string;
+  /** Echo of free-text brief grounding when present. */
+  briefInterpretation?: string;
+  briefSummary?: string;
+  briefWarning?: string;
 }
 
 export type ExportProgressCallback = (event: ExportPipelineEvent) => void;

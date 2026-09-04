@@ -55,6 +55,14 @@ import {
   magazineStyles,
 } from "@/lib/export/magazine-html";
 import { buildGallerySection, galleryExportStyles } from "@/lib/export/gallery-html";
+import {
+  applyHtmlSectionOrderBias,
+  bodyClassForHtmlDirectives,
+  clampProseHtml,
+  htmlDirectiveStyles,
+  resolveHtmlDirectives,
+} from "@/lib/export-html-directives";
+import type { ExportHtmlDirectives } from "@/lib/export-directives";
 import { buildMapTileLayerScript } from "@/lib/export/map-tiles";
 import { fetchHtmlStaticMapImages } from "@/lib/export-html-map";
 import { exportPhotoPaths, EXPORT_IMAGE_MIME } from "@/lib/export-images";
@@ -132,6 +140,9 @@ export interface ExportContext {
   template: ExportTemplateId;
   typology?: ExportTypologyId;
   includeGpsTrail?: boolean;
+  /** Grounded free-text brief → HTML presentation knobs. */
+  htmlDirectives?: ExportHtmlDirectives | null;
+  briefInterpretation?: string | null;
   /** Precomputed road + flight segments for the interactive map (from Mapbox Directions). */
   mapRouteGeometry?: SegmentedRouteGeometry;
   /** Static Mapbox PNG for offline fallback (destination / combined). */
@@ -1797,6 +1808,7 @@ function estimateRouteKm(photos: ExportPhoto[]): number | undefined {
 
 export function buildExportHtml(ctx: ExportContext): string {
   const { travel, users, photos, places = [], template } = ctx;
+  const htmlDir = resolveHtmlDirectives(ctx.htmlDirectives ?? null);
   const explicitType =
     ctx.typology && ctx.typology !== "auto" ? ctx.typology : travel.travelType ?? null;
   const resolvedType = resolveTravelType(
@@ -1885,7 +1897,12 @@ export function buildExportHtml(ctx: ExportContext): string {
         index,
         storyProse.days
       );
-      if (html) dayProseByKey.set(dayKey, html);
+      if (html) {
+        dayProseByKey.set(
+          dayKey,
+          clampProseHtml(html, htmlDir.proseDensity, htmlDir.proseDensity === "low" ? 1 : 99)
+        );
+      }
     });
   }
   const storyTimelineOptions = useUnifiedStory
@@ -1893,10 +1910,24 @@ export function buildExportHtml(ctx: ExportContext): string {
         excludeJournalChunks: true,
         title: "El viaje",
         eyebrow: storyProse?.hasProse ? "Crónica y recorrido" : "Recorrido",
-        introHtml: storyProse?.introHtml,
-        conclusionHtml: storyProse?.conclusionHtml,
+        introHtml: storyProse?.introHtml
+          ? clampProseHtml(
+              storyProse.introHtml,
+              htmlDir.proseDensity,
+              htmlDir.proseDensity === "low" ? 2 : 99
+            )
+          : undefined,
+        conclusionHtml: storyProse?.conclusionHtml
+          ? clampProseHtml(
+              storyProse.conclusionHtml,
+              htmlDir.proseDensity,
+              htmlDir.proseDensity === "low" ? 2 : 99
+            )
+          : undefined,
         dayProseByKey,
-        dayProseOrdered: storyProse?.days.ordered,
+        dayProseOrdered: storyProse?.days.ordered?.map((html) =>
+          clampProseHtml(html, htmlDir.proseDensity, htmlDir.proseDensity === "low" ? 1 : 99)
+        ),
       }
     : { excludeJournalChunks: hasJournalArticle };
   const dayCount = timelineEvents.filter((e) => e.kind === "day-boundary").length;
@@ -2021,6 +2052,7 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
   });
   const calloutPlaces = [...places]
     .sort((a, b) => compareHighlightScore(a.highlightScore ?? 5, b.highlightScore ?? 5))
+    .slice(0, htmlDir.placeCallouts === "low" ? 6 : undefined)
     .map((p) => {
     const linked = [...photosForPlace(p, mapPhotos)].sort((a, b) =>
       compareHighlightScore(a.highlightScore, b.highlightScore)
@@ -2029,10 +2061,13 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
       id: p.id,
       name: p.name,
       type: p.type,
-      comment: p.comment,
+      comment: htmlDir.placeCallouts === "low" ? null : p.comment,
       alias: p.alias,
       highlightScore: p.highlightScore ?? 5,
-      photoPaths: linked.slice(0, 4).map((photo) => photo.thumbPath),
+      photoPaths:
+        htmlDir.placeCallouts === "low"
+          ? []
+          : linked.slice(0, htmlDir.placeCallouts === "high" ? 4 : 3).map((photo) => photo.thumbPath),
     };
   });
   const calloutsBlock = isMagazine ? buildPlaceCalloutsHtml(calloutPlaces) : "";
@@ -2047,7 +2082,7 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
     : "";
   const playBlock = profile.playProfile.showScrubber && !isMagazine ? buildPlayModeSectionHtml() : "";
 
-  // Magazine: El viaje → Galería → Guía → Cierre (gallery right after timeline).
+  // Magazine: El viaje → Galería → Guía → Cierre (gallery right after timeline by default).
   const magazineSectionOrder = (() => {
     const base = profile.sectionOrder.filter(
       (id) => id !== "hero" && id !== "play"
@@ -2081,9 +2116,14 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
     closing: closingBlock,
   };
 
-  const sectionOrder = isMagazine
+  const rawSectionOrder = isMagazine
     ? [...magazineSectionOrder, "guide", "closing"]
     : profile.sectionOrder;
+  const sectionOrder = applyHtmlSectionOrderBias(
+    rawSectionOrder,
+    htmlDir.preferSectionOrder,
+    htmlDir.galleryEmphasis
+  );
   // Visual templates keep a full-bleed top map; Magazine/Editorial place map via sectionOrder.
   const showMapOuter = isVisual && hasMap;
 
@@ -2111,7 +2151,8 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
   const extraStyles =
     (isMagazine || isVisual ? timelineExportStyles() : "") +
     (hasMap && (isMagazine || isVisual) ? mapExportStyles() : "") +
-    playModeStyles();
+    playModeStyles() +
+    htmlDirectiveStyles();
   const interactiveScript = isInteractive
     ? `<script>${buildInteractiveScripts(template)}${isMagazine ? buildMagazineInteractiveScript() : ""}</script>`
     : "";
@@ -2133,6 +2174,10 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
     : "";
 
   const exportBootScript = `<script>${buildExportPhotoBootScript()}</script>`;
+  const bodyClass = bodyClassForHtmlDirectives(htmlDir);
+  const briefComment = ctx.briefInterpretation
+    ? `<!-- export-brief: ${escapeHtml(ctx.briefInterpretation)} -->\n`
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -2144,13 +2189,17 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
   ${hasMap ? '<link rel="stylesheet" href="assets/leaflet.css">' : ""}
   <style>${templateStyles(template)}${extraStyles}</style>
 </head>
-<body>
-  ${headerBlock}
+<body class="${bodyClass}">
+  ${briefComment}${headerBlock}
   ${mapOuter}
   <div class="wrap">
     ${mapInner}
     ${orderedMiddle}
-    <footer>Exportado con TravelToBlog · ${escapeHtml(profile.label)} · ${escapeHtml(getTemplateLabel(template))}</footer>
+    <footer>Exportado con TravelToBlog · ${escapeHtml(profile.label)} · ${escapeHtml(getTemplateLabel(template))}${
+      ctx.briefInterpretation
+        ? ` · Brief: ${escapeHtml(ctx.briefInterpretation)}`
+        : ""
+    }</footer>
   </div>
   ${lightboxBlock}
   ${timelineScript}
