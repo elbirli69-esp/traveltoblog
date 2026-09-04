@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import {
   buildPrintHtml,
   clampPdfNote,
+  extractPdfDayNarratives,
   planPdfPages,
   photoNoteCaption,
+  stripMarkdownImagesAndBylines,
 } from "../src/lib/export-pdf-layout.ts";
+import { formatDateKey } from "../src/lib/travel-dates.ts";
 
 assert.equal(clampPdfNote(""), "");
 assert.equal(clampPdfNote("  Hola   mundo  "), "Hola mundo");
@@ -245,5 +248,147 @@ const darkHtml = buildPrintHtml({
   template: "dark-magazine",
 });
 assert.ok(darkHtml.includes("#0f0f0f"), "dark magazine theme");
+
+// Journal pipeline embeds photos as ![Foto de X](url) + *author* under ### day headers.
+// PDF must keep prose only — otherwise WeasyPrint dumps alt text as a text column.
+const stripped = stripMarkdownImagesAndBylines(
+  "Plaza del Mercado.\n\n![Foto de Irene](/api/photos/1/image)\n\n*Irene*\n\n![Foto de Rodri](/api/photos/2/image)\n\n*Rodri*\n"
+);
+assert.ok(stripped.includes("Plaza del Mercado"));
+assert.ok(!stripped.includes("Foto de Irene"));
+assert.ok(!stripped.includes("Foto de Rodri"));
+assert.ok(!stripped.includes("*Irene*"));
+assert.ok(!stripped.includes("/api/photos"));
+
+const dayA = formatDateKey("2024-06-02", "long");
+const dayB = formatDateKey("2024-06-03", "long");
+const journalLike = `# Viaje
+
+Intro.
+
+---
+
+## El viaje día a día
+
+### ${dayA}
+
+Plaza del Mercado, la plaza medieval más grande de Europa.
+
+![Foto de Irene](/api/photos/1/image)
+
+*Irene*
+
+![Foto de Irene](/api/photos/2/image)
+
+*Irene*
+
+### ${dayB}
+
+Segundo día en la costa.
+
+![Foto de Rodri](/api/photos/3/image)
+
+*Rodri*
+
+---
+
+## Lugares del recorrido
+
+- **Plaza** · *Irene*
+`;
+
+const extracted = extractPdfDayNarratives(journalLike);
+assert.equal(extracted.ordered.length, 2);
+assert.ok(extracted.byTitle.get(dayA.toLowerCase())?.includes("Plaza del Mercado"));
+assert.ok(extracted.byTitle.get(dayB.toLowerCase())?.includes("Segundo día"));
+assert.ok(!extracted.ordered.join("").includes("Foto de Irene"));
+assert.ok(!extracted.ordered.join("").includes("Foto de Rodri"));
+assert.ok(!extracted.ordered.join("").includes("<img"));
+
+const pollutedPages = planPdfPages({
+  travel: {
+    id: "t1",
+    title: "Cracovia",
+    startDate: new Date("2024-06-02"),
+    endDate: new Date("2024-06-03"),
+    journalMarkdown: journalLike,
+  },
+  users: [{ alias: "Irene" }, { alias: "Rodri" }],
+  photos: [
+    {
+      id: "p1",
+      ...basePhoto,
+      alias: "Irene",
+      notes: [],
+      exifDateTime: new Date("2024-06-02T10:00:00Z"),
+    },
+    {
+      id: "p2",
+      ...basePhoto,
+      filename: "002.jpg",
+      imagePath: "photos/002.jpg",
+      bleedImagePath: "photos/002-bleed.jpg",
+      alias: "Irene",
+      highlightScore: 6,
+      notes: [],
+      exifDateTime: new Date("2024-06-02T11:00:00Z"),
+    },
+    {
+      id: "p3",
+      ...basePhoto,
+      filename: "003.jpg",
+      imagePath: "photos/003.jpg",
+      bleedImagePath: "photos/003-bleed.jpg",
+      alias: "Irene",
+      highlightScore: 5,
+      notes: [],
+      exifDateTime: new Date("2024-06-02T12:00:00Z"),
+    },
+  ],
+  notes: [],
+  format: "a4-landscape",
+  template: "classic",
+});
+const divider = pollutedPages.find((p) => p.kind === "day-divider");
+assert.ok(divider?.narrative?.includes("Plaza del Mercado"), "day prose on divider");
+assert.ok(!divider?.narrative?.includes("Foto de Irene"), "no image alt dump");
+assert.ok(!divider?.narrative?.includes("Lugares del recorrido"), "skip lugares section");
+
+const pollutedHtml = buildPrintHtml({
+  travel: {
+    id: "t1",
+    title: "Cracovia",
+    startDate: new Date("2024-06-02"),
+    endDate: new Date("2024-06-03"),
+    journalMarkdown: journalLike,
+  },
+  users: [{ alias: "Irene" }],
+  photos: [
+    { id: "p1", ...basePhoto, notes: [], highlightScore: 9 },
+    {
+      id: "p2",
+      ...basePhoto,
+      filename: "002.jpg",
+      imagePath: "photos/002.jpg",
+      bleedImagePath: "photos/002-bleed.jpg",
+      highlightScore: 6,
+      notes: [],
+    },
+    {
+      id: "p3",
+      ...basePhoto,
+      filename: "003.jpg",
+      imagePath: "photos/003.jpg",
+      bleedImagePath: "photos/003-bleed.jpg",
+      highlightScore: 5,
+      notes: [],
+    },
+  ],
+  notes: [],
+  format: "a4-landscape",
+  template: "classic",
+});
+assert.ok(!pollutedHtml.includes("Foto de Irene"), "HTML has no alt-text column");
+assert.ok(pollutedHtml.includes("divider-intro img"), "CSS hides leftover imgs");
 
 console.log("export-pdf ok");

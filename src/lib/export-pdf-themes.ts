@@ -325,12 +325,18 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
 
     .divider-intro {
       max-width: 120mm;
+      max-height: 95mm;
       margin: 0 auto;
       text-align: left;
       font-family: ${t.serif};
       font-size: 10.5pt;
       line-height: 1.6;
       color: ${t.textMuted};
+      overflow: hidden;
+    }
+
+    .divider-intro img {
+      display: none !important;
     }
 
     .divider-intro h2 { font-size: 13pt; margin-bottom: 3mm; color: ${t.text}; }

@@ -39,6 +39,105 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function normalizeNarrativeTitle(title: string): string {
+  return title.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * Journal markdown embeds photos as `![Foto de X](url)` + `*author*`.
+ * In PDF those URLs are not resolvable, so WeasyPrint dumps alt text as a
+ * multi-page column. Strip media before putting crónica on day-dividers —
+ * photos already have their own photobook pages.
+ */
+export function stripMarkdownImagesAndBylines(markdown: string): string {
+  return markdown
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/^\s*\*[^*\n]+\*\s*$/gm, "")
+    .replace(/^\s*_[^_\n]+_\s*$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function markdownToPdfNarrativeHtml(markdown: string): string {
+  const prose = stripMarkdownImagesAndBylines(markdown);
+  if (!prose) return "";
+  const html = marked.parse(prose, { async: false }) as string;
+  return html
+    .replace(/<img\b[^>]*>/gi, "")
+    .replace(/<p>\s*<\/p>/gi, "")
+    .trim();
+}
+
+const PDF_SKIP_H2 =
+  /^(el viaje día a día|lugares(?: del recorrido)?|transporte|notas del viaje)\b/i;
+
+/**
+ * Map journal day chapters to HTML snippets for day-divider pages.
+ * Real journals use `### {formatDateKey}`; older/tests may use `## Día N`.
+ */
+export function extractPdfDayNarratives(markdown: string | null): {
+  byTitle: Map<string, string>;
+  ordered: string[];
+} {
+  const byTitle = new Map<string, string>();
+  const ordered: string[] = [];
+  if (!markdown?.trim()) return { byTitle, ordered };
+
+  const raw = markdown.trim();
+  const h3Blocks = raw.split(/\n(?=###\s+)/).filter((s) => /^\s*###\s+/.test(s));
+
+  const ingest = (title: string, bodyMarkdown: string) => {
+    const html = markdownToPdfNarrativeHtml(bodyMarkdown);
+    if (!html) return;
+    if (title) byTitle.set(normalizeNarrativeTitle(title), html);
+    ordered.push(html);
+  };
+
+  if (h3Blocks.length > 0) {
+    for (const block of h3Blocks) {
+      const match = block.match(/^\s*###\s+(.+?)\s*(?:\n|$)/);
+      const title = match?.[1]?.trim() ?? "";
+      const body = block.replace(/^\s*###\s+.+?(?:\n|$)/, "");
+      ingest(title, body);
+    }
+    return { byTitle, ordered };
+  }
+
+  if (!/^##\s+/m.test(raw)) {
+    const html = markdownToPdfNarrativeHtml(raw);
+    if (html) ordered.push(html);
+    return { byTitle, ordered };
+  }
+
+  for (const section of raw.split(/\n(?=##\s+)/)) {
+    if (!section.trim()) continue;
+    const match = section.match(/^\s*##\s+(.+?)\s*(?:\n|$)/);
+    const title = match?.[1]?.trim() ?? "";
+    if (title && PDF_SKIP_H2.test(title)) continue;
+    const body = section.replace(/^\s*##\s+.+?(?:\n|$)/, "");
+    ingest(title, body);
+  }
+  return { byTitle, ordered };
+}
+
+function resolveDayNarrativeHtml(
+  dayKey: string,
+  dayTitle: string,
+  dayIndex: number,
+  narratives: { byTitle: Map<string, string>; ordered: string[] }
+): string | undefined {
+  const fromTitle =
+    narratives.byTitle.get(normalizeNarrativeTitle(dayTitle)) ??
+    (dayKey !== "sin-fecha"
+      ? narratives.byTitle.get(
+          normalizeNarrativeTitle(formatDateKey(dayKey, "short"))
+        )
+      : undefined);
+  if (fromTitle) return fromTitle;
+  if (dayKey === "sin-fecha") return undefined;
+  return narratives.ordered[dayIndex];
+}
+
 function resolvePdfMapDayLegend(ctx: PdfExportContext): RouteDayLegendEntry[] {
   const existing = resolveDayLegend(ctx.mapDayLegend ?? []);
   if (existing.length > 0) return existing;
@@ -129,18 +228,6 @@ function photoSrc(photo: PdfPhotoAsset, bleed = false): string {
   return bleed ? photo.bleedImagePath : photo.imagePath;
 }
 
-function splitNarrativeSections(markdown: string | null): string[] {
-  if (!markdown?.trim()) return [];
-  const raw = markdown.trim();
-  if (!/^##\s+/m.test(raw)) {
-    return [marked.parse(raw, { async: false }) as string];
-  }
-  return raw
-    .split(/\n(?=##\s+)/)
-    .filter((s) => s.trim())
-    .map((section) => marked.parse(section.trim(), { async: false }) as string);
-}
-
 function pickHeroPhoto(photos: PdfPhotoAsset[], coverPhotoId?: string | null): PdfPhotoAsset {
   if (coverPhotoId) {
     const chosen = photos.find((p) => p.id === coverPhotoId);
@@ -184,7 +271,7 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
   );
   if (photos.length === 0) return [];
 
-  const narratives = splitNarrativeSections(ctx.travel.journalMarkdown);
+  const dayNarratives = extractPdfDayNarratives(ctx.travel.journalMarkdown);
   const byDay = groupPhotosByDay(photos);
   const pages: PdfPlannedPage[] = [];
   let pageNumber = 0;
@@ -203,14 +290,17 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
     push({ kind: "map" });
   }
 
-  let narrativeIndex = 0;
   let dayIndex = 0;
 
   for (const [dayKey, dayPhotos] of byDay) {
     const dayTitle =
       dayKey === "sin-fecha" ? "Recuerdos" : formatDateKey(dayKey, "long");
-    const narrative = narratives[narrativeIndex] ?? narratives[narratives.length - 1];
-    if (narratives.length > 0 && dayIndex < narratives.length) narrativeIndex += 1;
+    const narrative = resolveDayNarrativeHtml(
+      dayKey,
+      dayTitle,
+      dayIndex,
+      dayNarratives
+    );
 
     const busyDay = dayPhotos.length >= 5;
 
