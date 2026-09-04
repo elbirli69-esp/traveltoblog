@@ -21,15 +21,26 @@ export const REEL_FPS = 30;
 /** Target visual bitrate — ~2.8 Mbps keeps a 30s reel near 10–12 MB. */
 export const REEL_BITRATE = 2_800_000;
 
-export const REEL_CROSSFADE_SECONDS = 0.18;
+/**
+ * Crossfade / slide / soft-zoom length.
+ * ~0.4 s matches travel-influencer Reels (readable, not whip-cut).
+ */
+export const REEL_CROSSFADE_SECONDS = 0.4;
 /** Shorter map beat after the hook. */
 export const REEL_MAP_INTRO_SECONDS = 2.15;
 export const REEL_TITLE_INTRO_SECONDS = 0.65;
 export const REEL_OUTRO_SECONDS = 1.9;
 export const REEL_HOOK_SECONDS = 1.05;
-export const REEL_CHAPTER_SECONDS = 0.65;
-/** Simulated “beat” lengths for punchy pacing. */
-export const REEL_BEAT_PATTERN = [0.75, 1.15, 1.85] as const;
+/** Day chapter card — long enough to read the label. */
+export const REEL_CHAPTER_SECONDS = 0.95;
+/**
+ * Clip hold pattern (includes outgoing transition).
+ * With a 0.4 s crossfade, clean on-screen holds land ~0.55 / 0.95 / 1.6 s.
+ */
+export const REEL_BEAT_PATTERN = [0.95, 1.35, 2.0] as const;
+/** Overlay reading pace (~chars/sec) for large on-screen type. */
+export const REEL_CAPTION_CHARS_PER_SEC = 14;
+export const REEL_CAPTION_MAX_CHARS = 48;
 
 export type ReelDurationPreset = 15 | 30 | 60;
 
@@ -170,10 +181,11 @@ function toIso(value: Date | string | null | undefined): string | null {
 }
 
 function maxFramesForDuration(seconds: ReelDurationPreset): number {
-  // Fewer, stronger clips (point 4): leave room for hook + chapters + map + CTA.
-  if (seconds <= 15) return 7;
-  if (seconds <= 30) return 11;
-  return 16;
+  // Photo clips only (hook/chapters/map/CTA are extra).
+  // 15s ≈ 6 · 30s ≈ 10 · 60s ≈ 20.
+  if (seconds <= 15) return 6;
+  if (seconds <= 30) return 10;
+  return 20;
 }
 
 /** Keys match Prisma PlaceType. */
@@ -196,7 +208,7 @@ function resolveSticker(type: string | null | undefined): string | null {
   return placeEmoji(type as PlaceType);
 }
 
-export function clipOverlayText(text: string, max = 78): string {
+export function clipOverlayText(text: string, max = REEL_CAPTION_MAX_CHARS): string {
   const t = text.replace(/\s+/g, " ").trim();
   if (!t) return "";
   if (t.length <= max) return t;
@@ -205,11 +217,52 @@ export function clipOverlayText(text: string, max = 78): string {
   return `${neat || sliced.trim()}…`;
 }
 
-export function resolveFrameCaption(photo: ReelPhotoInput): string | null {
+/** How many caption characters fit a clip hold at reel overlay size. */
+export function captionCharBudget(holdSeconds: number): number {
+  return Math.max(
+    16,
+    Math.min(
+      REEL_CAPTION_MAX_CHARS,
+      Math.floor(holdSeconds * REEL_CAPTION_CHARS_PER_SEC)
+    )
+  );
+}
+
+/**
+ * Pick overlay text that can actually be read during the clip hold.
+ * Too long → place name only (caller keeps placeName); no place → no caption.
+ */
+export function resolveReadableCaption(
+  photo: Pick<ReelPhotoInput, "comments" | "placeComment" | "placeName">,
+  holdSeconds: number
+): string | null {
+  const budget = captionCharBudget(holdSeconds);
   const fromComments = photo.comments?.map((c) => c.trim()).find(Boolean);
-  if (fromComments) return clipOverlayText(fromComments, 78);
-  if (photo.placeComment?.trim()) return clipOverlayText(photo.placeComment, 78);
+  const raw = (fromComments || photo.placeComment?.trim() || "").replace(/\s+/g, " ");
+  if (!raw) return null;
+  if (raw.length <= budget) return clipOverlayText(raw, budget);
+  // Not readable in time — drop comment; place pin still shows via placeName.
   return null;
+}
+
+export function resolveFrameCaption(photo: ReelPhotoInput): string | null {
+  // Provisional: assume a typical ~1.6 s hold until durations are fitted.
+  return resolveReadableCaption(photo, 1.6);
+}
+
+/** After durations are known, drop captions that cannot be read in the hold. */
+export function fitCaptionsToClipHolds(frames: ReelFramePlan[]): ReelFramePlan[] {
+  return frames.map((frame) => {
+    if (frame.role === "chapter") return frame;
+    if (!frame.caption) return frame;
+    const hold = Math.max(0.45, frame.durationSeconds - REEL_CROSSFADE_SECONDS);
+    const budget = captionCharBudget(hold);
+    if (frame.caption.length <= budget) {
+      return { ...frame, caption: clipOverlayText(frame.caption, budget) };
+    }
+    // Unreadable at this pace → place-only (or nothing if no place).
+    return { ...frame, caption: null };
+  });
 }
 
 const TRANSITIONS: ReelTransition[] = ["fade", "slideLeft", "slideUp", "zoomSoft"];
@@ -525,8 +578,9 @@ function fitClipDurations(
   const scale = budget / baseSum;
   return paced.map((f) => {
     if (f.role === "hook" || f.role === "chapter") return f;
-    const min = f.hero ? 1.35 : 0.65;
-    const max = f.hero ? 2.35 : 2.0;
+    // Keep holds usable after subtracting REEL_CROSSFADE_SECONDS in the encoder.
+    const min = f.hero || f.caption ? 1.55 : 1.1;
+    const max = f.hero ? 2.6 : 2.25;
     return {
       ...f,
       durationSeconds: Math.max(min, Math.min(max, f.durationSeconds * scale)),
@@ -669,6 +723,7 @@ export function buildReelManifest(input: {
     titleIntroSeconds,
     outroSeconds
   );
+  frames = fitCaptionsToClipHolds(frames);
 
   const avgClip =
     frames.length > 0

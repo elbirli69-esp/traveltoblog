@@ -4,40 +4,64 @@ import {
   buildReelManifest,
   clipOverlayText,
   resolveFrameCaption,
+  resolveReadableCaption,
+  fitCaptionsToClipHolds,
+  captionCharBudget,
   REEL_BEAT_PATTERN,
   REEL_HOOK_SECONDS,
   REEL_CHAPTER_SECONDS,
+  REEL_CROSSFADE_SECONDS,
+  REEL_CAPTION_MAX_CHARS,
 } from "../src/lib/export-reel.ts";
 import { coalesceMapPoints, buildReelMapPlan } from "../src/lib/export-reel-map.ts";
 
 const PLACE_TYPES = ["RESTAURANT", "BEACH", "MUSEUM", "PARK", "CAFE"];
 
-const photos = Array.from({ length: 20 }, (_, i) => ({
+const photos = Array.from({ length: 28 }, (_, i) => ({
   id: `p${i}`,
   mediaType: "IMAGE",
   posterFilename: null,
   exifDateTime: new Date(Date.UTC(2024, 5, 1 + (i % 5), 12, 0, 0)),
   isTransportStart: i === 0,
-  isTransportEnd: i === 19,
+  isTransportEnd: i === 27,
   selected: true,
   placeName: i % 3 === 0 ? `Lugar ${i}` : null,
   placeComment: i % 3 === 0 ? `Nota del sitio ${i}` : null,
   placeType: i % 3 === 0 ? PLACE_TYPES[i % PLACE_TYPES.length] : null,
-  comments: i % 4 === 0 ? [`Foto genial número ${i} con mucho detalle innecesario`] : [],
+  comments:
+    i % 4 === 0
+      ? [
+          i === 4
+            ? "Sol en Belém"
+            : `Foto genial número ${i} con mucho detalle innecesario para leer en un segundo`,
+        ]
+      : [],
   highlightScore: i % 5 === 0 ? 9 : 5,
   latitude: 38.7 + i * 0.01,
   longitude: -9.1 + i * 0.01,
 }));
 
-assert.ok(clipOverlayText("a".repeat(100), 78).endsWith("…"));
-assert.ok(resolveFrameCaption(photos[0])?.includes("Foto genial"));
+assert.ok(clipOverlayText("a".repeat(100)).endsWith("…"));
+assert.ok(clipOverlayText("a".repeat(100)).length <= REEL_CAPTION_MAX_CHARS + 1);
+assert.equal(resolveReadableCaption({ comments: ["Sol en Belém"] }, 1.6), "Sol en Belém");
+assert.equal(
+  resolveReadableCaption(
+    {
+      comments: ["Una frase larguísima que nadie puede leer en medio segundo de clip"],
+      placeName: "Plaza",
+    },
+    0.8
+  ),
+  null,
+  "long text dropped when hold is too short"
+);
+assert.ok(resolveFrameCaption(photos[4])?.includes("Sol en Belém"));
 
 const frames = selectReelFrames(photos, 30, [
   { dayKey: "2024-06-01", text: "Llegamos cansados pero felices", author: "Ada" },
 ]);
-assert.ok(frames.length >= 5 && frames.length <= 11, `frames30=${frames.length}`);
+assert.ok(frames.length >= 5 && frames.length <= 10, `frames30=${frames.length}`);
 assert.ok(!frames.some((f) => f.photoId === "p0"));
-assert.ok(frames.some((f) => f.caption));
 assert.ok(frames.some((f) => f.hero));
 assert.ok(frames.every((f) => f.role === "clip"));
 assert.ok(frames.every((f) => f.treatment && f.transitionOut && f.captionStyle));
@@ -47,10 +71,10 @@ assert.ok(
   treatmentSet.size >= 2,
   `expected treatment variety, got ${[...treatmentSet].join(",")}`
 );
-const captionStyles = new Set(
-  frames.filter((f) => f.treatment === "story").map((f) => f.captionStyle)
-);
-assert.ok(captionStyles.size >= 1);
+
+const frames60 = selectReelFrames(photos, 60, []);
+assert.ok(frames60.length <= 20, `frames60=${frames60.length}`);
+assert.ok(frames60.length >= 12, `frames60 should use more photos, got ${frames60.length}`);
 
 const manifest = buildReelManifest({
   title: "Lisboa",
@@ -102,19 +126,52 @@ assert.ok(chapter && Math.abs(chapter.durationSeconds - REEL_CHAPTER_SECONDS) < 
 const clipDurations = manifest.frames
   .filter((f) => f.role === "clip")
   .map((f) => f.durationSeconds);
-assert.ok(clipDurations.length <= 7, `clip count ${clipDurations.length}`);
-const uniqueBeats = new Set(clipDurations.map((d) => d.toFixed(2)));
-assert.ok(
-  uniqueBeats.size >= 2 || clipDurations.length < 3,
-  `expected irregular beat pacing, got ${[...uniqueBeats].join(",")}`
-);
+assert.ok(clipDurations.length <= 6, `clip count 15s ${clipDurations.length}`);
 assert.ok(manifest.map);
 assert.ok(manifest.map.points.length >= 2);
 assert.ok((manifest.map.gpsTrails?.length ?? 0) >= 1, "gps trails on map plan");
 assert.ok(manifest.mapIntroSeconds > 0);
-assert.ok(manifest.crossfadeSeconds > 0);
+assert.ok(
+  manifest.crossfadeSeconds >= 0.35 && manifest.crossfadeSeconds <= 0.55,
+  `crossfade ~0.4s, got ${manifest.crossfadeSeconds}`
+);
 assert.ok(manifest.outroSeconds >= 1.5, "strong CTA outro length");
 assert.ok(manifest.secondsPerClip >= 0.55);
+
+const manifest30 = buildReelManifest({
+  title: "Lisboa",
+  participants: ["Ada"],
+  startDate: "2024-06-01",
+  endDate: "2024-06-05",
+  photos,
+  durationSeconds: 30,
+});
+const clips30 = manifest30.frames.filter((f) => f.role === "clip");
+assert.ok(clips30.length <= 10, `30s photo clips ${clips30.length}`);
+const beats30 = new Set(clips30.map((f) => f.durationSeconds.toFixed(2)));
+assert.ok(
+  beats30.size >= 2 || clips30.length < 3,
+  `expected irregular beat pacing on 30s, got ${[...beats30].join(",")}`
+);
+for (const clip of manifest30.frames.filter((f) => f.caption)) {
+  const hold = Math.max(0.45, clip.durationSeconds - REEL_CROSSFADE_SECONDS);
+  assert.ok(
+    clip.caption.length <= captionCharBudget(hold) + 1,
+    `caption too long for hold: "${clip.caption}" @ ${hold.toFixed(2)}s`
+  );
+}
+
+const fitted = fitCaptionsToClipHolds([
+  {
+    ...frames[0],
+    caption: "Texto imposible de leer porque es enormemente largo y el clip dura casi nada",
+    durationSeconds: 0.9,
+    role: "clip",
+    placeName: "Mirador",
+  },
+]);
+assert.equal(fitted[0].caption, null, "unreadable caption cleared; place remains");
+assert.equal(fitted[0].placeName, "Mirador");
 
 const coalesced = coalesceMapPoints([
   { lat: 38.7, lng: -9.1, kind: "photo", label: null, at: "a" },
@@ -127,19 +184,14 @@ assert.equal(buildReelMapPlan([{ lat: 1, lng: 1, kind: "photo", label: null, at:
 
 console.log("export-reel ok", {
   frames30: frames.length,
+  frames60: frames60.length,
+  clips30: clips30.length,
   frames15: manifest.frames.length,
   hooks: manifest.frames.filter((f) => f.role === "hook").length,
   chapters: manifest.frames.filter((f) => f.role === "chapter").length,
   clips: manifest.frames.filter((f) => f.role === "clip").length,
-  mapPoints: manifest.map?.points.length,
-  gpsTrails: manifest.map?.gpsTrails?.length,
-  coverPhotoId: manifest.coverPhotoId,
-  ctaLine: manifest.ctaLine,
+  crossfade: manifest.crossfadeSeconds,
   beatPattern: [...REEL_BEAT_PATTERN],
   clipDurations: clipDurations.map((d) => d.toFixed(2)),
-  heroes: manifest.frames.filter((f) => f.hero).length,
-  treatments: [...new Set(manifest.frames.map((f) => f.treatment))],
-  transitions: [...new Set(manifest.frames.map((f) => f.transitionOut))],
-  stickers: [...new Set(manifest.frames.map((f) => f.sticker).filter(Boolean))],
   avgClip: manifest.secondsPerClip.toFixed(2),
 });
