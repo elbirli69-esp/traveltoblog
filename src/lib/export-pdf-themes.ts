@@ -367,6 +367,7 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       font-size: 11pt;
       font-style: italic;
       opacity: 0.92;
+      max-width: 160mm;
     }
 
     /* —— Mosaic —— */
@@ -400,26 +401,18 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       color: ${t.textMuted};
     }
 
-    /* —— Featured spread —— */
+    /* —— Featured (photo-led; crónica lives on day-divider) —— */
     .page-featured {
       display: table;
-      table-layout: fixed;
       width: 100%;
-    }
-
-    .featured-photo-col {
-      display: table-cell;
-      width: 58%;
-      vertical-align: middle;
-      padding: ${bleed + 8}mm ${bleed + 6}mm ${bleed + 8}mm ${bleed + 10}mm;
       background: ${t.featuredColBg};
     }
 
-    .featured-text-col {
+    .featured-inner {
       display: table-cell;
-      width: 42%;
       vertical-align: middle;
-      padding: ${bleed + 10}mm ${bleed + 12}mm ${bleed + 10}mm ${bleed + 6}mm;
+      text-align: center;
+      padding: ${bleed + 10}mm ${bleed + 18}mm;
     }
 
     .photo-mat {
@@ -435,6 +428,17 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       object-fit: contain;
     }
 
+    .featured-mat {
+      display: inline-block;
+      max-width: 160mm;
+      width: 100%;
+      text-align: left;
+    }
+
+    .featured-mat img {
+      max-height: ${format === "square" ? "120mm" : "145mm"};
+    }
+
     .featured-caption {
       margin-top: 4mm;
       font-size: 8pt;
@@ -443,31 +447,20 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       color: ${t.textMuted};
     }
 
-    .featured-narrative {
+    .featured-note,
+    .featured-byline {
+      margin: 2.5mm auto 0;
+      max-width: 140mm;
       font-family: ${t.serif};
-      font-size: 10.5pt;
-      line-height: 1.62;
-      color: ${t.text};
-    }
-
-    .featured-narrative h2 {
-      font-size: 14pt;
-      font-weight: 600;
-      margin-bottom: 4mm;
-      line-height: 1.2;
-    }
-
-    .featured-narrative p { margin-bottom: 3mm; }
-
-    .featured-quote {
-      margin-top: 8mm;
-      padding-top: 5mm;
-      border-top: 0.3mm solid ${t.matBorder};
-      font-family: ${t.serif};
-      font-size: 10pt;
+      font-size: 11pt;
       font-style: italic;
+      color: ${t.text};
+      line-height: 1.45;
+    }
+
+    .featured-byline {
       color: ${t.textMuted};
-      line-height: 1.5;
+      font-size: 9.5pt;
     }
 
     /* —— Pair —— */
@@ -507,6 +500,10 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       font-size: 9.5pt;
       font-style: italic;
       color: ${t.textMuted};
+      line-height: 1.4;
+      max-width: 85mm;
+      margin-left: auto;
+      margin-right: auto;
     }
 
     /* —— Closing —— */

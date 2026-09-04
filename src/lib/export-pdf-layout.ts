@@ -78,6 +78,22 @@ function formatDateRange(start: Date | null, end: Date | null): string {
   return "";
 }
 
+/** Soft cap for photo notes so captions stay under the image, not a text column. */
+export const PDF_NOTE_MAX_CHARS = 150;
+
+export function clampPdfNote(
+  text: string | null | undefined,
+  maxChars = PDF_NOTE_MAX_CHARS
+): string {
+  const cleaned = (text ?? "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  if (cleaned.length <= maxChars) return cleaned;
+  const slice = cleaned.slice(0, Math.max(0, maxChars - 1));
+  const broken = slice.replace(/\s+\S*$/, "").trimEnd();
+  const base = broken.length >= Math.floor(maxChars * 0.6) ? broken : slice.trimEnd();
+  return `${base}…`;
+}
+
 function photoDayKey(photo: PdfPhotoAsset): string | null {
   if (!photo.exifDateTime) return null;
   return isoToDateKey(photo.exifDateTime.toISOString());
@@ -98,8 +114,14 @@ function photoCaption(photo: PdfPhotoAsset): string {
   return parts.join(" · ") || photo.alias;
 }
 
+/** Traveler note under a photo (clamped). Empty when there is no note. */
+export function photoNoteCaption(photo: PdfPhotoAsset): string {
+  return clampPdfNote(photo.notes[0]);
+}
+
 function photoSubcaption(photo: PdfPhotoAsset): string {
-  if (photo.notes[0]) return photo.notes[0];
+  const note = photoNoteCaption(photo);
+  if (note) return note;
   return `@${photo.alias}`;
 }
 
@@ -227,13 +249,10 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
         continue;
       }
 
-      const section =
-        narratives[Math.min(narrativeIndex, narratives.length - 1)] ?? narratives[0];
+      // Featured is photo-led: crónica stays on the day-divider only.
       push({
         kind: "featured",
         photos: [photo],
-        narrative: section,
-        quote: photo.notes[0] ?? undefined,
       });
       i += 1;
     }
@@ -412,20 +431,18 @@ function renderFeatured(
   const photo = page.photos?.[0];
   if (!photo) return "";
   const { width, height } = pageDimensions(format);
+  const note = photoNoteCaption(photo);
   return `
   <section class="page page-featured" style="width:${width};height:${height}">
-    <div class="featured-photo-col">
-      <div class="photo-mat">
+    <div class="featured-inner">
+      <div class="photo-mat featured-mat">
         <img src="${escapeHtml(photoSrc(photo))}" alt="" />
       </div>
       <p class="featured-caption">${escapeHtml(photoCaption(photo))}</p>
-    </div>
-    <div class="featured-text-col">
-      ${page.narrative ? `<div class="featured-narrative">${page.narrative}</div>` : ""}
       ${
-        page.quote
-          ? `<blockquote class="featured-quote">«${escapeHtml(page.quote)}»</blockquote>`
-          : ""
+        note
+          ? `<p class="featured-note">«${escapeHtml(note)}»</p>`
+          : `<p class="featured-byline">@${escapeHtml(photo.alias)}</p>`
       }
     </div>
     ${renderPageFooter(page.pageNumber, totalPages)}
@@ -440,18 +457,17 @@ function renderPair(
   const [left, right] = page.photos ?? [];
   if (!left || !right) return "";
   const { width, height } = pageDimensions(format);
-  const cell = (photo: PdfPhotoAsset) => `
+  const cell = (photo: PdfPhotoAsset) => {
+    const note = photoNoteCaption(photo);
+    return `
     <div class="pair-cell">
       <div class="photo-mat pair-mat">
         <img src="${escapeHtml(photoSrc(photo))}" alt="" />
       </div>
       <p class="pair-caption">${escapeHtml(photoCaption(photo))}</p>
-      ${
-        photo.notes[0]
-          ? `<p class="pair-note">${escapeHtml(photo.notes[0])}</p>`
-          : ""
-      }
+      ${note ? `<p class="pair-note">«${escapeHtml(note)}»</p>` : ""}
     </div>`;
+  };
 
   return `
   <section class="page page-pair" style="width:${width};height:${height}">
