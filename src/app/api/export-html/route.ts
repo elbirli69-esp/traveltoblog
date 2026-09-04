@@ -13,6 +13,8 @@ import {
   buildExportArtifact,
   type ExportPipelineEvent,
 } from "@/lib/export-pipeline";
+import { interpretExportBrief } from "@/lib/export-brief";
+import { summarizeHtmlDirectives } from "@/lib/export-directives";
 import { TYPOLOGY_LIST } from "@/lib/export/typologies/registry";
 
 const TEMPLATES: ExportTemplateId[] = [
@@ -42,6 +44,7 @@ export async function POST(request: NextRequest) {
       format = "zip",
       includeGpsTrail = false,
       stream = false,
+      brief = "",
     } = body as {
       travelId?: string;
       template?: ExportTemplateId;
@@ -49,6 +52,7 @@ export async function POST(request: NextRequest) {
       format?: ExportFormat;
       includeGpsTrail?: boolean;
       stream?: boolean;
+      brief?: string;
     };
 
     if (!travelId) {
@@ -58,6 +62,8 @@ export async function POST(request: NextRequest) {
     if (!TEMPLATES.includes(template)) {
       return NextResponse.json({ error: "Plantilla no válida" }, { status: 400 });
     }
+
+    const briefText = typeof brief === "string" ? brief.trim() : "";
 
     const runExport = async (send?: (event: ExportPipelineEvent) => void) => {
       const emit = (event: ExportPipelineEvent) => send?.(event);
@@ -92,6 +98,28 @@ export async function POST(request: NextRequest) {
 
       if (!travel) {
         throw new Error("Viaje no encontrado");
+      }
+
+      const briefResult = briefText
+        ? await interpretExportBrief(briefText, {
+            target: "html",
+            photoCount: travel.photos.filter((p) => p.selected).length || travel.photos.length,
+            hasJournal: Boolean(travel.journalMarkdown?.trim()),
+            travelTitle: travel.title,
+          })
+        : null;
+
+      if (briefResult?.directives.interpretation) {
+        emit({
+          step: "load",
+          status: "running",
+          message: briefResult.directives.interpretation,
+          briefInterpretation: briefResult.directives.interpretation,
+          briefSummary: briefResult.directives.html
+            ? summarizeHtmlDirectives(briefResult.directives.html)
+            : undefined,
+          briefWarning: briefResult.warning,
+        });
       }
 
       emit({ step: "load", status: "done" });
@@ -174,6 +202,8 @@ export async function POST(request: NextRequest) {
         template,
         typology,
         includeGpsTrail,
+        htmlDirectives: briefResult?.directives.html ?? null,
+        briefInterpretation: briefResult?.directives.interpretation ?? null,
       };
 
       const slug = exportSlug(travel.title);
@@ -181,7 +211,17 @@ export async function POST(request: NextRequest) {
       const filename = format === "html" ? `${slug}.html` : `${slug}-export.zip`;
       const contentType = format === "html" ? "text/html; charset=utf-8" : "application/zip";
 
-      return { buffer, filename, contentType, photoCount: photos.length };
+      return {
+        buffer,
+        filename,
+        contentType,
+        photoCount: photos.length,
+        briefInterpretation: briefResult?.directives.interpretation ?? null,
+        briefSummary: briefResult?.directives.html
+          ? summarizeHtmlDirectives(briefResult.directives.html)
+          : null,
+        briefWarning: briefResult?.warning ?? null,
+      };
     };
 
     if (stream) {
@@ -193,7 +233,14 @@ export async function POST(request: NextRequest) {
           };
 
           try {
-            const { buffer, filename, contentType } = await runExport(send);
+            const {
+              buffer,
+              filename,
+              contentType,
+              briefInterpretation,
+              briefSummary,
+              briefWarning,
+            } = await runExport(send);
             send({
               step: "complete",
               status: "done",
@@ -201,6 +248,9 @@ export async function POST(request: NextRequest) {
               filename,
               contentType,
               blobBase64: buffer.toString("base64"),
+              briefInterpretation: briefInterpretation ?? undefined,
+              briefSummary: briefSummary ?? undefined,
+              briefWarning: briefWarning ?? undefined,
             });
           } catch (error) {
             console.error("POST /api/export-html stream", error);

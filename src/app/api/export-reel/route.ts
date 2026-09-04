@@ -5,6 +5,7 @@ import {
   parseReelDuration,
   type ReelDurationPreset,
 } from "@/lib/export-reel";
+import { interpretExportBrief } from "@/lib/export-brief";
 import { isoToDateKey } from "@/lib/travel-dates";
 
 export async function POST(request: NextRequest) {
@@ -12,13 +13,17 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as {
       travelId?: string;
       durationSeconds?: ReelDurationPreset;
+      /** Free-text creative brief — grounded to typed reel directives. */
+      brief?: string;
     };
 
     if (!body.travelId) {
       return NextResponse.json({ error: "travelId es obligatorio" }, { status: 400 });
     }
 
+    // UI duration selector always wins over any duration hinted in the brief.
     const durationSeconds = parseReelDuration(body.durationSeconds);
+    const brief = typeof body.brief === "string" ? body.brief.trim() : "";
 
     const travel = await prisma.travel.findUnique({
       where: { id: body.travelId },
@@ -88,12 +93,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Viaje no encontrado" }, { status: 404 });
     }
 
+    const briefResult = brief
+      ? await interpretExportBrief(brief, {
+          target: "reel",
+          durationSeconds,
+          photoCount: travel.photos.length,
+          hasJournal: Boolean(travel.journalMarkdown?.trim()),
+          travelTitle: travel.title,
+        })
+      : null;
+
     const manifest = buildReelManifest({
       title: travel.title,
       participants: travel.users.map((u) => u.alias),
       startDate: travel.startDate,
       endDate: travel.endDate,
       durationSeconds,
+      reelDirectives: briefResult?.directives.reel ?? null,
+      briefInterpretation: briefResult?.directives.interpretation ?? null,
       photos: travel.photos.map((p) => {
         const placeNotes =
           p.place?.notes?.map((n) => n.text.trim()).filter(Boolean) ?? [];
@@ -174,7 +191,11 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    return NextResponse.json(manifest);
+    return NextResponse.json({
+      ...manifest,
+      briefWarning: briefResult?.warning ?? null,
+      briefFromAi: briefResult?.fromAi ?? false,
+    });
   } catch (error) {
     console.error("POST /api/export-reel", error);
     return NextResponse.json({ error: "Error al preparar el reel" }, { status: 500 });

@@ -100,6 +100,10 @@ export default function ExportHtmlPanel({
   );
   const [includeGpsTrail, setIncludeGpsTrail] = useState(false);
   const [format, setFormat] = useState<ExportFormat>("zip");
+  const [brief, setBrief] = useState("");
+  const [interpretation, setInterpretation] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [interpreting, setInterpreting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,11 +113,45 @@ export default function ExportHtmlPanel({
   const [stepMessage, setStepMessage] = useState<string | null>(null);
   const [completedSteps, setCompletedSteps] = useState<ExportPipelineStep[]>([]);
 
-  const busy = loading || previewing;
+  const busy = loading || previewing || interpreting;
   const progressSteps = useMemo(
     () => (previewing || format === "html" ? HTML_STEPS : ZIP_STEPS),
     [format, previewing]
   );
+
+  const handleInterpret = async () => {
+    setInterpreting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/export-brief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brief,
+          target: "html",
+          hasJournal,
+          travelTitle: undefined,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        interpretation?: string | null;
+        summary?: string | null;
+        message?: string;
+        warning?: string | null;
+      };
+      if (!res.ok) {
+        throw new Error(data.error ?? "Error al interpretar el brief");
+      }
+      setInterpretation(data.interpretation ?? data.message ?? null);
+      setSummary(data.summary ?? null);
+      if (data.warning) setError(data.warning);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al interpretar");
+    } finally {
+      setInterpreting(false);
+    }
+  };
 
   useEffect(() => {
     void fetch(`/api/travels/${travelId}/suggest-type`)
@@ -178,6 +216,7 @@ export default function ExportHtmlPanel({
             format: exportFormat,
             includeGpsTrail,
             stream: true,
+            brief: brief.trim() || undefined,
           }),
         });
 
@@ -210,6 +249,16 @@ export default function ExportHtmlPanel({
             });
           }
 
+          if (event.briefInterpretation) {
+            setInterpretation(event.briefInterpretation);
+          }
+          if (event.briefSummary) {
+            setSummary(event.briefSummary);
+          }
+          if (event.briefWarning) {
+            setError(event.briefWarning);
+          }
+
           if (event.step === "complete" && event.status === "done" && event.blobBase64) {
             const blob = blobFromBase64(
               event.blobBase64,
@@ -227,13 +276,16 @@ export default function ExportHtmlPanel({
                 filename,
                 event.contentType ?? "application/octet-stream"
               );
+              const briefNote = event.briefInterpretation
+                ? ` Brief: ${event.briefInterpretation}`
+                : "";
               if (result === "saved") {
-                setSuccess("Archivo guardado en Descargas/TravelToBlog.");
+                setSuccess(`Archivo guardado en Descargas/TravelToBlog.${briefNote}`);
               } else if (result === "shared") {
-                setSuccess("Elige dónde guardar el archivo en el menú Compartir.");
+                setSuccess(`Elige dónde guardar el archivo en el menú Compartir.${briefNote}`);
               } else {
                 setSuccess(
-                  "Se abrió la vista previa. Pulsa ⋮ o Compartir y elige «Guardar en Descargas»."
+                  `Se abrió la vista previa. Pulsa ⋮ o Compartir y elige «Guardar en Descargas».${briefNote}`
                 );
               }
             }
@@ -278,7 +330,7 @@ export default function ExportHtmlPanel({
         setStepMessage(null);
       }
     },
-    [format, includeGpsTrail, progressSteps, template, travelId, typology]
+    [brief, format, includeGpsTrail, progressSteps, template, travelId, typology]
   );
 
   return (
@@ -374,6 +426,45 @@ export default function ExportHtmlPanel({
           <p className="callout callout-warning mt-2 text-xs">
             El HTML único embebe todas las fotos en un solo archivo: puede pesar mucho más y tardar
             más en generarse. Para compartir o archivar, recomendamos ZIP.
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <label htmlFor="html-export-brief" className="block text-sm font-semibold text-fg-secondary">
+          Indicaciones para este HTML (opcional)
+        </label>
+        <textarea
+          id="html-export-brief"
+          value={brief}
+          onChange={(e) => {
+            setBrief(e.target.value);
+            setInterpretation(null);
+            setSummary(null);
+          }}
+          disabled={busy}
+          rows={3}
+          placeholder="Ej.: máximo protagonismo fotográfico y galería muy visible, poca crónica; o mapa grande y guía práctica destacada…"
+          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-secondary/70 focus:border-accent-cyan focus:outline-none"
+        />
+        <p className="text-xs text-fg-secondary">
+          Texto libre: aterrizamos peso de fotos, galería, prosa, mapa y guía a knobs del
+          export. Tipología y plantilla de arriba siguen mandando la estructura base.
+        </p>
+        <button
+          type="button"
+          onClick={() => void handleInterpret()}
+          disabled={busy || !brief.trim()}
+          className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+        >
+          {interpreting ? "Interpretando…" : "Interpretar brief"}
+        </button>
+        {(interpretation || summary) && (
+          <p className="callout text-sm text-fg">
+            {interpretation}
+            {summary ? (
+              <span className="mt-1 block text-xs text-fg-secondary">{summary}</span>
+            ) : null}
           </p>
         )}
       </div>
