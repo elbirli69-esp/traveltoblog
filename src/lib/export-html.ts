@@ -1949,7 +1949,7 @@ export function buildExportHtml(ctx: ExportContext): string {
         heroGradient,
       })}
 ${buildTocHtml(timelineEvents)}
-${buildMagazineNav(hasMap, hasGuide, dualMaps)}`
+${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
     : isVisual
       ? `<header class="hero"${heroPhotoPath ? ` data-export-hero="${escapeHtml(heroPhotoPath)}" data-export-hero-gradient="${escapeHtml(heroGradient)}"` : ""}>
       <div class="hero-content reveal">
@@ -2061,10 +2061,22 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps)}`
     : "";
   const playBlock = profile.playProfile.showScrubber && !isMagazine ? buildPlayModeSectionHtml() : "";
 
-  // Magazine honors typology section order (play mode stays deferred for Magazine).
-  const magazineSectionOrder = profile.sectionOrder.filter(
-    (id) => id !== "hero" && id !== "play"
-  );
+  // Magazine: El viaje → Galería → Guía → Cierre (gallery right after timeline).
+  const magazineSectionOrder = (() => {
+    const base = profile.sectionOrder.filter(
+      (id) => id !== "hero" && id !== "play"
+    );
+    const withoutGallery = base.filter((id) => id !== "gallery");
+    const timelineIdx = withoutGallery.indexOf("timeline");
+    if (timelineIdx >= 0) {
+      return [
+        ...withoutGallery.slice(0, timelineIdx + 1),
+        "gallery" as const,
+        ...withoutGallery.slice(timelineIdx + 1),
+      ];
+    }
+    return galleryBlock ? [...withoutGallery, "gallery" as const] : withoutGallery;
+  })();
 
   const sectionBlocks: Record<string, string> = {
     hero: "",
@@ -2079,19 +2091,22 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps)}`
         ? ""
         : `<section class="journal-section reveal visible"><h2 class="section-title">Crónica del viaje</h2><article${storyAnchor}>${contentHtml}</article></section>`,
     play: playBlock,
+    guide: calloutsBlock,
+    closing: closingBlock,
   };
 
-  const sectionOrder = isMagazine ? magazineSectionOrder : profile.sectionOrder;
+  const sectionOrder = isMagazine
+    ? [...magazineSectionOrder, "guide", "closing"]
+    : profile.sectionOrder;
   // Visual templates keep a full-bleed top map; Magazine/Editorial place map via sectionOrder.
   const showMapOuter = isVisual && hasMap;
 
   const orderedMiddle = [
     ...sectionOrder
-      .filter((id) => id !== "hero" && sectionBlocks[id])
+      .filter((id) => id !== "hero" && sectionBlocks[id as keyof typeof sectionBlocks])
       .filter((id) => !(showMapOuter && id === "map"))
-      .map((id) => sectionBlocks[id]),
-    calloutsBlock,
-    closingBlock,
+      .map((id) => sectionBlocks[id as keyof typeof sectionBlocks]),
+    ...(isMagazine ? [] : [calloutsBlock, closingBlock]),
   ]
     .filter(Boolean)
     .join("\n");

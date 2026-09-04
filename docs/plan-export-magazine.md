@@ -13,7 +13,7 @@ Plan derivado de la auditoría de blogs de viaje de referencia (narrativa única
 
 ## Principios (blogs expertos)
 
-1. **Una sola narrativa** — Sección **El viaje** (crónica IA + cards de fotos/lugares/notas). Galería al final.
+1. **Una sola narrativa** — Sección **El viaje** (crónica IA + cards). Luego **Galería**, **Guía** y **Cierre**.
 2. **Titular + deck** — Subtítulo emocional desde nota TRIP o primer párrafo de la crónica.
 3. **Fotos en contexto** — Grandes dentro del recorrido, con comentarios PHOTO fusionados.
 4. **Utilidad práctica** — Callouts de hoteles, restaurantes y miradores al cierre.
@@ -39,9 +39,9 @@ src/lib/export-html.ts     # Orquestación plantillas + ZIP
 3. Stats (si tipología lo indica)
 4. Mapa (si hay GPS)
 5. **El viaje** (crónica + recorrido unificados: intro IA, prosa por día, cards, cierre)
-6. Guía práctica (callouts por tipo de lugar)
-7. Para cerrar (nota TRIP + resumen)
-8. Galería completa (secundaria, cronológica)
+6. **Galería** completa (cronológica)
+7. Guía práctica (callouts por tipo de lugar)
+8. Para cerrar (nota TRIP + resumen)
 
 ## Criterios de hecho
 
