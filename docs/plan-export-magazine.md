@@ -55,7 +55,10 @@ src/lib/export-html.ts     # Orquestación plantillas + ZIP
 
 ## Pendiente futuro (fuera de alcance)
 
-- Mapa inline por sección / scroll spy con mapa lateral.
-- Plantilla totalmente personalizable (colores, fuentes).
-- Preview en app antes de exportar.
-- Avisos pre-export (“3 días sin nota DAY”).
+Ver **`docs/plan-export-html-next.md`** para el backlog priorizado.
+
+Resumen:
+- ✅ P1: mapa estático offline, vídeo en Recorrido/Galería, tipologías Magazine reales
+- Mapa inline por sección / scroll spy con mapa lateral
+- «Reproducir» en Magazine + dual maps
+- Tests del export HTML, lightbox/a11y, HTML único liviano, GPS trail UX, paridad plantillas

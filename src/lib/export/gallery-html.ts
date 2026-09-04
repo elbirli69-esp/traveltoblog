@@ -4,6 +4,7 @@ import {
   exportHighlightClass,
   exportHighlightTier,
 } from "@/lib/highlight-score";
+import { formatDurationMs } from "@/lib/media-types";
 import { formatDateKey, isoToDateKey, resolveTravelDayRange } from "@/lib/travel-dates";
 
 export interface GalleryPhotoInput {
@@ -14,6 +15,9 @@ export interface GalleryPhotoInput {
   isTransportStart: boolean;
   isTransportEnd: boolean;
   highlightScore?: number;
+  mediaType?: "IMAGE" | "VIDEO";
+  videoPath?: string | null;
+  durationMs?: number | null;
 }
 
 function escapeHtml(text: string): string {
@@ -91,14 +95,26 @@ function buildGalleryTile(photo: GalleryPhotoInput): string {
   const tier = exportHighlightTier(score);
   const tierClass = exportHighlightClass(score, "gallery-tile");
   const when = photo.exifDateTime ? formatPhotoTime(photo.exifDateTime) : "";
-  const caption = when ? `${photo.alias} · ${when}` : photo.alias;
+  const isVideo = photo.mediaType === "VIDEO";
+  const duration = formatDurationMs(photo.durationMs);
+  const caption = when
+    ? `${photo.alias} · ${when}${isVideo && duration ? ` · ${duration}` : ""}`
+    : photo.alias;
   const badge =
     tier === "featured"
       ? `<span class="gallery-score-badge gallery-score-badge--featured" title="Destacada (${score}/10)">★ ${score}</span>`
       : tier === "accent"
         ? `<span class="gallery-score-badge" title="Nota ${score}/10">${score}</span>`
         : "";
-  return `<figure class="gallery-tile${tierClass ? ` ${tierClass}` : ""}">${badge}${exportThumbImgTag(photo, `Foto de ${photo.alias}`, "gallery-tile-img")}<figcaption>${escapeHtml(caption)}</figcaption></figure>`;
+  const videoBadge = isVideo
+    ? `<span class="gallery-video-badge" aria-hidden="true">▶${duration ? ` ${escapeHtml(duration)}` : ""}</span>`
+    : "";
+
+  if (isVideo && photo.videoPath) {
+    return `<figure class="gallery-tile gallery-tile--video${tierClass ? ` ${tierClass}` : ""}">${badge}${videoBadge}<video class="gallery-tile-video" controls playsinline preload="metadata" data-export-src="${escapeHtml(photo.videoPath)}" data-export-poster="${escapeHtml(photo.thumbPath)}" poster=""></video><figcaption>${escapeHtml(caption)}</figcaption></figure>`;
+  }
+
+  return `<figure class="gallery-tile${isVideo ? " gallery-tile--video" : ""}${tierClass ? ` ${tierClass}` : ""}">${badge}${videoBadge}${exportThumbImgTag(photo, isVideo ? `Vídeo de ${photo.alias}` : `Foto de ${photo.alias}`, "gallery-tile-img")}<figcaption>${escapeHtml(caption)}</figcaption></figure>`;
 }
 
 export function buildGallerySection(
@@ -195,6 +211,25 @@ export function galleryExportStyles(): string {
   aspect-ratio: 1;
   object-fit: cover;
   transition: transform .35s ease;
+}
+.gallery-tile-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: #0c0a09;
+}
+.gallery-video-badge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 2;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(0,0,0,.7);
+  color: #fff;
 }
 .gallery-tile--featured img,
 .gallery-tile--featured .gallery-tile-img {

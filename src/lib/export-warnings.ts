@@ -112,7 +112,7 @@ export function buildExportWarnings(input: ExportWarningsInput): ExportWarning[]
     const totalVideoBytes = videos.reduce((sum, p) => sum + (p.fileSizeBytes ?? 0), 0);
     warnings.push({
       level: "info",
-      message: `${videos.length} vídeo${videos.length === 1 ? "" : "s"}: el ZIP incluye el original en videos/; el HTML único solo incrusta la miniatura (poster).`,
+      message: `${videos.length} vídeo${videos.length === 1 ? "" : "s"}: en el ZIP se reproducen en Recorrido y Galería; el HTML único solo incrusta el poster.`,
     });
     if (totalVideoBytes >= 200 * 1024 * 1024) {
       warnings.push({

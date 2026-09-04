@@ -4,6 +4,7 @@ import { formatDateKey } from "@/lib/travel-dates";
 import { PLACE_TYPE_EMOJI, PLACE_TYPE_LABELS } from "@/lib/places";
 import type { PlaceType } from "@prisma/client";
 import { exportDisplayPathFromThumb } from "@/lib/export-images";
+import { formatDurationMs } from "@/lib/media-types";
 
 export interface StoryTimelineOptions {
   /** Si hay artículo de crónica, omitir trozos journal-chunk duplicados */
@@ -111,8 +112,32 @@ function renderPhotoCard(
   notes: string[],
   index: number
 ): string {
+  const isVideo = ev.meta?.mediaType === "VIDEO";
+  const videoPath = ev.meta?.videoPath ?? null;
+  const duration = formatDurationMs(ev.meta?.durationMs);
   const media = ev.mediaUrl
-    ? `<figure class="story-media">
+    ? isVideo && videoPath
+      ? `<figure class="story-media story-media--video">
+        <video
+          class="story-video"
+          controls
+          playsinline
+          preload="metadata"
+          data-export-src="${escapeHtml(videoPath)}"
+          data-export-poster="${escapeHtml(ev.mediaUrl)}"
+          poster=""
+        ></video>
+        <figcaption class="story-photo-caption">${escapeHtml(ev.author ?? "Viajero")} · ${formatTime(ev.at)}${duration ? ` · ${escapeHtml(duration)}` : ""}</figcaption>
+      </figure>`
+      : isVideo
+        ? `<figure class="story-media story-media--video">
+        <button type="button" class="story-media-btn" aria-label="Ampliar vídeo">
+          <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="Vídeo del viaje" loading="lazy" class="story-photo-img">
+          <span class="story-video-badge">▶ Vídeo${duration ? ` · ${escapeHtml(duration)}` : ""}</span>
+        </button>
+        <figcaption class="story-photo-caption">${escapeHtml(ev.author ?? "Viajero")} · ${formatTime(ev.at)} · solo poster en HTML único</figcaption>
+      </figure>`
+        : `<figure class="story-media">
         <button type="button" class="story-media-btn" aria-label="Ampliar foto">
           <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="Foto del viaje" loading="lazy" class="story-photo-img">
         </button>
@@ -135,7 +160,7 @@ function renderPhotoCard(
     </div>
     <div class="story-card-content">
       <header class="story-card-head">
-        <span class="story-kind">📷 Momento capturado</span>
+        <span class="story-kind">${isVideo ? "🎬 Momento en vídeo" : "📷 Momento capturado"}</span>
         <time datetime="${escapeHtml(ev.at)}">${formatTime(ev.at)}</time>
       </header>
       ${media}
@@ -435,6 +460,7 @@ export function storyTimelineStyles(): string {
 .story-media { margin: 0 0 .85rem; border-radius: 14px; overflow: hidden; }
 .story-media-btn {
   display: block; width: 100%; padding: 0; border: none; background: none; cursor: zoom-in;
+  position: relative;
 }
 .story-photo-img {
   width: 100%;
@@ -443,6 +469,28 @@ export function storyTimelineStyles(): string {
   object-fit: cover;
   transition: transform .45s ease;
 }
+.story-video {
+  width: 100%;
+  display: block;
+  aspect-ratio: 16/9;
+  max-height: 420px;
+  background: #0c0a09;
+  object-fit: contain;
+}
+.story-video-badge {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.72);
+  color: #fff;
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+.story-media--video .story-media-btn { cursor: zoom-in; }
+
 .story-photo-caption {
   margin: .5rem 0 0;
   font-size: .78rem;
