@@ -8,6 +8,12 @@ export interface PdfExportOptions {
   template?: PdfTemplate;
   /** Selected photo id for cover; falls back to highest highlight score. */
   coverPhotoId?: string | null;
+  /** Look preset id (pdf-classic, …). Drives theme + default directives. */
+  presetId?: import("@/lib/export/pdf-preset-catalog").PdfPresetId | null;
+  /** Free-text brief for this export (grounded to typed knobs). */
+  brief?: string | null;
+  /** Optional typography pack override. */
+  typePack?: import("@/lib/export/type-packs").TypePackId | null;
 }
 
 export interface PdfPhotoAsset {
@@ -47,6 +53,10 @@ export interface PdfExportContext {
   format: PdfPageFormat;
   template: PdfTemplate;
   coverPhotoId?: string | null;
+  /** Typed layout knobs from brief ⊕ preset (never free CSS). */
+  pdfDirectives?: import("@/lib/export-directives").ExportPdfDirectives | null;
+  /** Typography pack id (Liberation/system stacks). */
+  typePack?: import("@/lib/export/type-packs").TypePackId | null;
   /** Relative path to destination / combined map PNG (e.g. map/local.png). */
   mapImagePath?: string | null;
   /** Optional flight-overview map when dual maps apply. */

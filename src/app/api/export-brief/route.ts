@@ -26,6 +26,13 @@ import {
   suggestTypePackFromBrief,
   type TypePackId,
 } from "@/lib/export/type-packs";
+import { matchPdfPresetCatalog } from "@/lib/export/pdf-preset-match";
+import {
+  getPdfPresetCatalogEntry,
+  type PdfPresetId,
+} from "@/lib/export/pdf-preset-catalog";
+import { summarizePdfDirectives } from "@/lib/export-directives";
+
 
 const HTML_TEMPLATES: ExportTemplateId[] = [
   "magazine",
@@ -51,6 +58,14 @@ const THEME_PACKS: ThemePackId[] = [
   "cool-coast",
 ];
 
+const PDF_PRESETS: PdfPresetId[] = [
+  "pdf-classic",
+  "pdf-minimal",
+  "pdf-photo",
+  "pdf-dark",
+  "pdf-guide",
+];
+
 const TYPE_PACKS: TypePackId[] = ["serif-editorial", "sans-clean", "hybrid"];
 
 function parseUiTemplate(raw: unknown): ExportTemplateId {
@@ -72,6 +87,13 @@ function parseUiThemePack(raw: unknown): ThemePackId | null {
     return raw as ThemePackId;
   }
   return null;
+}
+
+function parseUiPdfPreset(raw: unknown): PdfPresetId {
+  if (typeof raw === "string" && (PDF_PRESETS as string[]).includes(raw)) {
+    return raw as PdfPresetId;
+  }
+  return "pdf-classic";
 }
 
 function parseUiTypePack(raw: unknown): TypePackId | null {
@@ -99,6 +121,7 @@ export async function POST(request: NextRequest) {
       uiReelPreset?: string;
       uiThemePack?: string;
       uiTypePack?: string;
+      uiPdfPreset?: string;
     };
 
     const brief = typeof body.brief === "string" ? body.brief : "";
@@ -112,6 +135,7 @@ export async function POST(request: NextRequest) {
         reelPresetMatch: null,
         themePackMatch: null,
         typePackMatch: null,
+        pdfPresetMatch: null,
       });
     }
 
@@ -121,6 +145,7 @@ export async function POST(request: NextRequest) {
     const uiReelPreset = parseUiReelPreset(body.uiReelPreset);
     const uiThemePack = parseUiThemePack(body.uiThemePack);
     const uiTypePack = parseUiTypePack(body.uiTypePack);
+    const uiPdfPreset = parseUiPdfPreset(body.uiPdfPreset);
     const result = await interpretExportBrief(brief, {
       target,
       durationSeconds,
@@ -134,11 +159,15 @@ export async function POST(request: NextRequest) {
         ? summarizeHtmlDirectives(result.directives.html)
         : target === "reel" && result.directives.reel
           ? summarizeReelDirectives(result.directives.reel)
-          : result.directives.html
-            ? summarizeHtmlDirectives(result.directives.html)
-            : result.directives.reel
-              ? summarizeReelDirectives(result.directives.reel)
-              : null;
+          : target === "pdf" && result.directives.pdf
+            ? summarizePdfDirectives(result.directives.pdf)
+            : result.directives.html
+              ? summarizeHtmlDirectives(result.directives.html)
+              : result.directives.reel
+                ? summarizeReelDirectives(result.directives.reel)
+                : result.directives.pdf
+                  ? summarizePdfDirectives(result.directives.pdf)
+                  : null;
 
     let templateMatch = null;
     if ((target === "html" || target === "all") && result.directives.html) {
@@ -208,6 +237,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    
+    let pdfPresetMatch = null;
+    if ((target === "pdf" || target === "all") && result.directives.pdf) {
+      const match = matchPdfPresetCatalog({
+        brief,
+        directives: result.directives.pdf,
+        uiPreset: uiPdfPreset,
+      });
+      pdfPresetMatch = {
+        suggestedPresetId: match.suggestedPresetId,
+        label: match.entry.label,
+        tagline: match.entry.tagline,
+        score: Math.round(match.score * 100) / 100,
+        reasons: match.reasons,
+        unmet: match.unmet,
+        differsFromUi: match.differsFromUi,
+        theme: match.entry.theme,
+        typePack: match.entry.typePack,
+      };
+      if (!getPdfPresetCatalogEntry(match.suggestedPresetId)) {
+        pdfPresetMatch = null;
+      }
+    }
+
     return NextResponse.json({
       directives: result.directives,
       fromAi: result.fromAi,
@@ -218,6 +271,7 @@ export async function POST(request: NextRequest) {
       reelPresetMatch,
       themePackMatch,
       typePackMatch,
+      pdfPresetMatch,
     });
   } catch (error) {
     console.error("POST /api/export-brief", error);

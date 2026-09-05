@@ -15,7 +15,14 @@ import { readPhotoBuffer } from "@/lib/export-html";
 import { fetchPdfDualMapImages } from "@/lib/export-pdf-map";
 import { prisma } from "@/lib/prisma";
 import type { PdfProgressCallback } from "@/lib/export-pdf-pipeline";
-
+import {
+  getPdfPresetCatalogEntry,
+  resolvePdfDirectivesForPreset,
+  themeForPdfPreset,
+  typePackForPdfPreset,
+  type PdfPresetId,
+} from "@/lib/export/pdf-preset-catalog";
+import { interpretExportBrief } from "@/lib/export-brief";
 import type {
   PdfExportOptions,
   PdfPhotoAsset,
@@ -104,7 +111,37 @@ export async function preparePdfAssets(
   options: PdfExportOptions,
   onProgress?: (current: number, total: number) => void
 ): Promise<PdfExportContext & { workDir: string }> {
-  const { format, template = "classic", coverPhotoId = null } = options;
+  const {
+    format,
+    template: templateOpt,
+    coverPhotoId = null,
+    presetId = null,
+    brief = null,
+    typePack: typePackOpt = null,
+  } = options;
+
+  let briefPdfDirectives = null as import("@/lib/export-directives").ExportPdfDirectives | null;
+  if (typeof brief === "string" && brief.trim()) {
+    try {
+      const grounded = await interpretExportBrief(brief, { target: "pdf" });
+      briefPdfDirectives = grounded.directives.pdf ?? null;
+    } catch {
+      briefPdfDirectives = null;
+    }
+  }
+
+  const resolvedPresetId = (presetId as PdfPresetId | null) ?? "pdf-classic";
+  const presetEntry = getPdfPresetCatalogEntry(resolvedPresetId);
+  const template =
+    templateOpt ??
+    (presetEntry ? themeForPdfPreset(resolvedPresetId) : "classic");
+  const typePack =
+    typePackOpt ??
+    (presetEntry ? typePackForPdfPreset(resolvedPresetId) : null);
+  const pdfDirectives = resolvePdfDirectivesForPreset(
+    resolvedPresetId,
+    briefPdfDirectives
+  );
   const workDir = path.join(tmpdir(), `ttb-pdf-${randomBytes(8).toString("hex")}`);
   const photosDir = path.join(workDir, "photos");
   await mkdir(photosDir, { recursive: true });
@@ -173,6 +210,8 @@ export async function preparePdfAssets(
     format,
     template,
     coverPhotoId,
+    pdfDirectives,
+    typePack,
     mapImagePath: mapDual.local?.relativePath ?? null,
     mapFlightImagePath: mapDual.flights?.relativePath ?? null,
     mapRouteMode: mapDual.local?.routeMode ?? mapDual.flights?.routeMode ?? null,

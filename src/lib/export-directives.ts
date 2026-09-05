@@ -306,6 +306,18 @@ export function summarizeHtmlDirectives(html: ExportHtmlDirectives): string {
   return bits.join(" · ");
 }
 
+/** Human-readable chip summary of PDF directives. */
+export function summarizePdfDirectives(pdf: ExportPdfDirectives): string {
+  const label = (e: Emphasis, high: string, low: string, mid: string) =>
+    e === "high" ? high : e === "low" ? low : mid;
+  return [
+    label(pdf.imageEmphasis, "fotos protagonistas", "fotos discretas", "fotos medias"),
+    label(pdf.proseDensity, "más crónica", "poca prosa", "prosa equilibrada"),
+    label(pdf.preferFullBleed, "mucho full-bleed", "poco full-bleed", "full-bleed medio"),
+    label(pdf.mosaicBias, "más mosaicos", "pocos mosaicos", "mosaicos normales"),
+  ].join(" · ");
+}
+
 /** Body class list from HTML directives (for CSS knobs). */
 export function htmlDirectiveBodyClasses(html: ExportHtmlDirectives): string {
   return [

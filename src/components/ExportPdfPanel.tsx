@@ -14,6 +14,12 @@ import {
 } from "@/lib/export-pdf-pipeline";
 import type { PdfPageFormat, PdfTemplate } from "@/lib/export-pdf-types";
 import { PDF_TEMPLATES } from "@/lib/export-pdf-types";
+import {
+  featuredPdfPresetCatalog,
+  type PdfPresetId,
+} from "@/lib/export/pdf-preset-catalog";
+
+const PDF_PRESETS = featuredPdfPresetCatalog();
 
 const FORMATS: { id: PdfPageFormat; name: string; description: string }[] = [
   {
@@ -49,6 +55,20 @@ export default function ExportPdfPanel({
 }: ExportPdfPanelProps) {
   const [format, setFormat] = useState<PdfPageFormat>("a4-landscape");
   const [template, setTemplate] = useState<PdfTemplate>("classic");
+  const [presetId, setPresetId] = useState<PdfPresetId>("pdf-classic");
+  const [brief, setBrief] = useState("");
+  const [interpreting, setInterpreting] = useState(false);
+  const [interpretation, setInterpretation] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [presetSuggestion, setPresetSuggestion] = useState<{
+    suggestedPresetId: PdfPresetId;
+    label: string;
+    tagline: string;
+    score: number;
+    reasons: string[];
+    unmet: string[];
+    differsFromUi: boolean;
+  } | null>(null);
   const [coverPhotoId, setCoverPhotoId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [pdfAvailable, setPdfAvailable] = useState<boolean | null>(null);
@@ -73,6 +93,50 @@ export default function ExportPdfPanel({
     };
   }, []);
 
+  const handleInterpret = async () => {
+    setInterpreting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/export-brief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brief,
+          target: "pdf",
+          hasJournal,
+          photoCount,
+          uiPdfPreset: presetId,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        interpretation?: string | null;
+        summary?: string | null;
+        message?: string;
+        warning?: string | null;
+        pdfPresetMatch?: {
+          suggestedPresetId: PdfPresetId;
+          label: string;
+          tagline: string;
+          score: number;
+          reasons: string[];
+          unmet: string[];
+          differsFromUi: boolean;
+          theme?: PdfTemplate;
+        } | null;
+      };
+      if (!res.ok) throw new Error(data.error ?? "Error al interpretar el brief");
+      setInterpretation(data.interpretation ?? data.message ?? null);
+      setSummary(data.summary ?? null);
+      setPresetSuggestion(data.pdfPresetMatch ?? null);
+      if (data.warning) setError(data.warning);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al interpretar");
+    } finally {
+      setInterpreting(false);
+    }
+  };
+
   const handleExport = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -90,6 +154,8 @@ export default function ExportPdfPanel({
           format,
           template,
           coverPhotoId,
+          presetId,
+          brief: brief.trim() || undefined,
         }),
       });
 
@@ -174,7 +240,7 @@ export default function ExportPdfPanel({
       setCurrentStep(null);
       setStepMessage(null);
     }
-  }, [coverPhotoId, format, template, travelId]);
+  }, [brief, coverPhotoId, format, presetId, template, travelId]);
 
   return (
     <div className="space-y-4">
@@ -201,7 +267,124 @@ export default function ExportPdfPanel({
       </div>
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold text-fg-secondary">Plantilla</h3>
+        
+      <div>
+        <h3 className="mb-2 text-sm font-semibold text-fg-secondary">Look del álbum</h3>
+        <p className="mb-3 text-xs text-fg-secondary">
+          Misma tubería de impresión; cambia tema, tipografía tipada y knobs de maquetación (full-bleed, mosaicos, prosa).
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {PDF_PRESETS.map((preset) => {
+            const selected = presetId === preset.id;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  setPresetId(preset.id);
+                  setTemplate(preset.theme);
+                  setPresetSuggestion(null);
+                }}
+                disabled={loading || interpreting}
+                className={`rounded-xl border-2 p-3 text-left transition ${
+                  selected
+                    ? "select-card-violet-active"
+                    : "border-[var(--border)] hover:border-[var(--border-strong)]"
+                }`}
+              >
+                <p className="font-medium text-fg">{preset.label}</p>
+                <p className="mt-1 text-xs text-fg-secondary">{preset.tagline}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label htmlFor="pdf-export-brief" className="block text-sm font-semibold text-fg-secondary">
+          Indicaciones para este PDF (opcional)
+        </label>
+        <textarea
+          id="pdf-export-brief"
+          value={brief}
+          onChange={(e) => {
+            setBrief(e.target.value);
+            setInterpretation(null);
+            setSummary(null);
+            setPresetSuggestion(null);
+          }}
+          disabled={loading || interpreting}
+          rows={3}
+          placeholder="Ej.: poca prosa, fotos a sangre y mosaicos; o guía con más crónica…"
+          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-secondary/70 focus:border-accent-cyan focus:outline-none"
+        />
+        <p className="text-xs text-fg-secondary">
+          Texto libre → knobs tipados (énfasis foto, prosa, full-bleed, mosaico) y sugerencia de look.
+          El preset UI manda hasta que pulses «Aplicar sugerencia».
+        </p>
+        <button
+          type="button"
+          onClick={() => void handleInterpret()}
+          disabled={loading || interpreting || !brief.trim()}
+          className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+        >
+          {interpreting ? "Interpretando…" : "Interpretar brief"}
+        </button>
+        {(interpretation || summary) && (
+          <p className="callout text-sm text-fg">
+            {interpretation}
+            {summary ? (
+              <span className="mt-1 block text-xs text-fg-secondary">{summary}</span>
+            ) : null}
+          </p>
+        )}
+        {presetSuggestion && (
+          <div className="callout callout-info space-y-2 text-sm">
+            <p className="font-semibold text-fg">
+              Sugerencia: {presetSuggestion.label}
+              {presetSuggestion.differsFromUi ? "" : " (ya elegido)"}
+              <span className="ml-1 font-normal text-fg-secondary">
+                · score {Math.round(presetSuggestion.score * 100)}%
+              </span>
+            </p>
+            {presetSuggestion.tagline ? (
+              <p className="text-xs text-fg-secondary">{presetSuggestion.tagline}</p>
+            ) : null}
+            {presetSuggestion.reasons.length > 0 && (
+              <p className="text-xs text-fg-secondary">
+                {presetSuggestion.reasons.join(" · ")}
+              </p>
+            )}
+            {presetSuggestion.unmet.length > 0 && (
+              <p className="text-xs text-fg-secondary">
+                No aplica: {presetSuggestion.unmet.join("; ")}
+              </p>
+            )}
+            {presetSuggestion.differsFromUi && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPresetId(presetSuggestion.suggestedPresetId);
+                  const entry = PDF_PRESETS.find(
+                    (p) => p.id === presetSuggestion.suggestedPresetId
+                  );
+                  if (entry) setTemplate(entry.theme);
+                  setPresetSuggestion({
+                    ...presetSuggestion,
+                    differsFromUi: false,
+                  });
+                }}
+                disabled={loading || interpreting}
+                className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+              >
+                Aplicar sugerencia
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+<h3 className="mb-2 text-sm font-semibold text-fg-secondary">Plantilla</h3>
         <div className="grid gap-3 sm:grid-cols-3">
           {PDF_TEMPLATES.map((t) => (
             <button
