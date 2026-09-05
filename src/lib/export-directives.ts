@@ -20,9 +20,9 @@ export interface ExportHtmlDirectives {
   placeCallouts: Emphasis;
   mapEmphasis: Emphasis;
   /**
-   * Soft theme preference from free-text brief.
-   * Applied only when the UI template is still a light default (magazine / editorial-clean):
-   * dark → dark-photo-journey. Explicit UI template choice still wins otherwise.
+   * Theme preference from free-text brief.
+   * Applied as CSS knobs (`export-dir--theme-dark|light`) on the current layout.
+   * Does not switch HTML structure; pick another template only if the user asks expressly.
    */
   theme?: HtmlTheme;
   preferSectionOrder?: Array<

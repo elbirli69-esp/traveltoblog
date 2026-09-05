@@ -266,7 +266,7 @@ const galleryIdx = htmlOut.indexOf('id="galeria"');
 const guideIdx = htmlOut.indexOf('id="guia"');
 assert.ok(galleryIdx > 0 && guideIdx > galleryIdx, "gallery before guide by default when high");
 
-// --- dark theme soft-switches magazine → dark-photo-journey ---
+// --- dark theme keeps magazine structure (no soft-switch to dark-photo) ---
 const darkBrief = groundExportBriefHeuristically(
   "Quiero modo oscuro, fotos grandes y formas destacadas, sin repetir fotos",
   { target: "html" }
@@ -277,12 +277,13 @@ assert.ok(summarizeHtmlDirectives(darkBrief.html).includes("modo oscuro"));
 
 assert.equal(
   resolveHtmlTemplateFromBrief("magazine", darkBrief.html),
-  "dark-photo-journey"
+  "magazine",
+  "theme must not change HTML structure"
 );
 assert.equal(
   resolveHtmlTemplateFromBrief("dark-photo-journey", { ...darkBrief.html, theme: "light" }),
   "dark-photo-journey",
-  "UI dark template wins over light brief"
+  "UI template always wins for structure"
 );
 
 const darkHtml = buildExportHtml({
@@ -316,8 +317,13 @@ const darkHtml = buildExportHtml({
 });
 assert.ok(darkHtml.includes("export-dir--theme-dark"), "dark theme body class");
 assert.ok(
-  /--bg:\s*#0/i.test(darkHtml) || darkHtml.includes("dark-photo-journey") || darkHtml.includes("#0b1120") || darkHtml.includes("#0c0a09"),
-  "dark template palette applied"
+  darkHtml.includes("export-dir--theme-dark") &&
+    (darkHtml.includes("--bg: #0c0a09") || darkHtml.includes("color-scheme: dark")),
+  "dark theme CSS knobs applied on magazine structure"
+);
+assert.ok(
+  darkHtml.includes('id="guia"') || darkHtml.includes("mag-"),
+  "magazine structure preserved under dark theme"
 );
 
 const guideSlice =

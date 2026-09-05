@@ -103,6 +103,15 @@ export default function ExportHtmlPanel({
   const [brief, setBrief] = useState("");
   const [interpretation, setInterpretation] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
+  const [templateSuggestion, setTemplateSuggestion] = useState<{
+    suggestedTemplateId: ExportTemplateId;
+    label: string;
+    score: number;
+    reasons: string[];
+    unmet: string[];
+    structureLocked: boolean;
+    differsFromUi: boolean;
+  } | null>(null);
   const [interpreting, setInterpreting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [previewing, setPreviewing] = useState(false);
@@ -131,6 +140,7 @@ export default function ExportHtmlPanel({
           target: "html",
           hasJournal,
           travelTitle: undefined,
+          uiTemplate: template,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -139,12 +149,22 @@ export default function ExportHtmlPanel({
         summary?: string | null;
         message?: string;
         warning?: string | null;
+        templateMatch?: {
+          suggestedTemplateId: ExportTemplateId;
+          label: string;
+          score: number;
+          reasons: string[];
+          unmet: string[];
+          structureLocked: boolean;
+          differsFromUi: boolean;
+        } | null;
       };
       if (!res.ok) {
         throw new Error(data.error ?? "Error al interpretar el brief");
       }
       setInterpretation(data.interpretation ?? data.message ?? null);
       setSummary(data.summary ?? null);
+      setTemplateSuggestion(data.templateMatch ?? null);
       if (data.warning) setError(data.warning);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al interpretar");
@@ -441,6 +461,7 @@ export default function ExportHtmlPanel({
             setBrief(e.target.value);
             setInterpretation(null);
             setSummary(null);
+            setTemplateSuggestion(null);
           }}
           disabled={busy}
           rows={3}
@@ -449,9 +470,10 @@ export default function ExportHtmlPanel({
         />
         <p className="text-xs text-fg-secondary">
           Texto libre: aterrizamos peso de fotos (tamaño, no repeticiones), galería, prosa,
-          mapa, guía y tema (claro/oscuro) a knobs del export. Tipología y plantilla siguen
-          mandando la estructura; si pides modo oscuro con Magazine, pasamos a Dark Photo
-          Journey. Cada foto sale como máximo una vez en «El viaje» y otra en la galería.
+          mapa, guía y tema (claro/oscuro) a knobs del export. La plantilla elegida fija la
+          estructura; el brief no la cambia salvo que lo pidas expresamente (p. ej. «cambia a
+          Visual Journey»). Modo oscuro se aplica sobre la misma estructura. Cada foto sale
+          como máximo una vez en «El viaje» y otra en la galería.
         </p>
         <button
           type="button"
@@ -468,6 +490,42 @@ export default function ExportHtmlPanel({
               <span className="mt-1 block text-xs text-fg-secondary">{summary}</span>
             ) : null}
           </p>
+        )}
+        {templateSuggestion && (
+          <div className="callout callout-info space-y-2 text-sm">
+            <p className="font-semibold text-fg">
+              Sugerencia: {templateSuggestion.label}
+              {templateSuggestion.differsFromUi ? "" : " (ya elegida)"}
+              <span className="ml-1 font-normal text-fg-secondary">
+                · score {Math.round(templateSuggestion.score * 100)}%
+              </span>
+            </p>
+            {templateSuggestion.reasons.length > 0 && (
+              <p className="text-xs text-fg-secondary">
+                {templateSuggestion.reasons.join(" · ")}
+              </p>
+            )}
+            {templateSuggestion.unmet.length > 0 && (
+              <p className="text-xs text-fg-secondary">
+                No aplica: {templateSuggestion.unmet.join("; ")}
+              </p>
+            )}
+            {templateSuggestion.structureLocked && (
+              <p className="text-xs text-fg-secondary">
+                Estructura fijada a la plantilla actual. Para cambiar de layout, dilo en el brief.
+              </p>
+            )}
+            {templateSuggestion.differsFromUi && (
+              <button
+                type="button"
+                onClick={() => setTemplate(templateSuggestion.suggestedTemplateId)}
+                disabled={busy}
+                className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+              >
+                Aplicar sugerencia
+              </button>
+            )}
+          </div>
         )}
       </div>
 
