@@ -7,6 +7,27 @@ import {
 } from "@/lib/export-reel";
 import { interpretExportBrief } from "@/lib/export-brief";
 import { isoToDateKey } from "@/lib/travel-dates";
+import {
+  getReelPresetCatalogEntry,
+  resolveReelDirectivesForPreset,
+  type ReelPresetId,
+} from "@/lib/export/reel-preset-catalog";
+
+const REEL_PRESETS: ReelPresetId[] = [
+  "balanced-story",
+  "calm-story",
+  "punchy-highlights",
+  "textless-photos",
+  "place-labels",
+  "map-pulse",
+];
+
+function parseReelPresetId(raw: unknown): ReelPresetId {
+  if (typeof raw === "string" && (REEL_PRESETS as string[]).includes(raw)) {
+    return raw as ReelPresetId;
+  }
+  return "balanced-story";
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,6 +36,8 @@ export async function POST(request: NextRequest) {
       durationSeconds?: ReelDurationPreset;
       /** Free-text creative brief — grounded to typed reel directives. */
       brief?: string;
+      /** Montage preset from UI catalog (defaults to balanced-story). */
+      presetId?: string;
     };
 
     if (!body.travelId) {
@@ -24,6 +47,7 @@ export async function POST(request: NextRequest) {
     // UI duration selector always wins over any duration hinted in the brief.
     const durationSeconds = parseReelDuration(body.durationSeconds);
     const brief = typeof body.brief === "string" ? body.brief.trim() : "";
+    const presetId = parseReelPresetId(body.presetId);
 
     const travel = await prisma.travel.findUnique({
       where: { id: body.travelId },
@@ -103,14 +127,23 @@ export async function POST(request: NextRequest) {
         })
       : null;
 
+    // Preset defaults ⊕ brief knobs (brief wins). UI duration still wins above.
+    const reelDirectives = resolveReelDirectivesForPreset(
+      presetId,
+      briefResult?.directives.reel ?? null
+    );
+    const presetLabel = getReelPresetCatalogEntry(presetId)?.label ?? presetId;
+
     const manifest = buildReelManifest({
       title: travel.title,
       participants: travel.users.map((u) => u.alias),
       startDate: travel.startDate,
       endDate: travel.endDate,
       durationSeconds,
-      reelDirectives: briefResult?.directives.reel ?? null,
-      briefInterpretation: briefResult?.directives.interpretation ?? null,
+      reelDirectives,
+      briefInterpretation: briefResult?.directives.interpretation
+        ? `${briefResult.directives.interpretation} · preset ${presetLabel}`
+        : `Preset: ${presetLabel}`,
       photos: travel.photos.map((p) => {
         const placeNotes =
           p.place?.notes?.map((n) => n.text.trim()).filter(Boolean) ?? [];

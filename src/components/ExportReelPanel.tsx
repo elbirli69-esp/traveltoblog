@@ -18,6 +18,12 @@ import {
   encodeInstagramReelMp4,
   type ReelEncodeProgress,
 } from "@/lib/export-reel-encode";
+import {
+  featuredReelPresetCatalog,
+  type ReelPresetId,
+} from "@/lib/export/reel-preset-catalog";
+
+const REEL_PRESETS = featuredReelPresetCatalog();
 
 interface ExportReelPanelProps {
   travelId: string;
@@ -31,7 +37,17 @@ export default function ExportReelPanel({
   photoCount = 0,
 }: ExportReelPanelProps) {
   const [durationSeconds, setDurationSeconds] = useState<ReelDurationPreset>(30);
+  const [presetId, setPresetId] = useState<ReelPresetId>("balanced-story");
   const [brief, setBrief] = useState("");
+  const [presetSuggestion, setPresetSuggestion] = useState<{
+    suggestedPresetId: ReelPresetId;
+    label: string;
+    tagline: string;
+    score: number;
+    reasons: string[];
+    unmet: string[];
+    differsFromUi: boolean;
+  } | null>(null);
   const [interpretation, setInterpretation] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [interpreting, setInterpreting] = useState(false);
@@ -63,6 +79,7 @@ export default function ExportReelPanel({
           durationSeconds,
           photoCount,
           travelTitle,
+          uiReelPreset: presetId,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -71,12 +88,22 @@ export default function ExportReelPanel({
         summary?: string | null;
         message?: string;
         warning?: string | null;
+        reelPresetMatch?: {
+          suggestedPresetId: ReelPresetId;
+          label: string;
+          tagline: string;
+          score: number;
+          reasons: string[];
+          unmet: string[];
+          differsFromUi: boolean;
+        } | null;
       };
       if (!res.ok) {
         throw new Error(data.error ?? "Error al interpretar el brief");
       }
       setInterpretation(data.interpretation ?? data.message ?? null);
       setSummary(data.summary ?? null);
+      setPresetSuggestion(data.reelPresetMatch ?? null);
       if (data.warning) {
         setError(data.warning);
       }
@@ -107,6 +134,7 @@ export default function ExportReelPanel({
           travelId,
           durationSeconds,
           brief: brief.trim() || undefined,
+          presetId,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as ReelManifest & {
@@ -222,6 +250,42 @@ export default function ExportReelPanel({
         })}
       </fieldset>
 
+      <fieldset className="space-y-2" disabled={loading}>
+        <legend className="mb-2 text-sm font-medium text-accent-cyan">
+          Estilo de montaje
+        </legend>
+        <p className="text-xs text-fg-secondary">
+          Misma estructura vertical; cambia ritmo, textos y cortes. La duración de arriba siempre manda.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {REEL_PRESETS.map((preset) => {
+            const selected = presetId === preset.id;
+            return (
+              <label
+                key={preset.id}
+                className={`option-radio ${selected ? "option-radio-active" : ""}`}
+              >
+                <input
+                  type="radio"
+                  name="reel-preset"
+                  value={preset.id}
+                  checked={selected}
+                  onChange={() => {
+                    setPresetId(preset.id);
+                    setPresetSuggestion(null);
+                  }}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="block text-sm font-semibold text-fg">{preset.label}</span>
+                  <span className="block text-xs text-fg-secondary">{preset.tagline}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+
       <div className="space-y-2">
         <label htmlFor="reel-export-brief" className="block text-sm font-medium text-accent-cyan">
           Indicaciones para este Reel (opcional)
@@ -233,6 +297,7 @@ export default function ExportReelPanel({
             setBrief(e.target.value);
             setInterpretation(null);
             setSummary(null);
+            setPresetSuggestion(null);
           }}
           disabled={loading || interpreting}
           rows={3}
@@ -240,8 +305,9 @@ export default function ExportReelPanel({
           className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-secondary/70 focus:border-accent-cyan focus:outline-none"
         />
         <p className="text-xs text-fg-secondary">
-          Texto libre: aterrizamos lo que pidas (ritmo, nº de fotos, textos, fundidos…) a los
-          knobs del Reel. La duración de arriba manda si hay conflicto.
+          Texto libre: aterrizamos ritmo, nº de fotos, textos y fundidos a knobs del Reel, y
+          sugerimos un preset de montaje. La duración UI manda; el preset no se cambia solo —
+          usa «Aplicar sugerencia».
         </p>
         <div className="flex flex-wrap gap-2">
           <button
@@ -261,6 +327,48 @@ export default function ExportReelPanel({
             ) : null}
           </p>
         )}
+
+        {presetSuggestion && (
+          <div className="callout callout-info space-y-2 text-sm">
+            <p className="font-semibold text-fg">
+              Sugerencia: {presetSuggestion.label}
+              {presetSuggestion.differsFromUi ? "" : " (ya elegido)"}
+              <span className="ml-1 font-normal text-fg-secondary">
+                · score {Math.round(presetSuggestion.score * 100)}%
+              </span>
+            </p>
+            {presetSuggestion.tagline ? (
+              <p className="text-xs text-fg-secondary">{presetSuggestion.tagline}</p>
+            ) : null}
+            {presetSuggestion.reasons.length > 0 && (
+              <p className="text-xs text-fg-secondary">
+                {presetSuggestion.reasons.join(" · ")}
+              </p>
+            )}
+            {presetSuggestion.unmet.length > 0 && (
+              <p className="text-xs text-fg-secondary">
+                No aplica: {presetSuggestion.unmet.join("; ")}
+              </p>
+            )}
+            {presetSuggestion.differsFromUi && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPresetId(presetSuggestion.suggestedPresetId);
+                  setPresetSuggestion({
+                    ...presetSuggestion,
+                    differsFromUi: false,
+                  });
+                }}
+                disabled={loading}
+                className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+              >
+                Aplicar sugerencia
+              </button>
+            )}
+          </div>
+        )}
+
       </div>
 
       <button

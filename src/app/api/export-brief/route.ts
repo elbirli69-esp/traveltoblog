@@ -11,6 +11,11 @@ import {
   matchTemplateCatalog,
 } from "@/lib/export/template-match";
 import type { ExportTemplateId } from "@/lib/export/template-catalog";
+import { matchReelPresetCatalog } from "@/lib/export/reel-preset-match";
+import {
+  getReelPresetCatalogEntry,
+  type ReelPresetId,
+} from "@/lib/export/reel-preset-catalog";
 
 const HTML_TEMPLATES: ExportTemplateId[] = [
   "magazine",
@@ -19,11 +24,27 @@ const HTML_TEMPLATES: ExportTemplateId[] = [
   "dark-photo-journey",
 ];
 
+const REEL_PRESETS: ReelPresetId[] = [
+  "balanced-story",
+  "calm-story",
+  "punchy-highlights",
+  "textless-photos",
+  "place-labels",
+  "map-pulse",
+];
+
 function parseUiTemplate(raw: unknown): ExportTemplateId {
   if (typeof raw === "string" && (HTML_TEMPLATES as string[]).includes(raw)) {
     return raw as ExportTemplateId;
   }
   return "magazine";
+}
+
+function parseUiReelPreset(raw: unknown): ReelPresetId {
+  if (typeof raw === "string" && (REEL_PRESETS as string[]).includes(raw)) {
+    return raw as ReelPresetId;
+  }
+  return "balanced-story";
 }
 
 /**
@@ -41,6 +62,7 @@ export async function POST(request: NextRequest) {
       hasJournal?: boolean;
       travelTitle?: string;
       uiTemplate?: string;
+      uiReelPreset?: string;
     };
 
     const brief = typeof body.brief === "string" ? body.brief : "";
@@ -51,12 +73,14 @@ export async function POST(request: NextRequest) {
         summary: null,
         message: "Brief vacío: se usará el estilo por defecto.",
         templateMatch: null,
+        reelPresetMatch: null,
       });
     }
 
     const target = body.target ?? "all";
     const durationSeconds = parseReelDuration(body.durationSeconds);
     const uiTemplate = parseUiTemplate(body.uiTemplate);
+    const uiReelPreset = parseUiReelPreset(body.uiReelPreset);
     const result = await interpretExportBrief(brief, {
       target,
       durationSeconds,
@@ -97,6 +121,28 @@ export async function POST(request: NextRequest) {
       };
     }
 
+    let reelPresetMatch = null;
+    if ((target === "reel" || target === "all") && result.directives.reel) {
+      const match = matchReelPresetCatalog({
+        brief,
+        directives: result.directives.reel,
+        uiPreset: uiReelPreset,
+      });
+      reelPresetMatch = {
+        suggestedPresetId: match.suggestedPresetId,
+        label: match.entry.label,
+        tagline: match.entry.tagline,
+        score: Math.round(match.score * 100) / 100,
+        reasons: match.reasons,
+        unmet: match.unmet,
+        differsFromUi: match.differsFromUi,
+      };
+      // Validate catalog entry still exists (defensive).
+      if (!getReelPresetCatalogEntry(match.suggestedPresetId)) {
+        reelPresetMatch = null;
+      }
+    }
+
     return NextResponse.json({
       directives: result.directives,
       fromAi: result.fromAi,
@@ -104,6 +150,7 @@ export async function POST(request: NextRequest) {
       summary,
       interpretation: result.directives.interpretation ?? null,
       templateMatch,
+      reelPresetMatch,
     });
   } catch (error) {
     console.error("POST /api/export-brief", error);
