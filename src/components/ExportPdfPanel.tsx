@@ -18,6 +18,10 @@ import {
   featuredPdfPresetCatalog,
   type PdfPresetId,
 } from "@/lib/export/pdf-preset-catalog";
+import {
+  fetchTravelExportPrefs,
+  saveTravelExportPrefs,
+} from "@/lib/export-prefs";
 
 const PDF_PRESETS = featuredPdfPresetCatalog();
 
@@ -93,7 +97,36 @@ export default function ExportPdfPanel({
     };
   }, []);
 
-  const handleInterpret = async () => {
+  
+  useEffect(() => {
+    let cancelled = false;
+    void fetchTravelExportPrefs(travelId).then((prefs) => {
+      if (cancelled || !prefs) return;
+      if (prefs.exportBrief) setBrief(prefs.exportBrief);
+      if (prefs.pdfPresetId) {
+        const id = prefs.pdfPresetId as PdfPresetId;
+        setPresetId(id);
+        const entry = PDF_PRESETS.find((p) => p.id === id);
+        if (entry) setTemplate(entry.theme);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [travelId]);
+
+  const persistPdfPrefs = useCallback(
+    (patch: {
+      exportBrief?: string | null;
+      pdfPresetId?: string | null;
+      exportBriefCache?: string | null;
+    }) => {
+      void saveTravelExportPrefs(travelId, patch);
+    },
+    [travelId]
+  );
+
+const handleInterpret = async () => {
     setInterpreting(true);
     setError(null);
     try {
@@ -130,6 +163,17 @@ export default function ExportPdfPanel({
       setSummary(data.summary ?? null);
       setPresetSuggestion(data.pdfPresetMatch ?? null);
       if (data.warning) setError(data.warning);
+      persistPdfPrefs({
+        exportBrief: brief.trim() || null,
+        pdfPresetId: presetId,
+        exportBriefCache: JSON.stringify({
+          target: "pdf",
+          interpretation: data.interpretation ?? data.message ?? null,
+          summary: data.summary ?? null,
+          pdfPresetMatch: data.pdfPresetMatch ?? null,
+          at: new Date().toISOString(),
+        }),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al interpretar");
     } finally {
@@ -284,6 +328,7 @@ export default function ExportPdfPanel({
                   setPresetId(preset.id);
                   setTemplate(preset.theme);
                   setPresetSuggestion(null);
+                  persistPdfPrefs({ pdfPresetId: preset.id, exportBrief: brief.trim() || null });
                 }}
                 disabled={loading || interpreting}
                 className={`rounded-xl border-2 p-3 text-left transition ${

@@ -21,6 +21,10 @@ import {
   defaultTypePackForTemplate,
   type TypePackId,
 } from "@/lib/export/type-packs";
+import {
+  fetchTravelExportPrefs,
+  saveTravelExportPrefs,
+} from "@/lib/export-prefs";
 
 export type ExportTemplateId = "magazine" | "visual-journey" | "editorial-clean" | "dark-photo-journey";
 export type ExportFormat = "zip" | "html";
@@ -145,6 +149,39 @@ export default function ExportHtmlPanel({
     [format, previewing]
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    void fetchTravelExportPrefs(travelId).then((prefs) => {
+      if (cancelled || !prefs) return;
+      if (prefs.exportBrief) setBrief(prefs.exportBrief);
+      if (prefs.htmlTemplateId) {
+        setTemplate(prefs.htmlTemplateId as ExportTemplateId);
+      }
+      if (prefs.htmlThemePackId) {
+        setThemePack(prefs.htmlThemePackId as ThemePackId);
+      }
+      if (prefs.htmlTypePackId) {
+        setTypePack(prefs.htmlTypePackId as TypePackId);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [travelId]);
+
+  const persistHtmlPrefs = useCallback(
+    (patch: {
+      exportBrief?: string | null;
+      htmlTemplateId?: string | null;
+      htmlThemePackId?: string | null;
+      htmlTypePackId?: string | null;
+      exportBriefCache?: string | null;
+    }) => {
+      void saveTravelExportPrefs(travelId, patch);
+    },
+    [travelId]
+  );
+
   const handleInterpret = async () => {
     setInterpreting(true);
     setError(null);
@@ -207,6 +244,21 @@ export default function ExportHtmlPanel({
         reasons,
       });
       if (data.warning) setError(data.warning);
+      persistHtmlPrefs({
+        exportBrief: brief.trim() || null,
+        htmlTemplateId: template,
+        htmlThemePackId: themePack,
+        htmlTypePackId: typePack,
+        exportBriefCache: JSON.stringify({
+          target: "html",
+          interpretation: data.interpretation ?? data.message ?? null,
+          summary: data.summary ?? null,
+          templateMatch: data.templateMatch ?? null,
+          themePackMatch: data.themePackMatch ?? null,
+          typePackMatch: data.typePackMatch ?? null,
+          at: new Date().toISOString(),
+        }),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al interpretar");
     } finally {
@@ -433,9 +485,16 @@ export default function ExportHtmlPanel({
               type="button"
               onClick={() => {
                 setTemplate(t.id);
-                setThemePack(defaultThemePackForTemplate(t.id));
-                setTypePack(defaultTypePackForTemplate(t.id));
+                const nextTheme = defaultThemePackForTemplate(t.id);
+                const nextType = defaultTypePackForTemplate(t.id);
+                setThemePack(nextTheme);
+                setTypePack(nextType);
                 setPackSuggestion(null);
+                persistHtmlPrefs({
+                  htmlTemplateId: t.id,
+                  htmlThemePackId: nextTheme,
+                  htmlTypePackId: nextType,
+                });
               }}
               disabled={busy}
               className={`select-card p-4 ${template === t.id ? "select-card-active" : ""}`}
@@ -454,6 +513,7 @@ export default function ExportHtmlPanel({
             value={themePack}
             onChange={(e) => {
               setThemePack(e.target.value as ThemePackId);
+              persistHtmlPrefs({ htmlThemePackId: e.target.value });
               setPackSuggestion((prev) =>
                 prev ? { ...prev, themePack: null } : prev
               );
@@ -474,6 +534,7 @@ export default function ExportHtmlPanel({
             value={typePack}
             onChange={(e) => {
               setTypePack(e.target.value as TypePackId);
+              persistHtmlPrefs({ htmlTypePackId: e.target.value });
               setPackSuggestion((prev) =>
                 prev ? { ...prev, typePack: null } : prev
               );

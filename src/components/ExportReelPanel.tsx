@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import JSZip from "jszip";
 import {
   DownloadCancelledError,
@@ -22,6 +22,10 @@ import {
   featuredReelPresetCatalog,
   type ReelPresetId,
 } from "@/lib/export/reel-preset-catalog";
+import {
+  fetchTravelExportPrefs,
+  saveTravelExportPrefs,
+} from "@/lib/export-prefs";
 
 const REEL_PRESETS = featuredReelPresetCatalog();
 
@@ -66,7 +70,33 @@ export default function ExportReelPanel({
     return progress.message;
   }, [progress]);
 
-  const handleInterpret = async () => {
+  
+  useEffect(() => {
+    let cancelled = false;
+    void fetchTravelExportPrefs(travelId).then((prefs) => {
+      if (cancelled || !prefs) return;
+      if (prefs.exportBrief) setBrief(prefs.exportBrief);
+      if (prefs.reelPresetId) {
+        setPresetId(prefs.reelPresetId as ReelPresetId);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [travelId]);
+
+  const persistReelPrefs = useCallback(
+    (patch: {
+      exportBrief?: string | null;
+      reelPresetId?: string | null;
+      exportBriefCache?: string | null;
+    }) => {
+      void saveTravelExportPrefs(travelId, patch);
+    },
+    [travelId]
+  );
+
+const handleInterpret = async () => {
     setInterpreting(true);
     setError(null);
     try {
@@ -104,9 +134,18 @@ export default function ExportReelPanel({
       setInterpretation(data.interpretation ?? data.message ?? null);
       setSummary(data.summary ?? null);
       setPresetSuggestion(data.reelPresetMatch ?? null);
-      if (data.warning) {
-        setError(data.warning);
-      }
+      if (data.warning) setError(data.warning);
+      persistReelPrefs({
+        exportBrief: brief.trim() || null,
+        reelPresetId: presetId,
+        exportBriefCache: JSON.stringify({
+          target: "reel",
+          interpretation: data.interpretation ?? data.message ?? null,
+          summary: data.summary ?? null,
+          reelPresetMatch: data.reelPresetMatch ?? null,
+          at: new Date().toISOString(),
+        }),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al interpretar");
     } finally {
@@ -273,6 +312,7 @@ export default function ExportReelPanel({
                   onChange={() => {
                     setPresetId(preset.id);
                     setPresetSuggestion(null);
+                    persistReelPrefs({ reelPresetId: preset.id, exportBrief: brief.trim() || null });
                   }}
                   className="mt-1"
                 />
