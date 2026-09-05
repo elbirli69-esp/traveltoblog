@@ -533,6 +533,14 @@ export function selectReelFrames(
   );
   const pickedIds = new Set<string>();
   const frames: ReelFramePlan[] = [];
+  const pickedMeta: Array<{
+    id: string;
+    photoId: string;
+    placeName?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    exifDateTime?: Date | string | null;
+  }> = [];
   const usedDayNotes = new Set<string>();
   // Higher bar: prefer captioned / placed / high-score shots when the pool is rich.
   const minPriority =
@@ -564,7 +572,24 @@ export function selectReelFrames(
       if (pass === 0 && priority < minPriority && pool.length > maxFrames) {
         continue;
       }
+      // Skip near-duplicates (same place or very close in time/GPS to an already picked clip).
+      if (
+        isNearDuplicateReelCandidate(candidate, pickedMeta, {
+          maxMeters: 45,
+          maxSeconds: 90,
+        })
+      ) {
+        continue;
+      }
       pickedIds.add(candidate.id);
+      pickedMeta.push({
+        id: candidate.id,
+        photoId: candidate.id,
+        placeName: candidate.placeName,
+        latitude: candidate.latitude,
+        longitude: candidate.longitude,
+        exifDateTime: candidate.exifDateTime,
+      });
       const realDay = dayKey === "_sin_fecha" ? null : dayKey;
       let dayNote: string | null = null;
       if (
@@ -775,15 +800,111 @@ function pickBestCoverFrame(frames: ReelFramePlan[]): ReelFramePlan | null {
         highlightScore: a.highlightScore,
         hasCaption: Boolean(a.caption),
         placeName: a.placeName,
-      }) + (a.hero ? 2 : 0);
+      }) +
+      (a.hero ? 3 : 0) +
+      // Prefer a still that already carries place context — better Instagram cover.
+      (a.placeName ? 1.5 : 0) +
+      ((a.highlightScore ?? 5) >= 8 ? 2 : 0);
     const scoreB =
       computeReelPhotoPriority({
         highlightScore: b.highlightScore,
         hasCaption: Boolean(b.caption),
         placeName: b.placeName,
-      }) + (b.hero ? 2 : 0);
+      }) +
+      (b.hero ? 3 : 0) +
+      (b.placeName ? 1.5 : 0) +
+      ((b.highlightScore ?? 5) >= 8 ? 2 : 0);
     return scoreB - scoreA;
   })[0]!;
+}
+
+/** Approx haversine distance in meters (good enough for near-dupe filtering). */
+function haversineMeters(
+  aLat: number,
+  aLng: number,
+  bLat: number,
+  bLng: number
+): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const lat1 = toRad(aLat);
+  const lat2 = toRad(bLat);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/**
+ * True when candidate is too similar to an already-picked frame
+ * (close GPS burst, or same place name + close capture time).
+ * Identical clock time alone is not enough — multi-day trips often share hours.
+ */
+export function isNearDuplicateReelCandidate(
+  candidate: {
+    id: string;
+    placeName?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    exifDateTime?: Date | string | null;
+  },
+  picked: Array<{
+    photoId?: string;
+    placeName?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    /** Some plan shapes store capture time on the source photo only — optional. */
+    exifDateTime?: Date | string | null;
+  }>,
+  opts: { maxMeters?: number; maxSeconds?: number } = {}
+): boolean {
+  const maxMeters = opts.maxMeters ?? 45;
+  const maxSeconds = opts.maxSeconds ?? 90;
+  const candPlace = candidate.placeName?.trim().toLowerCase() || null;
+  const candTime = candidate.exifDateTime
+    ? new Date(candidate.exifDateTime).getTime()
+    : null;
+
+  for (const prev of picked) {
+    if (prev.photoId && prev.photoId === candidate.id) return true;
+    const prevPlace = prev.placeName?.trim().toLowerCase() || null;
+    const samePlace = Boolean(candPlace && prevPlace && candPlace === prevPlace);
+
+    let closeGps = false;
+    if (
+      candidate.latitude != null &&
+      candidate.longitude != null &&
+      prev.latitude != null &&
+      prev.longitude != null
+    ) {
+      const meters = haversineMeters(
+        candidate.latitude,
+        candidate.longitude,
+        prev.latitude,
+        prev.longitude
+      );
+      closeGps = meters <= maxMeters;
+    }
+
+    let closeTime = false;
+    if (candTime != null && prev.exifDateTime) {
+      const prevTime = new Date(prev.exifDateTime).getTime();
+      if (Number.isFinite(prevTime) && Math.abs(candTime - prevTime) <= maxSeconds * 1000) {
+        closeTime = true;
+      }
+    }
+
+    // Near-dupe only for real clusters:
+    // - close GPS (burst / same spot), optionally reinforced by time
+    // - same place name + close capture time
+    // Time alone must NOT skip — fixtures and multi-day trips often share
+    // the same clock hour across different locations.
+    if (closeGps) return true;
+    if (samePlace && closeTime) return true;
+  }
+  return false;
 }
 
 function buildHookFrame(best: ReelFramePlan): ReelFramePlan {

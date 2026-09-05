@@ -288,11 +288,11 @@ export default function ExportHtmlPanel({
   }, [travelId]);
 
   useEffect(() => {
-    void fetch(`/api/travels/${travelId}/export-warnings`)
+    void fetch(`/api/travels/${travelId}/export-warnings?format=${format}`)
       .then((r) => r.json())
       .then((data) => setWarnings(data.warnings ?? []))
       .catch(() => setWarnings([]));
-  }, [travelId]);
+  }, [travelId, format]);
 
   const runExport = useCallback(
     async (mode: "download" | "preview") => {
@@ -596,8 +596,9 @@ export default function ExportHtmlPanel({
         </div>
         {format === "html" && (
           <p className="callout callout-warning mt-2 text-xs">
-            El HTML único embebe todas las fotos en un solo archivo: puede pesar mucho más y tardar
-            más en generarse. Para compartir o archivar, recomendamos ZIP.
+            El HTML único embebe todas las fotos en base64: con muchas imágenes el archivo puede
+            superar fácilmente decenas de MB y tardar más en generarse. Para compartir o archivar,
+            recomendamos ZIP (WebP + mapa offline).
           </p>
         )}
       </div>
