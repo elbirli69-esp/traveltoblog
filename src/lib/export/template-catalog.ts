@@ -15,7 +15,12 @@ export type ExportTemplateId =
 /** Codepath in buildExportHtml — do not switch unless the user expressly asks. */
 export type LayoutBase = "magazine" | "visual" | "editorial";
 
-export type ThemePack = "light-paper" | "light-clean" | "dark-cinema";
+export type ThemePack =
+  | "light-paper"
+  | "light-clean"
+  | "dark-cinema"
+  | "warm-sunset"
+  | "cool-coast";
 
 export type TemplateCapability =
   | "gallery"

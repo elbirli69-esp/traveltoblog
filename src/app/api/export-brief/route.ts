@@ -16,6 +16,16 @@ import {
   getReelPresetCatalogEntry,
   type ReelPresetId,
 } from "@/lib/export/reel-preset-catalog";
+import {
+  getThemePackEntry,
+  suggestThemePackFromBrief,
+  type ThemePackId,
+} from "@/lib/export/theme-packs";
+import {
+  getTypePackEntry,
+  suggestTypePackFromBrief,
+  type TypePackId,
+} from "@/lib/export/type-packs";
 
 const HTML_TEMPLATES: ExportTemplateId[] = [
   "magazine",
@@ -33,6 +43,16 @@ const REEL_PRESETS: ReelPresetId[] = [
   "map-pulse",
 ];
 
+const THEME_PACKS: ThemePackId[] = [
+  "light-paper",
+  "light-clean",
+  "dark-cinema",
+  "warm-sunset",
+  "cool-coast",
+];
+
+const TYPE_PACKS: TypePackId[] = ["serif-editorial", "sans-clean", "hybrid"];
+
 function parseUiTemplate(raw: unknown): ExportTemplateId {
   if (typeof raw === "string" && (HTML_TEMPLATES as string[]).includes(raw)) {
     return raw as ExportTemplateId;
@@ -45,6 +65,20 @@ function parseUiReelPreset(raw: unknown): ReelPresetId {
     return raw as ReelPresetId;
   }
   return "balanced-story";
+}
+
+function parseUiThemePack(raw: unknown): ThemePackId | null {
+  if (typeof raw === "string" && (THEME_PACKS as string[]).includes(raw)) {
+    return raw as ThemePackId;
+  }
+  return null;
+}
+
+function parseUiTypePack(raw: unknown): TypePackId | null {
+  if (typeof raw === "string" && (TYPE_PACKS as string[]).includes(raw)) {
+    return raw as TypePackId;
+  }
+  return null;
 }
 
 /**
@@ -63,6 +97,8 @@ export async function POST(request: NextRequest) {
       travelTitle?: string;
       uiTemplate?: string;
       uiReelPreset?: string;
+      uiThemePack?: string;
+      uiTypePack?: string;
     };
 
     const brief = typeof body.brief === "string" ? body.brief : "";
@@ -74,6 +110,8 @@ export async function POST(request: NextRequest) {
         message: "Brief vacío: se usará el estilo por defecto.",
         templateMatch: null,
         reelPresetMatch: null,
+        themePackMatch: null,
+        typePackMatch: null,
       });
     }
 
@@ -81,6 +119,8 @@ export async function POST(request: NextRequest) {
     const durationSeconds = parseReelDuration(body.durationSeconds);
     const uiTemplate = parseUiTemplate(body.uiTemplate);
     const uiReelPreset = parseUiReelPreset(body.uiReelPreset);
+    const uiThemePack = parseUiThemePack(body.uiThemePack);
+    const uiTypePack = parseUiTypePack(body.uiTypePack);
     const result = await interpretExportBrief(brief, {
       target,
       durationSeconds,
@@ -143,6 +183,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    let themePackMatch = null;
+    let typePackMatch = null;
+    if (target === "html" || target === "all") {
+      const suggestedTheme = suggestThemePackFromBrief(brief);
+      if (suggestedTheme) {
+        const entry = getThemePackEntry(suggestedTheme);
+        themePackMatch = {
+          suggestedThemePackId: suggestedTheme,
+          label: entry?.label ?? suggestedTheme,
+          tagline: entry?.tagline ?? "",
+          differsFromUi: uiThemePack != null && suggestedTheme !== uiThemePack,
+        };
+      }
+      const suggestedType = suggestTypePackFromBrief(brief);
+      if (suggestedType) {
+        const entry = getTypePackEntry(suggestedType);
+        typePackMatch = {
+          suggestedTypePackId: suggestedType,
+          label: entry?.label ?? suggestedType,
+          tagline: entry?.tagline ?? "",
+          differsFromUi: uiTypePack != null && suggestedType !== uiTypePack,
+        };
+      }
+    }
+
     return NextResponse.json({
       directives: result.directives,
       fromAi: result.fromAi,
@@ -151,6 +216,8 @@ export async function POST(request: NextRequest) {
       interpretation: result.directives.interpretation ?? null,
       templateMatch,
       reelPresetMatch,
+      themePackMatch,
+      typePackMatch,
     });
   } catch (error) {
     console.error("POST /api/export-brief", error);

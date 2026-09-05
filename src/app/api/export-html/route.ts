@@ -16,6 +16,16 @@ import {
 import { interpretExportBrief } from "@/lib/export-brief";
 import { summarizeHtmlDirectives } from "@/lib/export-directives";
 import { TYPOLOGY_LIST } from "@/lib/export/typologies/registry";
+import {
+  defaultThemePackForTemplate,
+  getThemePackEntry,
+  type ThemePackId,
+} from "@/lib/export/theme-packs";
+import {
+  defaultTypePackForTemplate,
+  getTypePackEntry,
+  type TypePackId,
+} from "@/lib/export/type-packs";
 
 const TEMPLATES: ExportTemplateId[] = [
   "magazine",
@@ -23,6 +33,33 @@ const TEMPLATES: ExportTemplateId[] = [
   "editorial-clean",
   "dark-photo-journey",
 ];
+
+const THEME_PACKS: ThemePackId[] = [
+  "light-paper",
+  "light-clean",
+  "dark-cinema",
+  "warm-sunset",
+  "cool-coast",
+];
+
+const TYPE_PACKS: TypePackId[] = ["serif-editorial", "sans-clean", "hybrid"];
+
+function parseThemePack(
+  raw: unknown,
+  template: ExportTemplateId
+): ThemePackId {
+  if (typeof raw === "string" && (THEME_PACKS as string[]).includes(raw)) {
+    return raw as ThemePackId;
+  }
+  return defaultThemePackForTemplate(template);
+}
+
+function parseTypePack(raw: unknown, template: ExportTemplateId): TypePackId {
+  if (typeof raw === "string" && (TYPE_PACKS as string[]).includes(raw)) {
+    return raw as TypePackId;
+  }
+  return defaultTypePackForTemplate(template);
+}
 
 function exportSlug(title: string): string {
   return (
@@ -45,6 +82,8 @@ export async function POST(request: NextRequest) {
       includeGpsTrail = false,
       stream = false,
       brief = "",
+      themePack: themePackRaw,
+      typePack: typePackRaw,
     } = body as {
       travelId?: string;
       template?: ExportTemplateId;
@@ -53,15 +92,19 @@ export async function POST(request: NextRequest) {
       includeGpsTrail?: boolean;
       stream?: boolean;
       brief?: string;
+      themePack?: string;
+      typePack?: string;
     };
 
     if (!travelId) {
       return NextResponse.json({ error: "travelId es obligatorio" }, { status: 400 });
     }
-
     if (!TEMPLATES.includes(template)) {
       return NextResponse.json({ error: "Plantilla no válida" }, { status: 400 });
     }
+
+    const themePack = parseThemePack(themePackRaw, template);
+    const typePack = parseTypePack(typePackRaw, template);
 
     const briefText = typeof brief === "string" ? brief.trim() : "";
 
@@ -202,6 +245,8 @@ export async function POST(request: NextRequest) {
         template,
         typology,
         includeGpsTrail,
+        themePack,
+        typePack,
         htmlDirectives: briefResult?.directives.html ?? null,
         briefInterpretation: briefResult?.directives.interpretation ?? null,
       };
@@ -313,6 +358,14 @@ export async function GET() {
         description: "Tema oscuro centrado en fotografía",
       },
     ],
+    themePacks: THEME_PACKS.map((id) => {
+      const e = getThemePackEntry(id)!;
+      return { id: e.id, label: e.label, tagline: e.tagline };
+    }),
+    typePacks: TYPE_PACKS.map((id) => {
+      const e = getTypePackEntry(id)!;
+      return { id: e.id, label: e.label, tagline: e.tagline };
+    }),
     typologies: TYPOLOGY_LIST.map((t) => ({
       id: t.id,
       label: t.label,
