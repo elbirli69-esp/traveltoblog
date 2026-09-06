@@ -536,5 +536,47 @@ const sixPages = planPdfPages({
 const sixMosaics = sixPages.filter((p) => p.kind === "mosaic");
 assert.ok(sixMosaics.some((p) => (p.photos?.length ?? 0) === 6), "six small photos pack as 2×3 mosaic");
 
+const sixHtml = buildPrintHtml({
+  travel: { id: "t6h", title: "Seis HTML", startDate: null, endDate: null, journalMarkdown: null },
+  users: [{ alias: "Ana" }],
+  photos: Array.from({ length: 6 }, (_, i) => lowScorePhoto(`sh${i + 1}`, 1)),
+  notes: [],
+  format: "a4-landscape",
+  template: "dark-magazine",
+  pdfDirectives: { mosaicBias: "high", preferFullBleed: "low", imageEmphasis: "low" },
+});
+assert.ok((sixHtml.match(/class="mosaic-row"/g) || []).length === 2, "6-up mosaic renders two rows (not a lone row of 3)");
+assert.ok((sixHtml.match(/class="mosaic-frame"/g) || []).length === 6, "6-up mosaic uses fill frames");
+assert.ok(sixHtml.includes("object-fit: cover"), "photos use cover (no letterbox bars)");
+assert.ok(sixHtml.includes(".bleed-photo") && sixHtml.includes("position: absolute"), "full-bleed photo is absolute fill");
+assert.ok(!sixHtml.includes(".page-bleed { background: #000"), "bleed page is not solid black under photos");
+assert.ok(
+  !sixHtml.match(/page-mosaic[\s\S]*?(?:mosaic-cell(?!--empty))[\s\S]*?<\/tr>\s*<\/tbody>/) ||
+    (sixHtml.match(/class="mosaic-row"/g) || []).length >= 2,
+  "mosaic pages always have both rows"
+);
+
+// Three leftover photos must never become a 3-up mosaic
+const threePages = planPdfPages({
+  travel: { id: "t3", title: "Tres", startDate: null, endDate: null, journalMarkdown: null },
+  users: [{ alias: "Ana" }],
+  photos: Array.from({ length: 3 }, (_, i) => lowScorePhoto(`t${i + 1}`, 1)),
+  notes: [],
+  format: "a4-landscape",
+  template: "classic",
+  pdfDirectives: { mosaicBias: "high", preferFullBleed: "low", imageEmphasis: "low" },
+});
+assert.ok(!threePages.some((p) => p.kind === "mosaic"), "three photos never form a mosaic page");
+assert.ok(
+  threePages.every((p) => !p.photos || p.photos.length !== 3 || p.kind === "day-divider"),
+  "no page carries exactly three photos"
+);
+const threePhotoCounts = threePages
+  .filter((p) => p.photos?.length)
+  .map((p) => p.photos.length);
+assert.ok(
+  threePhotoCounts.every((n) => n === 1 || n === 2),
+  `leftover photos use bleed/pair only (got ${threePhotoCounts.join(",")})`
+);
 
 console.log("export-pdf ok");

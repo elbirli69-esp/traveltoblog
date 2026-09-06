@@ -201,12 +201,9 @@ function dividerIntroClass(narrative: string | undefined): string {
   return "divider-intro";
 }
 
-/** Mosaic grid columns: 4 for 7–8 / 4 photos, 3 for 5–6 / 3. */
+/** Mosaic grid columns: 4 for 8 photos (2×4), 3 for 6 photos (2×3). */
 function mosaicColumnCount(photoCount: number): number {
   if (photoCount >= 8) return 4;
-  if (photoCount >= 6) return 3;
-  // Fallbacks should not appear after packing rules; keep render safe.
-  if (photoCount >= 4) return 4;
   return 3;
 }
 
@@ -462,14 +459,16 @@ function renderMosaic(
   totalPages: number
 ): string {
   const photos = page.photos ?? [];
-  if (photos.length < 3) return "";
+  // Full sheets only (6 or 8). Never emit a half-empty 3-up row.
+  if (photos.length < 6) return "";
   const { width, height } = pageDimensions(format);
   const cols = mosaicColumnCount(photos.length);
-  const dense = photos.length >= 5;
+  const dense = photos.length >= 6;
   const cellWidth = `${(100 / cols).toFixed(4)}%`;
   const pageClass = dense ? "page page-mosaic page-mosaic--dense" : "page page-mosaic";
 
   // WeasyPrint has weak CSS Grid support — use HTML tables (N columns × rows).
+  // Frame fills the cell; caption overlays so both mosaic rows stay visible.
   const rowsHtml: string[] = [];
   for (let i = 0; i < photos.length; i += cols) {
     const rowPhotos = photos.slice(i, i + cols);
@@ -477,10 +476,10 @@ function renderMosaic(
       .map(
         (photo) => `
       <td class="mosaic-cell" style="width:${cellWidth}">
-        <div class="photo-mat mosaic-mat">
+        <div class="mosaic-frame">
           <img src="${escapeHtml(photoSrc(photo))}" alt="" />
+          <p class="mosaic-caption">${escapeHtml(photoCaption(photo))}</p>
         </div>
-        <p class="mosaic-caption">${escapeHtml(photoCaption(photo))}</p>
       </td>`
       )
       .join("");
