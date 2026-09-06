@@ -430,6 +430,24 @@ assert.ok(
   denseMosaics.some((p) => (p.photos?.length ?? 0) === 8),
   `small photos pack 8 per mosaic page (got ${denseMosaics.map((p) => p.photos?.length).join(",")})`
 );
+const denseHtml = buildPrintHtml({
+  travel: {
+    id: "t-dense-html",
+    title: "Densidad HTML",
+    startDate: null,
+    endDate: null,
+    journalMarkdown: null,
+  },
+  users: [{ alias: "Ana" }],
+  photos: Array.from({ length: 8 }, (_, i) => lowScorePhoto(`h${i + 1}`, 1)),
+  notes: [],
+  format: "a4-landscape",
+  template: "classic",
+  pdfDirectives: { mosaicBias: "high", preferFullBleed: "low", imageEmphasis: "low" },
+});
+assert.ok((denseHtml.match(/class="mosaic-row"/g) || []).length >= 2, "8-up mosaic renders two table rows");
+assert.ok((denseHtml.match(/class="mosaic-cell"/g) || []).length >= 8, "8-up mosaic renders eight cells");
+assert.ok(denseHtml.includes('width:25') || denseHtml.includes("width:25%"), "4-across cells use 25% width");
 
 const longDay = "Llegamos temprano al mercado y paseamos sin prisa. ".repeat(20);
 const wideHtml = buildPrintHtml({
@@ -454,6 +472,6 @@ assert.ok(
   wideHtml.includes("divider-intro--wide") || wideHtml.includes("divider-intro--xl"),
   "long day summary widens the text column"
 );
-assert.ok(wideHtml.includes("mosaic-grid") || wideHtml.includes("--mosaic-cols"), "mosaic uses CSS grid");
+assert.ok(wideHtml.includes("mosaic-table") || wideHtml.includes("mosaic-row"), "mosaic uses WeasyPrint-safe table rows");
 
 console.log("export-pdf ok");

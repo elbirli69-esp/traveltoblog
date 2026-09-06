@@ -391,37 +391,48 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       max-width: 160mm;
     }
 
-    /* —— Mosaic (1 row of 3–4, or dense 2×3 / 2×4 for small photos) —— */
+    /* —— Mosaic: HTML table (WeasyPrint-safe), 3–4 cols × 1–2 rows —— */
     .page-mosaic {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
       background: ${t.mosaicBg};
       box-sizing: border-box;
-      padding: ${bleed + 4}mm ${bleed + 5}mm;
     }
 
-    .mosaic-grid {
-      display: grid;
-      grid-template-columns: repeat(var(--mosaic-cols, 4), 1fr);
-      gap: 4mm 5mm;
+    .mosaic-table {
       width: 100%;
-      align-content: center;
+      height: 100%;
+      border-collapse: separate;
+      border-spacing: 5mm 4mm;
+      table-layout: fixed;
+    }
+
+    .mosaic-row {
+      height: 50%;
+    }
+
+    .page-mosaic:not(.page-mosaic--dense) .mosaic-row {
+      height: 100%;
     }
 
     .mosaic-cell {
       text-align: center;
-      min-width: 0;
+      vertical-align: middle;
+      padding: ${bleed + 2}mm ${bleed + 1}mm;
+    }
+
+    .mosaic-cell--empty {
+      border: none;
+      padding: 0;
     }
 
     .mosaic-mat img {
+      display: block;
       max-height: ${format === "square" ? "75mm" : "85mm"};
       width: 100%;
+      margin: 0 auto;
       object-fit: cover;
     }
 
-    .mosaic-grid--dense .mosaic-mat img {
+    .page-mosaic--dense .mosaic-mat img {
       max-height: ${format === "square" ? "58mm" : "68mm"};
     }
 
