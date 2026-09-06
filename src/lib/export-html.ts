@@ -69,6 +69,7 @@ import {
   defaultThemePackForTemplate,
   themePackCss,
   themePackHeroOverlayGradient,
+  themePackPhotoHeroOverlayGradient,
   type ThemePackId,
 } from "@/lib/export/theme-packs";
 import {
@@ -778,13 +779,14 @@ function templateStyles(template: ExportTemplateId): string {
   if (template === "visual-journey") {
     return `
 :root {
-  --bg: #0c0a09;
-  --surface: #1c1917;
-  --text: #fafaf9;
-  --muted: #a8a29e;
-  --accent: #2dd4bf;
-  --accent-2: #f59e0b;
-  --border: rgba(255,255,255,.08);
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --text: #18181b;
+  --muted: #71717a;
+  --accent: #0891b2;
+  --accent-2: #0e7490;
+  --border: #e4e4e7;
+  --hero-scrim: linear-gradient(to top, rgba(0,0,0,.82) 0%, rgba(0,0,0,.35) 55%, rgba(0,0,0,.2) 100%);
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -800,17 +802,23 @@ body {
   min-height: 72vh;
   display: flex;
   align-items: flex-end;
-  background: linear-gradient(135deg, #134e4a 0%, #0c0a09 50%, #1e1b4b 100%);
+  background: linear-gradient(135deg, #0e7490 0%, #164e63 45%, #0f172a 100%);
   background-size: cover;
   background-position: center;
   overflow: hidden;
+  color: #fafaf9;
 }
 .hero::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(12,10,9,.92) 0%, rgba(12,10,9,.35) 55%, rgba(12,10,9,.15) 100%);
+  background: var(--hero-scrim);
 }
+.hero h1,
+.hero-content { color: #fafaf9; }
+.hero-meta,
+.stat-pill { color: #e7e5e4; }
+.hero-badge { color: #fafaf9; }
 .hero-content {
   position: relative;
   z-index: 1;
@@ -861,13 +869,13 @@ body {
   display: flex;
   gap: .5rem;
   padding: .75rem 1.25rem;
-  background: rgba(12,10,9,.75);
+  background: var(--nav-bg, rgba(255,255,255,.88));
   border-bottom: 1px solid transparent;
   backdrop-filter: blur(12px);
   overflow-x: auto;
   transition: border-color .2s, background .2s;
 }
-.section-nav.scrolled { border-bottom-color: var(--border); background: rgba(12,10,9,.92); }
+.section-nav.scrolled { border-bottom-color: var(--border); background: var(--nav-bg, rgba(255,255,255,.96)); }
 .section-nav a {
   color: var(--muted);
   text-decoration: none;
@@ -878,21 +886,11 @@ body {
   border-radius: 999px;
   transition: color .2s, background .2s;
 }
-.section-nav a:hover { color: var(--text); background: rgba(255,255,255,.06); }
+.section-nav a:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .wrap { max-width: 920px; margin: 0 auto; padding: 0 1.25rem 4rem; }
-${mapExportStyles().replace(/rgba\(13,148,136/g, "rgba(45,212,191").replace(/#0d9488/g, "#2dd4bf")}
-.map-explorer {
-  background: linear-gradient(180deg, rgba(28,25,23,.55) 0%, transparent 100%);
-}
-.map-day-item { background: rgba(255,255,255,.03); }
-.map-day-item:hover { background: rgba(255,255,255,.06); }
-.map-day-item.active {
-  background: rgba(45,212,191,.12);
-  border-color: rgba(45,212,191,.35);
-}
-.map-canvas, #map.map-canvas { box-shadow: 0 25px 50px rgba(0,0,0,.3); }
-.map-section-inner { box-shadow: 0 25px 50px rgba(0,0,0,.25); }
-.legend-line { background: #2dd4bf; }
+${mapExportStyles()}
+.map-canvas, #map.map-canvas { box-shadow: 0 16px 40px rgba(0,0,0,.08); }
+.map-section-inner { box-shadow: 0 16px 40px rgba(0,0,0,.06); }
 .timeline-section { margin: 2rem 0 2.5rem; }
 .timeline-lead { color: var(--muted); margin: -.25rem 0 1.25rem; font-size: .9rem; }
 .timeline-track {
@@ -911,7 +909,7 @@ ${mapExportStyles().replace(/rgba\(13,148,136/g, "rgba(45,212,191").replace(/#0d
   border: 1px solid var(--border);
   scroll-snap-align: start;
 }
-.timeline-day { display: block; font-weight: 700; color: #fde68a; font-size: .95rem; }
+.timeline-day { display: block; font-weight: 700; color: var(--accent-2); font-size: .95rem; }
 .timeline-meta { display: block; margin-top: .35rem; font-size: .8rem; color: var(--muted); }
 article { font-size: 1.08rem; padding-top: 1rem; }
 article .section-title {
@@ -928,7 +926,7 @@ article .day-marker {
   margin: 2rem 0 1rem;
   padding-left: 1rem;
   border-left: 4px solid var(--accent-2);
-  color: #fde68a;
+  color: var(--accent-2);
 }
 article .section-divider {
   border: none;
@@ -944,9 +942,9 @@ article .pull-quote {
   border-radius: 0 12px 12px 0;
   font-size: 1.05rem;
   font-style: italic;
-  color: #e7e5e4;
+  color: var(--text);
 }
-article p { margin: 1rem 0; color: #d6d3d1; }
+article p { margin: 1rem 0; color: var(--text); }
 article .photo-credit { text-align: center; font-size: .85rem; color: var(--muted); font-style: italic; }
 .photo-block {
   margin: 2rem 0;
@@ -993,7 +991,7 @@ ${galleryExportStyles()}
   border-radius: 8px;
   box-shadow: 0 30px 80px rgba(0,0,0,.6);
 }
-.lightbox-caption { margin-top: 1rem; color: #d6d3d1; font-size: .95rem; text-align: center; max-width: 640px; }
+.lightbox-caption { margin-top: 1rem; color: #e7e5e4; font-size: .95rem; text-align: center; max-width: 640px; }
 footer {
   text-align: center;
   padding: 2rem 1rem 3rem;
@@ -1001,7 +999,7 @@ footer {
   font-size: .85rem;
   border-top: 1px solid var(--border);
 }
-.leaflet-container { background: #292524 !important; font-family: inherit; }
+.leaflet-container { background: var(--surface) !important; font-family: inherit; }
 @media (max-width: 768px) {
   .map-explorer-body {
     grid-template-columns: 1fr;
@@ -1965,9 +1963,11 @@ export function buildExportHtml(ctx: ExportContext): string {
 
   const resolvedThemePackEarly =
     ctx.themePack ?? defaultThemePackForTemplate(template);
-  // Scrim tracks the theme pack (was hard-coded cream on magazine).
+  // Magazine: pack-colored paper scrim. Visual/photo heroes: dark scrim so titles stay white/legible.
   const heroGradient = coverPhoto
-    ? themePackHeroOverlayGradient(resolvedThemePackEarly)
+    ? isVisual
+      ? themePackPhotoHeroOverlayGradient(resolvedThemePackEarly)
+      : themePackHeroOverlayGradient(resolvedThemePackEarly)
     : "";
   const heroPhotoPath = coverPhoto?.localPath ?? null;
 
