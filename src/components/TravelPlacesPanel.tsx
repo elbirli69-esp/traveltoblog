@@ -54,6 +54,16 @@ export interface TravelPlace {
   }[];
 }
 
+/** Seed a new-place draft from a photo’s GPS (Fotos → Añadir lugar). */
+export type PlaceSeedFromPhoto = {
+  /** Bump to re-trigger even with the same photo. */
+  key: number;
+  photoId: string;
+  latitude: number;
+  longitude: number;
+  visitedAt?: string | null;
+};
+
 interface TravelPlacesPanelProps {
   travelId: string;
   userId: string;
@@ -64,6 +74,8 @@ interface TravelPlacesPanelProps {
   startAddSignal?: number;
   /** Select this place (mapa / sinergias desde fotos). */
   focusPlaceId?: string | null;
+  /** Open draft form at a photo’s coordinates (name + type, pin on map). */
+  seedFromPhoto?: PlaceSeedFromPhoto | null;
   onOpenPhoto?: (photoId: string) => void;
   onOpenFotosTab?: () => void;
   onAddPlace?: () => void;
@@ -79,6 +91,8 @@ interface DraftPlace {
   comment: string;
   visitedAtDate: string;
   visitedAtTime: string;
+  /** Link this photo after the place is created. */
+  linkPhotoId?: string | null;
 }
 
 function defaultPlaceDate(travelStartDate?: string | null): string {
@@ -104,6 +118,7 @@ export default function TravelPlacesPanel({
   onChanged,
   startAddSignal = 0,
   focusPlaceId = null,
+  seedFromPhoto = null,
   onOpenPhoto,
   onOpenFotosTab,
   onAddPlace,
@@ -142,6 +157,33 @@ export default function TravelPlacesPanel({
     }, 80);
     return () => window.clearTimeout(t);
   }, [startAddSignal]);
+
+  useEffect(() => {
+    if (!seedFromPhoto?.key) return;
+    const when = seedFromPhoto.visitedAt
+      ? isoToDateAndTime(seedFromPhoto.visitedAt)
+      : { date: defaultPlaceDate(travelStartDate), time: "12:00" };
+    setAddMode(true);
+    setPickOnMap(false);
+    setEditForm(null);
+    setError(null);
+    setSelectedPlaceId(null);
+    setSelectedPhotoId(seedFromPhoto.photoId);
+    setDraft({
+      lat: seedFromPhoto.latitude,
+      lng: seedFromPhoto.longitude,
+      name: "",
+      type: "CAFE",
+      comment: "",
+      visitedAtDate: when.date || defaultPlaceDate(travelStartDate),
+      visitedAtTime: when.time || "12:00",
+      linkPhotoId: seedFromPhoto.photoId,
+    });
+    const t = window.setTimeout(() => {
+      panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [seedFromPhoto, travelStartDate]);
 
   useEffect(() => {
     if (!focusPlaceId) return;
@@ -406,6 +448,16 @@ export default function TravelPlacesPanel({
 
       if (!res.ok) throw new Error("No se pudo guardar");
 
+      const created = (await res.json()) as { place?: { id: string } };
+      const placeId = created.place?.id;
+      if (placeId && draft.linkPhotoId) {
+        await fetch(`/api/places/${placeId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ linkPhotoIds: [draft.linkPhotoId] }),
+        });
+      }
+
       setDraft(null);
       setAddMode(false);
       onChanged?.();
@@ -591,14 +643,23 @@ export default function TravelPlacesPanel({
 
       {draft && (
         <div className="form-panel space-y-3">
-          <p className="form-panel-title">Nuevo lugar</p>
+          <p className="form-panel-title">
+            {draft.linkPhotoId ? "Nuevo lugar desde la foto" : "Nuevo lugar"}
+          </p>
+          {draft.linkPhotoId && (
+            <p className="text-xs text-fg-secondary">
+              El pin ya está en el GPS de la foto. Escribe el nombre (p. ej. Cytat Café),
+              elige el tipo y guárdalo — se asociará a la foto y saldrá en el mapa.
+            </p>
+          )}
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-fg-secondary">Nombre</span>
               <input
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                placeholder="Ej. Hotel Central"
+                placeholder="Ej. Cytat Café"
+                autoFocus={Boolean(draft.linkPhotoId)}
                 className="form-input input-focus"
               />
             </label>

@@ -14,7 +14,9 @@ import TravelWorkspaceTabs, {
 } from "@/components/TravelWorkspaceTabs";
 import TravelWorkspaceNav from "@/components/TravelWorkspaceNav";
 import TravelDayCalendar from "@/components/TravelDayCalendar";
-import TravelPlacesPanel from "@/components/TravelPlacesPanel";
+import TravelPlacesPanel, {
+  type PlaceSeedFromPhoto,
+} from "@/components/TravelPlacesPanel";
 import TravelCollaborationBar from "@/components/TravelCollaborationBar";
 import PastTripGuide from "@/components/PastTripGuide";
 import TravelDatesPanel from "@/components/TravelDatesPanel";
@@ -130,6 +132,8 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   const [tripNoteSignal, setTripNoteSignal] = useState(0);
   const [focusPhotoId, setFocusPhotoId] = useState<string | null>(null);
   const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
+  const [placeSeedFromPhoto, setPlaceSeedFromPhoto] =
+    useState<PlaceSeedFromPhoto | null>(null);
   const [activeTimelineEventId, setActiveTimelineEventId] = useState<string | null>(null);
   const [showPastGuide, setShowPastGuide] = useState(false);
   const [travelNotFound, setTravelNotFound] = useState(false);
@@ -461,6 +465,16 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                 setFocusPlaceId(placeId);
                 setActiveTab("places");
               }}
+              onAddPlaceFromPhoto={(payload) => {
+                setPlaceSeedFromPhoto({
+                  key: Date.now(),
+                  photoId: payload.photoId,
+                  latitude: payload.latitude,
+                  longitude: payload.longitude,
+                  visitedAt: payload.visitedAt ?? null,
+                });
+                setActiveTab("places");
+              }}
               onAddPhoto={() => applyAddMemory("photo")}
               onNoteCreated={() => setRefreshKey((k) => k + 1)}
               onPhotoDeleted={() => setRefreshKey((k) => k + 1)}
@@ -493,6 +507,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
               onChanged={() => setRefreshKey((k) => k + 1)}
               startAddSignal={placeAddSignal}
               focusPlaceId={focusPlaceId}
+              seedFromPhoto={placeSeedFromPhoto}
               onOpenFotosTab={() => setActiveTab("photos")}
               onOpenPhoto={(photoId) => {
                 setFocusPhotoId(photoId);
