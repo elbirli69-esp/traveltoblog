@@ -222,7 +222,7 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
     .map-content {
       display: table-cell;
       vertical-align: middle;
-      padding: ${bleed + 8}mm ${bleed + 10}mm;
+      padding: ${bleed + 5}mm ${bleed + 6}mm;
     }
 
     .map-eyebrow {
@@ -235,9 +235,9 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
 
     .map-title {
       font-family: ${t.serif};
-      font-size: 20pt;
+      font-size: 18pt;
       font-weight: 400;
-      margin-bottom: 6mm;
+      margin-bottom: 3mm;
       color: ${t.text};
     }
 
@@ -250,7 +250,7 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
     .map-frame img {
       display: block;
       width: 100%;
-      max-height: 140mm;
+      max-height: 155mm;
       object-fit: contain;
     }
 
@@ -295,7 +295,7 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       display: table-cell;
       vertical-align: middle;
       text-align: center;
-      padding: ${bleed + 12}mm;
+      padding: ${bleed + 8}mm ${bleed + 10}mm;
       width: 100%;
     }
 
@@ -304,16 +304,16 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       letter-spacing: 0.35em;
       text-transform: uppercase;
       color: ${t.textMuted};
-      margin-bottom: 6mm;
+      margin-bottom: 4mm;
     }
 
     .divider-title {
       font-family: ${t.serif};
-      font-size: 26pt;
+      font-size: 24pt;
       font-weight: 400;
       color: ${t.dividerText};
       line-height: 1.15;
-      margin-bottom: 8mm;
+      margin-bottom: 5mm;
     }
 
     .divider-rule {
@@ -325,29 +325,29 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
 
     /* Default column; widens with text length so the day summary stays on one page. */
     .divider-intro {
-      max-width: 160mm;
-      max-height: 120mm;
+      max-width: 200mm;
+      max-height: 130mm;
       margin: 0 auto;
       text-align: left;
       font-family: ${t.serif};
       font-size: 10.5pt;
-      line-height: 1.6;
+      line-height: 1.55;
       color: ${t.textMuted};
       overflow: hidden;
     }
 
     .divider-intro--wide {
-      max-width: 220mm;
-      max-height: 130mm;
+      max-width: 240mm;
+      max-height: 140mm;
       font-size: 10pt;
-      line-height: 1.55;
+      line-height: 1.5;
     }
 
     .divider-intro--xl {
-      max-width: 255mm;
-      max-height: 140mm;
+      max-width: 265mm;
+      max-height: 148mm;
       font-size: 9.5pt;
-      line-height: 1.48;
+      line-height: 1.45;
     }
 
     .divider-intro img {
@@ -401,7 +401,7 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       width: 100%;
       height: 100%;
       border-collapse: separate;
-      border-spacing: 5mm 4mm;
+      border-spacing: 3mm 2.5mm;
       table-layout: fixed;
     }
 
@@ -416,7 +416,7 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
     .mosaic-cell {
       text-align: center;
       vertical-align: middle;
-      padding: ${bleed + 2}mm ${bleed + 1}mm;
+      padding: ${bleed + 1}mm ${bleed}mm;
     }
 
     .mosaic-cell--empty {
@@ -426,14 +426,14 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
 
     .mosaic-mat img {
       display: block;
-      max-height: ${format === "square" ? "75mm" : "85mm"};
+      max-height: ${format === "square" ? "82mm" : "95mm"};
       width: 100%;
       margin: 0 auto;
       object-fit: cover;
     }
 
     .page-mosaic--dense .mosaic-mat img {
-      max-height: ${format === "square" ? "58mm" : "68mm"};
+      max-height: ${format === "square" ? "68mm" : "78mm"};
     }
 
     .mosaic-caption {
@@ -458,35 +458,35 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       display: table-cell;
       vertical-align: middle;
       text-align: center;
-      padding: ${bleed + 10}mm ${bleed + 18}mm;
+      padding: ${bleed + 6}mm ${bleed + 8}mm;
     }
 
     .photo-mat {
       background: ${t.matBg};
-      padding: 3mm;
+      padding: 2mm;
       border: 0.2mm solid ${t.matBorder};
     }
 
     .photo-mat img {
       display: block;
       width: 100%;
-      max-height: 150mm;
+      max-height: 165mm;
       object-fit: contain;
     }
 
     .featured-mat {
       display: inline-block;
-      max-width: 160mm;
+      max-width: ${format === "square" ? "175mm" : "250mm"};
       width: 100%;
       text-align: left;
     }
 
     .featured-mat img {
-      max-height: ${format === "square" ? "120mm" : "145mm"};
+      max-height: ${format === "square" ? "145mm" : "165mm"};
     }
 
     .featured-caption {
-      margin-top: 4mm;
+      margin-top: 3mm;
       font-size: 8pt;
       letter-spacing: 0.1em;
       text-transform: uppercase;
@@ -519,8 +519,8 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
     .pair-cell {
       display: table-cell;
       width: 50%;
-      vertical-align: top;
-      padding: ${bleed + 10}mm ${bleed + 8}mm;
+      vertical-align: middle;
+      padding: ${bleed + 5}mm ${bleed + 4}mm;
       text-align: center;
     }
 
@@ -529,11 +529,11 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
     }
 
     .pair-mat img {
-      max-height: 130mm;
+      max-height: ${format === "square" ? "140mm" : "155mm"};
     }
 
     .pair-caption {
-      margin-top: 5mm;
+      margin-top: 3mm;
       font-size: 8pt;
       letter-spacing: 0.08em;
       text-transform: uppercase;
@@ -563,7 +563,7 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       display: table-cell;
       vertical-align: middle;
       text-align: center;
-      padding: ${bleed + 14}mm;
+      padding: ${bleed + 10}mm;
     }
 
     .closing-eyebrow {

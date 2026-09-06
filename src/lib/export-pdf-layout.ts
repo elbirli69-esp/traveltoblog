@@ -162,7 +162,8 @@ function groupPhotosByDay(photos: PdfPhotoAsset[]): Map<string, PdfPhotoAsset[]>
 }
 
 function isLowScore(photo: PdfPhotoAsset): boolean {
-  return (photo.highlightScore ?? 5) < 7;
+  // Pack mid-tier shots into mosaics; reserve full-bleed/featured for true highlights.
+  return (photo.highlightScore ?? 5) < 8;
 }
 
 /**
@@ -253,7 +254,7 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
     const proseDensity = dir?.proseDensity ?? "medium";
 
     const busyThreshold =
-      mosaicBias === "high" ? 4 : mosaicBias === "low" ? 7 : 5;
+      mosaicBias === "high" ? 3 : mosaicBias === "low" ? 6 : 4;
     const busyDay = dayPhotos.length >= busyThreshold;
 
     const bleedScore =
