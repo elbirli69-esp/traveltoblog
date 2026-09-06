@@ -2,14 +2,23 @@ import { MAPBOX_STYLE_LIGHT, MAPBOX_TOKEN } from "@/lib/mapbox";
 import { sanitizeGpsPair } from "@/lib/exif";
 import type { GpsTrailPolyline } from "@/lib/gps-track-map";
 
+export type ReelMapPointKind = "photo" | "place" | "flight";
+
 export interface ReelMapPoint {
   lat: number;
   lng: number;
-  kind: "photo" | "place";
+  kind: ReelMapPointKind;
   label: string | null;
   /** Sort key for route animation (ISO or sortable string) */
   at: string | null;
 }
+
+/** Straight flight/transport segment in [lat, lng] order (same as Lugares trayecto). */
+export interface ReelMapFlightLeg {
+  coords: Array<[number, number]>;
+}
+
+export type ReelMapOverview = "route" | "flights";
 
 export interface ReelMapPlan {
   points: ReelMapPoint[];
@@ -22,6 +31,10 @@ export interface ReelMapPlan {
   imageHeight: number;
   /** Animated GPS trails drawn client-side over the basemap */
   gpsTrails: GpsTrailPolyline[];
+  /** "flights" matches Lugares trayecto (ida/vuelta); "route" is destination trail */
+  overview: ReelMapOverview;
+  /** Dashed arcs for transport legs (empty on local route overview) */
+  flightLegs: ReelMapFlightLeg[];
 }
 
 function mapboxStylePath(styleUrl: string): string {
@@ -45,7 +58,12 @@ export function coalesceMapPoints(points: ReelMapPoint[], precision = 4): ReelMa
       continue;
     }
     const label = existing.label || p.label;
-    const kind = existing.kind === "place" || p.kind === "place" ? "place" : "photo";
+    const kind =
+      existing.kind === "flight" || p.kind === "flight"
+        ? "flight"
+        : existing.kind === "place" || p.kind === "place"
+          ? "place"
+          : "photo";
     const at =
       existing.at && p.at
         ? existing.at <= p.at
@@ -109,10 +127,94 @@ export function buildReelMapStaticUrl(
   return `https://api.mapbox.com/styles/v1/${stylePath}/static/${center.lng},${center.lat},${zoom},0/${STATIC_CSS_W}x${STATIC_CSS_H}@2x?access_token=${encodeURIComponent(token)}&logo=false&attribution=false`;
 }
 
+
+/** Densify a straight leg into a gentle great-circle arc (more flight-like on map). */
+/** Densify a leg into a curved arc so the trayecto reads as a flight path. */
+export function densifyFlightLeg(
+  coords: Array<[number, number]>,
+  segments = 28
+): Array<[number, number]> {
+  if (coords.length < 2) return coords;
+  const out: Array<[number, number]> = [];
+  for (let i = 0; i < coords.length - 1; i++) {
+    const [lat1, lng1] = coords[i]!;
+    const [lat2, lng2] = coords[i + 1]!;
+    const midLat = (lat1 + lat2) / 2;
+    const midLng = (lng1 + lng2) / 2;
+    // Bulge the midpoint perpendicular to the chord (gentle flight arc).
+    const dx = lng2 - lng1;
+    const dy = lat2 - lat1;
+    const len = Math.hypot(dx, dy) || 1;
+    const bulge = Math.min(8, len * 0.18);
+    const ctrlLat = midLat + (dx / len) * bulge;
+    const ctrlLng = midLng - (dy / len) * bulge;
+    for (let s = 0; s < segments; s++) {
+      const t = s / segments;
+      const u = 1 - t;
+      const lat = u * u * lat1 + 2 * u * t * ctrlLat + t * t * lat2;
+      const lng = u * u * lng1 + 2 * u * t * ctrlLng + t * t * lng2;
+      out.push([lat, lng]);
+    }
+  }
+  out.push(coords[coords.length - 1]!);
+  return out;
+}
+
 export function buildReelMapPlan(
   rawPoints: ReelMapPoint[],
-  gpsTrails: GpsTrailPolyline[] = []
+  gpsTrails: GpsTrailPolyline[] = [],
+  options?: {
+    overview?: ReelMapOverview;
+    flightLegs?: Array<Array<{ lat: number; lng: number }>>;
+  }
 ): ReelMapPlan | null {
+  const overview = options?.overview ?? "route";
+  const flightLegs: ReelMapFlightLeg[] = (options?.flightLegs ?? [])
+    .map((leg) => ({
+      coords: leg
+        .map((p) => {
+          const gps = sanitizeGpsPair(p.lat, p.lng);
+          if (gps.latitude == null || gps.longitude == null) return null;
+          return [gps.latitude, gps.longitude] as [number, number];
+        })
+        .filter((c): c is [number, number] => c != null),
+    }))
+    .filter((leg) => leg.coords.length >= 2);
+
+  // Flight overview (same idea as Lugares → Trayecto): fit only ida/vuelta legs,
+  // never destination GPS trails that can pull the frame to a layover country.
+  if (overview === "flights" && flightLegs.length > 0) {
+    const denseLegs: ReelMapFlightLeg[] = flightLegs.map((leg) => ({
+      coords: densifyFlightLeg(leg.coords, 28),
+    }));
+    // Fit the frame to the flight path itself (Spain↔Poland), not only airport
+    // pins — ida+vuelta often share the same origin GPS and would collapse the view.
+    const fromLegs: ReelMapPoint[] = denseLegs.flatMap((leg) =>
+      leg.coords.map(([lat, lng]) => ({
+        lat,
+        lng,
+        kind: "flight" as const,
+        label: null,
+        at: null,
+      }))
+    );
+    if (fromLegs.length < 2) return null;
+    const airportPins = coalesceMapPoints(rawPoints);
+    const view = computeMapView(fromLegs);
+    const zoom = Math.max(2, view.zoom - 1);
+    return {
+      points: airportPins.length >= 1 ? airportPins : coalesceMapPoints(fromLegs.slice(0, 1).concat(fromLegs.slice(-1))),
+      staticUrl: buildReelMapStaticUrl(view.center, zoom),
+      center: view.center,
+      zoom,
+      imageWidth: STATIC_CSS_W,
+      imageHeight: STATIC_CSS_H,
+      gpsTrails: [],
+      overview: "flights",
+      flightLegs: denseLegs,
+    };
+  }
+
   const points = coalesceMapPoints(rawPoints);
   if (points.length < 2 && gpsTrails.every((t) => t.coords.length < 2)) {
     return null;
@@ -141,8 +243,11 @@ export function buildReelMapPlan(
     imageWidth: STATIC_CSS_W,
     imageHeight: STATIC_CSS_H,
     gpsTrails,
+    overview: "route",
+    flightLegs: [],
   };
 }
+
 
 /**
  * Project lon/lat onto a canvas that cover-fits a Mapbox static image

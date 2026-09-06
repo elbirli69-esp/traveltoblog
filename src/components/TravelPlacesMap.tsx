@@ -64,6 +64,13 @@ interface TravelPlacesMapProps {
   scope?: MapRouteScope;
   /** Compact height for stacked dual maps. */
   compact?: boolean;
+  /** Tall map to verify a draft pin (Fotos → Añadir lugar). */
+  expanded?: boolean;
+  /**
+   * When true with a draftPin, fly to that pin at street-level zoom and ignore
+   * the rest of the route bounds (confirm the place is correct).
+   */
+  focusDraftPin?: boolean;
   title?: string;
   subtitle?: string;
 }
@@ -82,6 +89,8 @@ export default function TravelPlacesMap({
   onPhotoClick,
   scope = "all",
   compact = false,
+  expanded = false,
+  focusDraftPin = false,
   title,
   subtitle,
 }: TravelPlacesMapProps) {
@@ -254,6 +263,24 @@ export default function TravelPlacesMap({
     if (!map || !mapReady) return;
     map.getCanvas().style.cursor = clickToPlace ? "crosshair" : "";
   }, [clickToPlace, mapReady]);
+
+  // Container height changes (expanded verify mode) — Mapbox must resize.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const t = window.setTimeout(() => {
+      map.resize();
+      if (focusDraftPin && draftPin) {
+        map.easeTo({
+          center: [draftPin.lng, draftPin.lat],
+          zoom: 17,
+          duration: 500,
+          essential: true,
+        });
+      }
+    }, 50);
+    return () => window.clearTimeout(t);
+  }, [expanded, focusDraftPin, draftPin, mapReady]);
 
   useEffect(() => {
     if (!locateSignal || !mapReady) return;
@@ -475,7 +502,16 @@ export default function TravelPlacesMap({
       }
 
       if (!skipAutoFitRef.current) {
-        if (bounds.length > 1) {
+        // Photo → Añadir lugar: lock onto the draft pin so the user can confirm
+        // the GPS spot before saving (ignore the full route bounds).
+        if (focusDraftPin && draftPin && showLocal) {
+          map.easeTo({
+            center: [draftPin.lng, draftPin.lat],
+            zoom: 17,
+            duration: 700,
+            essential: true,
+          });
+        } else if (bounds.length > 1) {
           const b = bounds.reduce(
             (acc, [lng, lat]) => acc.extend([lng, lat]),
             new mapboxgl.LngLatBounds(bounds[0], bounds[0])
@@ -501,6 +537,7 @@ export default function TravelPlacesMap({
     selectedPlaceId,
     selectedPhotoId,
     draftPin,
+    focusDraftPin,
     addMode,
     outbound,
     inbound,
@@ -546,7 +583,11 @@ export default function TravelPlacesMap({
     scope === "flights" ? [] : (scopedGeometry?.dayLegend ?? []);
   const showFlightLegend = scope === "all" || scope === "flights";
   const showLocalLegend = scope === "all" || scope === "local";
-  const mapHeight = compact ? "h-[280px]" : "h-[420px]";
+  const mapHeight = expanded
+    ? "h-[min(70vh,560px)]"
+    : compact
+      ? "h-[280px]"
+      : "h-[420px]";
 
   if (mapError) {
     return (

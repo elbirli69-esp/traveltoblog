@@ -121,6 +121,61 @@ assert.ok(
 );
 const hook = manifest.frames.find((f) => f.role === "hook");
 assert.ok(hook && Math.abs(hook.durationSeconds - REEL_HOOK_SECONDS) < 0.05);
+// Opening must not loop cover→map→same cover as Día 1 / title flash.
+assert.equal(
+  manifest.titleIntroSeconds,
+  0,
+  "skip redundant title flash when hook/map already open the reel"
+);
+assert.ok(
+  !manifest.frames.some(
+    (f) => f.role !== "hook" && f.photoId === hook.photoId
+  ),
+  "hook cover photo must not repeat as chapter/clip in the body"
+);
+
+// Body clips must be chronological by dayKey (undated last); chapters once per day.
+const bodyClips = manifest.frames.filter((f) => f.role === "clip" && f.dayKey);
+const clipDays = bodyClips.map((f) => f.dayKey);
+for (let i = 1; i < clipDays.length; i++) {
+  assert.ok(
+    clipDays[i] >= clipDays[i - 1],
+    `clip days must be chronological, got ${clipDays.join(",")}`
+  );
+}
+const chapters = manifest.frames.filter((f) => f.role === "chapter");
+const chapterDays = chapters.map((f) => f.dayKey);
+assert.equal(
+  chapterDays.length,
+  new Set(chapterDays).size,
+  `chapters must appear once per day, got ${chapterDays.join(",")}`
+);
+for (let i = 0; i < manifest.frames.length - 1; i++) {
+  const a = manifest.frames[i];
+  const b = manifest.frames[i + 1];
+  if (a.role === "chapter" && b.role === "clip") {
+    // Chapter is a solid card in the encoder; photoId may match for asset loading
+    // but chapters must not visually loop — we still assert day progression.
+    assert.ok(a.dayKey === b.dayKey, "chapter must label the following clip day");
+  }
+}
+
+// If hook is from day D, that day must not also get a chapter card (avoids staged repeats).
+if (hook.dayKey) {
+  assert.ok(
+    !manifest.frames.some((f) => f.role === "chapter" && f.dayKey === hook.dayKey),
+    "hook day should skip chapter card"
+  );
+}
+// Captioned clips need a readable hold (after crossfade).
+for (const clip of manifest.frames.filter((f) => f.role === "clip" && f.caption)) {
+  const hold = clip.durationSeconds - REEL_CROSSFADE_SECONDS;
+  assert.ok(
+    hold >= 2.0,
+    `captioned clip hold too short: ${hold.toFixed(2)}s for "${clip.caption?.slice(0, 24)}"`
+  );
+}
+
 const chapter = manifest.frames.find((f) => f.role === "chapter");
 assert.ok(chapter && Math.abs(chapter.durationSeconds - REEL_CHAPTER_SECONDS) < 0.05);
 const clipDurations = manifest.frames
@@ -129,8 +184,160 @@ const clipDurations = manifest.frames
 assert.ok(clipDurations.length <= 6, `clip count 15s ${clipDurations.length}`);
 assert.ok(manifest.map);
 assert.ok(manifest.map.points.length >= 2);
-assert.ok((manifest.map.gpsTrails?.length ?? 0) >= 1, "gps trails on map plan");
+assert.equal(manifest.map.overview, "flights", "ida/vuelta pins prefer flight trayecto");
+assert.ok(manifest.map.flightLegs.length >= 1);
+assert.equal(manifest.map.gpsTrails.length, 0, "flight overview omits destination GPS trails");
 assert.ok(manifest.mapIntroSeconds > 0);
+
+// Local route overview (no ida/vuelta) still shows GPS trails.
+const localPhotos = photos.map((p) => ({
+  ...p,
+  isTransportStart: false,
+  isTransportEnd: false,
+}));
+const localManifest = buildReelManifest({
+  title: "Lisboa local",
+  participants: ["Ada"],
+  startDate: "2024-06-01",
+  endDate: "2024-06-05",
+  photos: localPhotos,
+  places: [
+    {
+      name: "Belém",
+      type: "CAFE",
+      latitude: 38.697,
+      longitude: -9.206,
+      comment: "Pasteles",
+      visitedAt: "2024-06-02T15:00:00.000Z",
+    },
+  ],
+  durationSeconds: 15,
+  gpsTracks: [
+    {
+      id: "trk-local",
+      includeInExport: true,
+      alias: "Ada",
+      points: [
+        { lat: 38.7, lng: -9.14 },
+        { lat: 38.71, lng: -9.15 },
+        { lat: 38.72, lng: -9.13 },
+      ],
+    },
+  ],
+});
+assert.equal(localManifest.map?.overview, "route");
+assert.ok((localManifest.map?.gpsTrails?.length ?? 0) >= 1, "gps trails on local route map");
+
+// Flight overview matches Lugares trayecto: Spain↔Poland with airplanes,
+// ignoring a France layover photo that would otherwise expand the frame.
+const flightPhotos = [
+  {
+    id: "out-mad",
+    mediaType: "IMAGE",
+    posterFilename: null,
+    exifDateTime: "2024-06-01T08:00:00.000Z",
+    isTransportStart: true,
+    isTransportEnd: false,
+    selected: true,
+    placeName: "MAD",
+    comments: [],
+    highlightScore: 5,
+    latitude: 40.49,
+    longitude: -3.57,
+  },
+  {
+    id: "layover-cdg",
+    mediaType: "IMAGE",
+    posterFilename: null,
+    exifDateTime: "2024-06-01T12:00:00.000Z",
+    isTransportStart: false,
+    isTransportEnd: false,
+    selected: true,
+    placeName: "CDG",
+    comments: [],
+    highlightScore: 5,
+    latitude: 49.01,
+    longitude: 2.55,
+  },
+  {
+    id: "krakow",
+    mediaType: "IMAGE",
+    posterFilename: null,
+    exifDateTime: "2024-06-02T10:00:00.000Z",
+    isTransportStart: false,
+    isTransportEnd: false,
+    selected: true,
+    placeName: "Kraków",
+    comments: ["Plaza"],
+    highlightScore: 8,
+    latitude: 50.06,
+    longitude: 19.94,
+  },
+  {
+    id: "in-mad",
+    mediaType: "IMAGE",
+    posterFilename: null,
+    exifDateTime: "2024-06-08T18:00:00.000Z",
+    isTransportStart: false,
+    isTransportEnd: true,
+    selected: true,
+    placeName: "MAD vuelta",
+    comments: [],
+    highlightScore: 5,
+    latitude: 40.49,
+    longitude: -3.57,
+  },
+];
+const flightManifest = buildReelManifest({
+  title: "Polonia",
+  participants: ["Ada"],
+  startDate: "2024-06-01",
+  endDate: "2024-06-08",
+  photos: flightPhotos,
+  durationSeconds: 15,
+  gpsTracks: [
+    {
+      id: "fr-noise",
+      includeInExport: true,
+      alias: "Ada",
+      points: [
+        { lat: 48.8, lng: 2.3 },
+        { lat: 48.9, lng: 2.4 },
+      ],
+    },
+  ],
+});
+assert.ok(flightManifest.map);
+assert.equal(flightManifest.map.overview, "flights");
+assert.ok(flightManifest.map.flightLegs.length >= 1, "flight legs on trayecto map");
+assert.equal(flightManifest.map.gpsTrails.length, 0, "no GPS trails on flight overview");
+assert.ok(
+  flightManifest.map.points.every((p) => p.kind === "flight"),
+  "flight overview pins are airports only"
+);
+assert.ok(
+  !flightManifest.map.points.some((p) => Math.abs(p.lat - 49.01) < 0.5),
+  "France layover must not pin the flight overview"
+);
+// Ida+vuelta share Madrid GPS — trayecto must still span to Poland, not collapse.
+const flightCoords = flightManifest.map.flightLegs.flatMap((leg) => leg.coords);
+assert.ok(
+  flightCoords.some((c) => c[1] > 15),
+  "flight path must reach Poland longitude"
+);
+assert.ok(
+  flightCoords.some((c) => c[1] < 0),
+  "flight path must include Spain longitude"
+);
+assert.ok(
+  flightCoords.length > 4,
+  "flight path should be densified into a visible arc"
+);
+assert.ok(
+  flightManifest.map.center.lng > 0 && flightManifest.map.center.lng < 20,
+  `flight center should sit between Spain and Poland, got lng=${flightManifest.map.center.lng}`
+);
+assert.ok(flightManifest.map.points.some((p) => p.kind === "flight"));
 assert.ok(
   manifest.crossfadeSeconds >= 0.35 && manifest.crossfadeSeconds <= 0.55,
   `crossfade ~0.4s, got ${manifest.crossfadeSeconds}`
@@ -170,8 +377,19 @@ const fitted = fitCaptionsToClipHolds([
     placeName: "Mirador",
   },
 ]);
-assert.equal(fitted[0].caption, null, "unreadable caption cleared; place remains");
+assert.equal(fitted[0].caption, null, "sub-1s hold clears caption; place remains");
 assert.equal(fitted[0].placeName, "Mirador");
+
+const fittedOk = fitCaptionsToClipHolds([
+  {
+    ...frames[0],
+    caption: "Paseo largo junto al río con luz de atardecer",
+    durationSeconds: 3.0,
+    role: "clip",
+    placeName: "Mirador",
+  },
+]);
+assert.ok(fittedOk[0].caption && fittedOk[0].caption.length > 10, "readable hold keeps caption");
 
 const coalesced = coalesceMapPoints([
   { lat: 38.7, lng: -9.1, kind: "photo", label: null, at: "a" },

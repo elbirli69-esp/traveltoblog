@@ -11,6 +11,13 @@ import {
   buildGpsTrailPolylines,
   type GpsTrackForMap,
 } from "@/lib/gps-track-map";
+import { FLIGHT_IN_EMOJI, FLIGHT_OUT_EMOJI, resolveFlightLegs } from "@/lib/flights";
+import {
+  buildDirectRouteGeometry,
+  buildRouteNodesFromPhotosAndPlaces,
+  coalesceRouteNodes,
+  hasFlightOverview,
+} from "@/lib/mapbox-route";
 import { placeEmoji } from "@/lib/places";
 import type { PlaceType } from "@prisma/client";
 import {
@@ -40,15 +47,17 @@ export const REEL_TITLE_INTRO_SECONDS = 0.65;
 export const REEL_OUTRO_SECONDS = 1.9;
 export const REEL_HOOK_SECONDS = 1.05;
 /** Day chapter card — long enough to read the label. */
-export const REEL_CHAPTER_SECONDS = 0.95;
+export const REEL_CHAPTER_SECONDS = 1.4;
 /**
  * Clip hold pattern (includes outgoing transition).
  * With a 0.4 s crossfade, clean on-screen holds land ~0.55 / 0.95 / 1.6 s.
  */
-export const REEL_BEAT_PATTERN = [0.95, 1.35, 2.0] as const;
-/** Overlay reading pace (~chars/sec) for large on-screen type. */
-export const REEL_CAPTION_CHARS_PER_SEC = 14;
-export const REEL_CAPTION_MAX_CHARS = 48;
+export const REEL_BEAT_PATTERN = [2.1, 2.5, 3.0] as const;
+/** Overlay reading pace (~chars/sec) for large on-screen type — slower = more readable. */
+export const REEL_CAPTION_CHARS_PER_SEC = 10;
+export const REEL_CAPTION_MAX_CHARS = 56;
+/** Minimum on-screen hold (after crossfade) when a clip has a caption/day note. */
+export const REEL_CAPTION_MIN_HOLD_SECONDS = 2.3;
 
 export type ReelDurationPreset = 15 | 30 | 60;
 
@@ -152,6 +161,8 @@ export interface ReelFramePlan {
   dayIndex: number | null;
   /** Place-type emoji sticker */
   sticker: string | null;
+  /** Show day chip once when this day first appears in the body */
+  showDayChip?: boolean;
 }
 
 export interface ReelManifest {
@@ -211,8 +222,8 @@ export function resolveReelBuildOptions(
 }
 
 function beatPatternForPacing(pacing: ReelPacing): readonly number[] {
-  if (pacing === "calm") return [1.45, 1.9, 2.35];
-  if (pacing === "punchy") return [0.8, 1.05, 1.4];
+  if (pacing === "calm") return [2.4, 2.9, 3.4];
+  if (pacing === "punchy") return [1.6, 2.0, 2.4];
   return REEL_BEAT_PATTERN;
 }
 
@@ -310,21 +321,19 @@ export function resolveReadableCaption(
 
 export function resolveFrameCaption(photo: ReelPhotoInput): string | null {
   // Provisional: assume a typical ~1.6 s hold until durations are fitted.
-  return resolveReadableCaption(photo, 1.6);
+  return resolveReadableCaption(photo, 2.6);
 }
 
 /** After durations are known, drop captions that cannot be read in the hold. */
 export function fitCaptionsToClipHolds(frames: ReelFramePlan[]): ReelFramePlan[] {
   return frames.map((frame) => {
-    if (frame.role === "chapter") return frame;
+    if (frame.role === "chapter" || frame.role === "hook") return frame;
     if (!frame.caption) return frame;
     const hold = Math.max(0.45, frame.durationSeconds - REEL_CROSSFADE_SECONDS);
     const budget = captionCharBudget(hold);
-    if (frame.caption.length <= budget) {
-      return { ...frame, caption: clipOverlayText(frame.caption, budget) };
-    }
-    // Unreadable at this pace → place-only (or nothing if no place).
-    return { ...frame, caption: null };
+    // Tiny holds cannot carry text; otherwise truncate to what is readable.
+    if (budget < 12 || hold < 1.0) return { ...frame, caption: null };
+    return { ...frame, caption: clipOverlayText(frame.caption, budget) };
   });
 }
 
@@ -526,7 +535,12 @@ export function selectReelFrames(
     });
   }
 
-  const dayKeys = [...byDay.keys()].sort((a, b) => a.localeCompare(b));
+  // Dated days ascending; undated bucket always last (never opens the story).
+  const dayKeys = [...byDay.keys()].sort((a, b) => {
+    if (a === "_sin_fecha") return 1;
+    if (b === "_sin_fecha") return -1;
+    return a.localeCompare(b);
+  });
   const maxFrames = Math.min(
     maxFramesForDuration(durationSeconds, opts.targetPhotoCount),
     pool.length
@@ -554,79 +568,115 @@ export function selectReelFrames(
           ? 2
           : 1;
 
-  let pass = 0;
-  while (frames.length < maxFrames && pass < 8) {
+  const tryPick = (
+    dayKey: string,
+    candidate: ReelPhotoInput,
+    firstOfDay: boolean,
+    allowWeak: boolean
+  ): boolean => {
+    if (frames.length >= maxFrames || pickedIds.has(candidate.id)) return false;
+    const caption = resolveFrameCaption(candidate);
+    const priority = computeReelPhotoPriority({
+      highlightScore: candidate.highlightScore,
+      hasCaption: Boolean(caption),
+      placeName: candidate.placeName,
+      placeHighlightScore: candidate.placeHighlightScore,
+    });
+    if (!allowWeak && priority < minPriority && pool.length > maxFrames) {
+      return false;
+    }
+    if (
+      isNearDuplicateReelCandidate(candidate, pickedMeta, {
+        maxMeters: 45,
+        maxSeconds: 90,
+      })
+    ) {
+      return false;
+    }
+    pickedIds.add(candidate.id);
+    pickedMeta.push({
+      id: candidate.id,
+      photoId: candidate.id,
+      placeName: candidate.placeName,
+      latitude: candidate.latitude,
+      longitude: candidate.longitude,
+      exifDateTime: candidate.exifDateTime,
+    });
+    const realDay = dayKey === "_sin_fecha" ? null : dayKey;
+    let dayNote: string | null = null;
+    if (
+      firstOfDay &&
+      realDay &&
+      notesByDay.has(realDay) &&
+      !usedDayNotes.has(realDay) &&
+      opts.captionMode !== "none" &&
+      opts.captionMode !== "placeOnly"
+    ) {
+      dayNote = notesByDay.get(realDay) ?? null;
+      usedDayNotes.add(realDay);
+    }
+    frames.push({
+      photoId: candidate.id,
+      dayKey: realDay,
+      dayLabel: realDay ? formatDateKey(realDay, "short") : null,
+      placeName: candidate.placeName?.trim() || null,
+      highlightScore: candidate.highlightScore ?? 5,
+      caption,
+      dayNote,
+      hero: false,
+      durationSeconds: 1.2,
+      layout: "full",
+      treatment: "clean",
+      transitionOut: "fade",
+      captionStyle: "glassCard",
+      kenBurns: frames.length % 2 === 0 ? "in" : "out",
+      latitude: candidate.latitude ?? null,
+      longitude: candidate.longitude ?? null,
+      role: "clip",
+      dayIndex: null,
+      sticker: resolveSticker(candidate.placeType),
+      showDayChip: Boolean(firstOfDay && realDay),
+    });
+    return true;
+  };
+
+  // Chronological fill: walk days in order, take a fair quota from each (priority-sorted).
+  for (let di = 0; di < dayKeys.length; di++) {
+    if (frames.length >= maxFrames) break;
+    const dayKey = dayKeys[di]!;
+    const list = byDay.get(dayKey) ?? [];
+    const daysLeft = dayKeys.length - di;
+    const quota = Math.min(
+      list.length,
+      Math.max(1, Math.ceil((maxFrames - frames.length) / daysLeft))
+    );
+    let taken = 0;
+    let firstOfDay = true;
+    for (const candidate of list) {
+      if (taken >= quota || frames.length >= maxFrames) break;
+      if (tryPick(dayKey, candidate, firstOfDay, taken > 0 || list.length <= quota)) {
+        taken += 1;
+        firstOfDay = false;
+      }
+    }
+  }
+
+  // Top up remaining slots in the same chronological day order (weaker shots ok).
+  if (frames.length < maxFrames) {
     for (const dayKey of dayKeys) {
       if (frames.length >= maxFrames) break;
       const list = byDay.get(dayKey) ?? [];
-      const candidate = list[pass];
-      if (!candidate || pickedIds.has(candidate.id)) continue;
-      const caption = resolveFrameCaption(candidate);
-      const priority = computeReelPhotoPriority({
-        highlightScore: candidate.highlightScore,
-        hasCaption: Boolean(caption),
-        placeName: candidate.placeName,
-        placeHighlightScore: candidate.placeHighlightScore,
-      });
-      // On early passes, skip weak clips if stronger ones remain.
-      if (pass === 0 && priority < minPriority && pool.length > maxFrames) {
-        continue;
-      }
-      // Skip near-duplicates (same place or very close in time/GPS to an already picked clip).
-      if (
-        isNearDuplicateReelCandidate(candidate, pickedMeta, {
-          maxMeters: 45,
-          maxSeconds: 90,
-        })
-      ) {
-        continue;
-      }
-      pickedIds.add(candidate.id);
-      pickedMeta.push({
-        id: candidate.id,
-        photoId: candidate.id,
-        placeName: candidate.placeName,
-        latitude: candidate.latitude,
-        longitude: candidate.longitude,
-        exifDateTime: candidate.exifDateTime,
-      });
-      const realDay = dayKey === "_sin_fecha" ? null : dayKey;
-      let dayNote: string | null = null;
-      if (
-        realDay &&
-        notesByDay.has(realDay) &&
-        !usedDayNotes.has(realDay) &&
-        opts.captionMode !== "none" &&
-        opts.captionMode !== "placeOnly"
-      ) {
-        if (frames.length % 3 === 1 || !caption) {
-          dayNote = notesByDay.get(realDay) ?? null;
-          usedDayNotes.add(realDay);
+      const alreadyInDay = frames.some(
+        (f) => (dayKey === "_sin_fecha" ? f.dayKey == null : f.dayKey === dayKey)
+      );
+      let firstOfDay = !alreadyInDay;
+      for (const candidate of list) {
+        if (frames.length >= maxFrames) break;
+        if (tryPick(dayKey, candidate, firstOfDay, true)) {
+          firstOfDay = false;
         }
       }
-      frames.push({
-        photoId: candidate.id,
-        dayKey: realDay,
-        dayLabel: realDay ? formatDateKey(realDay, "short") : null,
-        placeName: candidate.placeName?.trim() || null,
-        highlightScore: candidate.highlightScore ?? 5,
-        caption,
-        dayNote,
-        hero: false,
-        durationSeconds: 1.2,
-        layout: "full",
-        treatment: "clean",
-        transitionOut: "fade",
-        captionStyle: "glassCard",
-        kenBurns: frames.length % 2 === 0 ? "in" : "out",
-        latitude: candidate.latitude ?? null,
-        longitude: candidate.longitude ?? null,
-        role: "clip",
-        dayIndex: null,
-        sticker: resolveSticker(candidate.placeType),
-      });
     }
-    pass += 1;
   }
 
   const heroBudget =
@@ -720,6 +770,242 @@ function collectMapPoints(
   return points;
 }
 
+/** Airport pins for the flights overview (same markers as Lugares → Trayecto). */
+function collectFlightMapPoints(photos: ReelPhotoInput[]): ReelMapPoint[] {
+  const { outbound, inbound } = resolveFlightLegs(
+    photos.map((p) => ({
+      id: p.id,
+      url: "",
+      latitude: p.latitude ?? null,
+      longitude: p.longitude ?? null,
+      isTransportStart: p.isTransportStart,
+      isTransportEnd: p.isTransportEnd,
+      exifDateTime: toIso(p.exifDateTime),
+      user: { alias: "" },
+    }))
+  );
+  const points: ReelMapPoint[] = [];
+  if (
+    outbound?.hasGps &&
+    outbound.photo.latitude != null &&
+    outbound.photo.longitude != null
+  ) {
+    points.push({
+      lat: outbound.photo.latitude,
+      lng: outbound.photo.longitude,
+      kind: "flight",
+      label: `${FLIGHT_OUT_EMOJI} ${outbound.label}`,
+      at: outbound.photo.exifDateTime,
+    });
+  }
+  if (
+    inbound?.hasGps &&
+    inbound.photo.latitude != null &&
+    inbound.photo.longitude != null
+  ) {
+    // Keep vuelta even when GPS matches ida — labels differ; coalesce later.
+    points.push({
+      lat: inbound.photo.latitude,
+      lng: inbound.photo.longitude,
+      kind: "flight",
+      label: `${FLIGHT_IN_EMOJI} ${inbound.label}`,
+      at: inbound.photo.exifDateTime,
+    });
+  }
+  return points;
+}
+
+/** Destination centroid: prefer places; else the GPS cluster farthest from origin (skip layovers). */
+function destinationCentroid(
+  photos: ReelPhotoInput[],
+  places: ReelPlaceInput[],
+  origin: { lat: number; lng: number } | null
+): { lat: number; lng: number } | null {
+  const placePts = places.filter(
+    (p) => p.latitude != null && p.longitude != null
+  ) as Array<ReelPlaceInput & { latitude: number; longitude: number }>;
+  const photoPts = photos.filter(
+    (p) =>
+      p.selected &&
+      !p.isTransportStart &&
+      !p.isTransportEnd &&
+      p.latitude != null &&
+      p.longitude != null
+  ) as Array<ReelPhotoInput & { latitude: number; longitude: number }>;
+  let pts =
+    placePts.length > 0
+      ? placePts.map((p) => ({ lat: p.latitude, lng: p.longitude }))
+      : photoPts.map((p) => ({ lat: p.latitude, lng: p.longitude }));
+  if (pts.length === 0) return null;
+  if (origin) {
+    // Ignore GPS near the home airport and keep the farthest cluster (destination).
+    const far = pts.filter((p) => Math.hypot(p.lat - origin.lat, p.lng - origin.lng) > 2.5);
+    if (far.length > 0) pts = far;
+    let farthest = pts[0]!;
+    let best = -1;
+    for (const p of pts) {
+      const d = Math.hypot(p.lat - origin.lat, p.lng - origin.lng);
+      if (d > best) {
+        best = d;
+        farthest = p;
+      }
+    }
+    pts = pts.filter((p) => Math.hypot(p.lat - farthest.lat, p.lng - farthest.lng) < 3);
+  }
+  return {
+    lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length,
+    lng: pts.reduce((s, p) => s + p.lng, 0) / pts.length,
+  };
+}
+
+function sameSpot(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+  eps = 0.15
+): boolean {
+  return Math.hypot(a.lat - b.lat, a.lng - b.lng) < eps;
+}
+
+/**
+ * Build visible flight arcs for the reel intro.
+ * Prefer geometry legs when they already span home↔destination; otherwise
+ * synthesize origin→destination (ida/vuelta often share the same airport GPS,
+ * so adjacent-node legs alone can stop at a layover).
+ */
+function buildFlightOverviewLegs(
+  photos: ReelPhotoInput[],
+  places: ReelPlaceInput[],
+  geometryLegs: Array<Array<{ lat: number; lng: number }>>
+): Array<Array<{ lat: number; lng: number }>> {
+  const airports = collectFlightMapPoints(photos);
+  const out = airports.find((p) => p.label?.includes("ida") || p.label?.includes("Ida"));
+  const inbound = airports.find((p) => p.label?.includes("vuelta") || p.label?.includes("Vuelta"));
+  const origin = out ?? inbound ?? null;
+  const dest = destinationCentroid(photos, places, origin);
+
+  const synthesized: Array<Array<{ lat: number; lng: number }>> = [];
+  if (origin && dest && !sameSpot(origin, dest)) {
+    synthesized.push([
+      { lat: origin.lat, lng: origin.lng },
+      { lat: dest.lat, lng: dest.lng },
+    ]);
+    if (inbound && out && !sameSpot(out, inbound)) {
+      synthesized.push([
+        { lat: dest.lat, lng: dest.lng },
+        { lat: inbound.lat, lng: inbound.lng },
+      ]);
+    } else if (inbound || out) {
+      // Round trip to same airport: draw return as dest → origin too.
+      synthesized.push([
+        { lat: dest.lat, lng: dest.lng },
+        { lat: origin.lat, lng: origin.lng },
+      ]);
+    }
+  }
+
+  const fromGeometry = geometryLegs
+    .filter((leg) => leg.length >= 2)
+    .filter((leg) => {
+      const a = leg[0]!;
+      const b = leg[leg.length - 1]!;
+      return Math.hypot(a.lat - b.lat, a.lng - b.lng) > 0.05;
+    });
+
+  // Prefer synthesized home↔destination when it reaches farther than geometry
+  // (geometry often stops at a layover when ida/vuelta coalesce to one node).
+  if (synthesized.length > 0) {
+    const synthSpan = Math.max(
+      ...synthesized.map((leg) =>
+        Math.hypot(leg[0]!.lat - leg.at(-1)!.lat, leg[0]!.lng - leg.at(-1)!.lng)
+      )
+    );
+    const geoSpan =
+      fromGeometry.length === 0
+        ? 0
+        : Math.max(
+            ...fromGeometry.map((leg) =>
+              Math.hypot(leg[0]!.lat - leg.at(-1)!.lat, leg[0]!.lng - leg.at(-1)!.lng)
+            )
+          );
+    if (synthSpan >= geoSpan - 0.01) return synthesized;
+  }
+  return fromGeometry.length > 0 ? fromGeometry : synthesized;
+}
+
+function buildReelMapFromTravel(input: {
+  photos: ReelPhotoInput[];
+  places?: ReelPlaceInput[];
+  gpsTrails: ReturnType<typeof buildGpsTrailPolylines>;
+}): ReelMapPlan | null {
+  const places = input.places ?? [];
+  const nodes = coalesceRouteNodes(
+    buildRouteNodesFromPhotosAndPlaces(
+      input.photos.map((p) => ({
+        latitude: p.latitude ?? null,
+        longitude: p.longitude ?? null,
+        exifDateTime: p.exifDateTime,
+        isTransportStart: p.isTransportStart,
+        isTransportEnd: p.isTransportEnd,
+      })),
+      places
+        .filter(
+          (p): p is ReelPlaceInput & { latitude: number; longitude: number } =>
+            p.latitude != null && p.longitude != null
+        )
+        .map((p) => ({
+          latitude: p.latitude,
+          longitude: p.longitude,
+          visitedAt: p.visitedAt ?? null,
+        }))
+    )
+  );
+  const geometry = buildDirectRouteGeometry(nodes);
+
+  const hasTransport = input.photos.some(
+    (p) =>
+      (p.isTransportStart || p.isTransportEnd) &&
+      p.latitude != null &&
+      p.longitude != null
+  );
+
+  // Match Lugares trayecto: origin↔destination arcs with plane markers.
+  if (hasTransport || hasFlightOverview(geometry)) {
+    const airports = collectFlightMapPoints(input.photos);
+    const flightLegs = buildFlightOverviewLegs(
+      input.photos,
+      places,
+      (geometry?.flightLegs ?? []).map((leg) =>
+        leg.map((p) => ({ lat: p.lat, lng: p.lng }))
+      )
+    );
+    if (flightLegs.length > 0) {
+      // Ensure destination endpoint is marked when airports are only origin.
+      const originPin = airports[0] ?? null;
+      const dest = destinationCentroid(input.photos, places, originPin);
+      const pins = [...airports];
+      if (
+        dest &&
+        !pins.some((p) => sameSpot(p, dest))
+      ) {
+        pins.push({
+          lat: dest.lat,
+          lng: dest.lng,
+          kind: "flight",
+          label: "🛬 Destino",
+          at: null,
+        });
+      }
+      const flightPlan = buildReelMapPlan(pins, [], {
+        overview: "flights",
+        flightLegs,
+      });
+      if (flightPlan) return flightPlan;
+    }
+  }
+
+  return buildReelMapPlan(collectMapPoints(input.photos, places), input.gpsTrails);
+}
+
 function fitClipDurations(
   frames: ReelFramePlan[],
   durationSeconds: ReelDurationPreset,
@@ -760,30 +1046,28 @@ function fitClipDurations(
   return paced.map((f) => {
     if (f.role === "hook" || f.role === "chapter") return f;
     // Keep holds usable after subtracting crossfade in the encoder.
-    const min =
-      pacing === "punchy"
-        ? f.hero || f.caption
-          ? 1.2
-          : 0.95
+    const hasText = Boolean(f.caption || f.dayNote);
+    // durationSeconds includes outgoing crossfade; keep readable on-screen hold.
+    const minHold = hasText
+      ? REEL_CAPTION_MIN_HOLD_SECONDS
+      : pacing === "punchy"
+        ? 1.0
         : pacing === "calm"
-          ? f.hero || f.caption
-            ? 1.75
-            : 1.35
-          : f.hero || f.caption
-            ? 1.55
-            : 1.1;
+          ? 1.5
+          : 1.25;
+    const min = minHold + REEL_CROSSFADE_SECONDS * 0.85;
     const max =
       pacing === "punchy"
-        ? f.hero
-          ? 2.1
-          : 1.85
+        ? hasText || f.hero
+          ? 3.4
+          : 2.4
         : pacing === "calm"
-          ? f.hero
-            ? 3.0
-            : 2.6
-          : f.hero
-            ? 2.6
-            : 2.25;
+          ? hasText || f.hero
+            ? 4.2
+            : 3.2
+          : hasText || f.hero
+            ? 3.8
+            : 2.8;
     return {
       ...f,
       durationSeconds: Math.max(min, Math.min(max, f.durationSeconds * scale)),
@@ -926,42 +1210,53 @@ function buildHookFrame(best: ReelFramePlan): ReelFramePlan {
   };
 }
 
-function insertDayChapters(frames: ReelFramePlan[]): ReelFramePlan[] {
+function insertDayChapters(
+  frames: ReelFramePlan[],
+  opts?: { skipDayKey?: string | null }
+): ReelFramePlan[] {
   const dayKeys = [
     ...new Set(frames.map((f) => f.dayKey).filter((k): k is string => Boolean(k))),
   ].sort((a, b) => a.localeCompare(b));
   if (dayKeys.length < 2) return frames;
 
+  const skipDayKey = opts?.skipDayKey ?? null;
   const out: ReelFramePlan[] = [];
-  let lastDay: string | null = null;
+  const openedDays = new Set<string>();
   let chapterCount = 0;
   for (const frame of frames) {
+    // Skip chapter for the hook's day — hook already opened that day, so a
+    // "Día 1" card right after felt like the same photo in staged repeats.
     if (
       frame.role === "clip" &&
       frame.dayKey &&
-      frame.dayKey !== lastDay &&
-      chapterCount < 4
+      !openedDays.has(frame.dayKey)
     ) {
-      const dayIndex = dayKeys.indexOf(frame.dayKey) + 1;
-      out.push({
-        ...frame,
-        role: "chapter",
-        dayIndex: dayIndex > 0 ? dayIndex : null,
-        hero: false,
-        caption: null,
-        dayNote: null,
-        treatment: "clean",
-        layout: "full",
-        transitionOut: "fade",
-        captionStyle: "glassCard",
-        durationSeconds: REEL_CHAPTER_SECONDS,
-        sticker: null,
-        kenBurns: "out",
-      });
-      chapterCount += 1;
-      lastDay = frame.dayKey;
+      if (skipDayKey && frame.dayKey === skipDayKey) {
+        openedDays.add(frame.dayKey);
+      } else if (chapterCount < 4) {
+        const dayIndex = dayKeys.indexOf(frame.dayKey) + 1;
+        out.push({
+          ...frame,
+          role: "chapter",
+          dayIndex: dayIndex > 0 ? dayIndex : null,
+          hero: false,
+          caption: null,
+          dayNote: null,
+          treatment: "clean",
+          layout: "full",
+          transitionOut: "fade",
+          captionStyle: "glassCard",
+          durationSeconds: REEL_CHAPTER_SECONDS,
+          sticker: null,
+          kenBurns: "out",
+          showDayChip: false,
+        });
+        chapterCount += 1;
+        openedDays.add(frame.dayKey);
+      } else {
+        openedDays.add(frame.dayKey);
+      }
     }
-    if (frame.role === "clip" && frame.dayKey) lastDay = frame.dayKey;
     out.push(frame);
   }
   return out;
@@ -996,12 +1291,12 @@ export function buildReelManifest(input: {
     exportMarked.length > 0 ? exportMarked : input.gpsTracks ?? [];
   const gpsTrails = buildGpsTrailPolylines(trailSource);
 
-  const map = buildReelMapPlan(
-    collectMapPoints(input.photos, input.places ?? []),
-    gpsTrails
-  );
+  const map = buildReelMapFromTravel({
+    photos: input.photos,
+    places: input.places,
+    gpsTrails,
+  });
   const mapIntroSeconds = map ? REEL_MAP_INTRO_SECONDS : 0;
-  const titleIntroSeconds = REEL_TITLE_INTRO_SECONDS;
   const outroSeconds = REEL_OUTRO_SECONDS;
 
   let frames = selectReelFrames(
@@ -1014,8 +1309,20 @@ export function buildReelManifest(input: {
 
   const best = pickBestCoverFrame(frames);
   const coverPhotoId = best?.photoId ?? frames[0]?.photoId ?? null;
+  // Hook already punches with the best still; map intro also paints the title.
+  // A third "title" beat on the same cover looked like a broken loop (cover→map→cover).
+  const titleIntroSeconds =
+    best || map ? 0 : REEL_TITLE_INTRO_SECONDS;
   if (best) {
-    frames = [buildHookFrame(best), ...insertDayChapters(frames)];
+    // Drop the cover still from the body so Día 1 does not re-open on the same photo.
+    const body = frames.filter((f) => f.photoId !== best.photoId);
+    frames = [
+      buildHookFrame(best),
+      ...insertDayChapters(body.length > 0 ? body : frames, {
+        // If the hook still is from day 1, skip that day's chapter card.
+        skipDayKey: best.dayKey,
+      }),
+    ];
   } else {
     frames = insertDayChapters(frames);
   }
@@ -1079,9 +1386,11 @@ export function buildReelManifest(input: {
 
 export function reelReadmeText(manifest: ReelManifest): string {
   const mapLine = manifest.map
-    ? `- Incluye intro con mapa (${manifest.map.points.length} puntos GPS/lugares)${
-        (manifest.map.gpsTrails?.length ?? 0) > 0 ? " + trail GPS animado" : ""
-      }.\n`
+    ? manifest.map.overview === "flights"
+      ? `- Incluye intro con mapa de trayecto (${manifest.map.flightLegs.length} tramos de vuelo + aviones).\n`
+      : `- Incluye intro con mapa (${manifest.map.points.length} puntos GPS/lugares)${
+          (manifest.map.gpsTrails?.length ?? 0) > 0 ? " + trail GPS animado" : ""
+        }.\n`
     : "";
   const treatments = [...new Set(manifest.frames.map((f) => f.treatment))].join(", ");
   return `Reel listo para Instagram

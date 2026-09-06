@@ -135,7 +135,10 @@ function drawStoryCaption(
   t: number,
   meta?: string | null
 ) {
-  const appear = Math.min(1, easeInOut(Math.max(0, (t - 0.04) / 0.22)));
+  // Hold timeline 0→1: fade in quickly, stay readable most of the hold, soft out at end.
+  let appear = 1;
+  if (t < 0.08) appear = easeInOut(Math.max(0, t / 0.08));
+  else if (t > 0.88) appear = easeInOut(Math.max(0, (1 - t) / 0.12));
   if (appear <= 0.01 || !text.trim()) return;
 
   ctx.save();
@@ -325,6 +328,68 @@ function drawPlacePinBadge(
   ctx.restore();
 }
 
+
+/** Canvas plane silhouette — emoji fonts are unreliable in OffscreenCanvas/encode. */
+function drawPlaneIcon(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  angleRad: number,
+  size: number,
+  fill = "#f8fafc"
+) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angleRad);
+  ctx.scale(size / 28, size / 28);
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = "rgba(15, 23, 42, 0.55)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  // Fuselage
+  ctx.moveTo(14, 0);
+  ctx.lineTo(-10, 3.5);
+  ctx.lineTo(-10, -3.5);
+  ctx.closePath();
+  // Wings
+  ctx.moveTo(2, 0);
+  ctx.lineTo(-4, 12);
+  ctx.lineTo(-7, 12);
+  ctx.lineTo(-2, 0);
+  ctx.lineTo(-7, -12);
+  ctx.lineTo(-4, -12);
+  ctx.closePath();
+  // Tail
+  ctx.moveTo(-8, 0);
+  ctx.lineTo(-13, 5);
+  ctx.lineTo(-11, 0);
+  ctx.lineTo(-13, -5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function flightPathAngle(
+  coords: Array<[number, number]>,
+  t: number,
+  project: (lat: number, lng: number) => { x: number; y: number }
+): { x: number; y: number; angle: number } {
+  const n = coords.length - 1;
+  const f = Math.max(0, Math.min(1, t)) * n;
+  const i = Math.min(n - 1, Math.floor(f));
+  const local = f - i;
+  const a = coords[i]!;
+  const b = coords[i + 1]!;
+  const pa = project(a[0], a[1]);
+  const pb = project(b[0], b[1]);
+  return {
+    x: pa.x + (pb.x - pa.x) * local,
+    y: pa.y + (pb.y - pa.y) * local,
+    angle: Math.atan2(pb.y - pa.y, pb.x - pa.x),
+  };
+}
+
 function paintMapOverlays(
   ctx: CanvasRenderingContext2D,
   map: ReelMapPlan,
@@ -358,8 +423,8 @@ function paintMapOverlays(
     return { x: pt.x, y: pt.y * scaleY + offsetY };
   };
 
-  // Animated GPS trails (point 9) — drawn under place/photo pins.
-  const trails = map.gpsTrails ?? [];
+  // Animated GPS trails (destination only — skipped on flight overview).
+  const trails = map.overview === "flights" ? [] : map.gpsTrails ?? [];
   if (trails.length > 0) {
     ctx.save();
     ctx.strokeStyle = gpsTrailMapColor();
@@ -404,7 +469,44 @@ function paintMapOverlays(
     };
   });
 
-  if (projected.length >= 2) {
+  // Flight arcs (Lugares trayecto) — dashed indigo + moving plane icon.
+  const flightLegs = map.flightLegs ?? [];
+  if (flightLegs.length > 0) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(129, 140, 248, 0.95)";
+    ctx.lineWidth = 6;
+    ctx.setLineDash([16, 12]);
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.globalAlpha = 0.95;
+    for (const leg of flightLegs) {
+      if (leg.coords.length < 2) continue;
+      const totalSeg = leg.coords.length - 1;
+      const drawSeg = Math.max(1, Math.floor(totalSeg * routeT));
+      ctx.beginPath();
+      for (let i = 0; i <= drawSeg; i++) {
+        const c = leg.coords[i]!;
+        const p = project(c[0], c[1]);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      if (drawSeg < totalSeg && routeT < 1) {
+        const segT = routeT * totalSeg - drawSeg;
+        const a = leg.coords[drawSeg]!;
+        const b = leg.coords[drawSeg + 1]!;
+        const pa = project(a[0], a[1]);
+        const pb = project(b[0], b[1]);
+        ctx.lineTo(pa.x + (pb.x - pa.x) * segT, pa.y + (pb.y - pa.y) * segT);
+      }
+      ctx.stroke();
+
+      // Moving plane along the drawn portion of the arc.
+      const planeT = Math.max(0.02, Math.min(1, routeT));
+      const plane = flightPathAngle(leg.coords, planeT, project);
+      drawPlaneIcon(ctx, plane.x, plane.y, plane.angle, allVisible ? 34 : 38, "#f8fafc");
+    }
+    ctx.restore();
+  } else if (projected.length >= 2) {
     const routeCount = Math.max(
       2,
       Math.floor(1 + (projected.length - 1) * routeT)
@@ -454,23 +556,54 @@ function paintMapOverlays(
     const isHi = i === highlightIdx;
     ctx.save();
     ctx.globalAlpha = appear;
-    ctx.fillStyle = isHi ? "#f97316" : p.kind === "place" ? "#f97316" : "#06b6d4";
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, isHi ? 18 : p.kind === "place" ? 14 : 11, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = isHi ? 4 : 3;
-    ctx.stroke();
-    if (isHi && (highlight?.label || p.label)) {
-      const label = highlight?.label || p.label || "";
-      ctx.font = `700 22px "Segoe UI", system-ui, sans-serif`;
-      const tw = Math.min(ctx.measureText(label).width + 28, width * 0.7);
-      ctx.fillStyle = "rgba(0,0,0,0.6)";
-      ctx.fillRect(p.x - tw / 2, p.y + 22, tw, 36);
-      ctx.fillStyle = "#fff";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(label, p.x, p.y + 40, tw - 12);
+    if (p.kind === "flight") {
+      // Airport marker + plane icon (emoji fonts often fail while encoding).
+      ctx.fillStyle = "rgba(15, 23, 42, 0.72)";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, isHi ? 22 : 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = isHi ? 3 : 2;
+      ctx.stroke();
+      const inbound = Boolean(p.label?.includes("🛬") || p.label?.toLowerCase().includes("vuelta"));
+      drawPlaneIcon(
+        ctx,
+        p.x,
+        p.y,
+        inbound ? Math.PI * 0.85 : -Math.PI * 0.15,
+        isHi ? 30 : 26,
+        inbound ? "#86efac" : "#fde68a"
+      );
+      if (p.label) {
+        const label = p.label.replace(/^[✈️🛬]\s*/, "");
+        ctx.font = `700 20px "Segoe UI", system-ui, sans-serif`;
+        const tw = Math.min(ctx.measureText(label).width + 24, width * 0.7);
+        ctx.fillStyle = "rgba(0,0,0,0.62)";
+        ctx.fillRect(p.x - tw / 2, p.y + 24, tw, 32);
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, p.x, p.y + 40, tw - 10);
+      }
+    } else {
+      ctx.fillStyle = isHi ? "#f97316" : p.kind === "place" ? "#f97316" : "#06b6d4";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, isHi ? 18 : p.kind === "place" ? 14 : 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = isHi ? 4 : 3;
+      ctx.stroke();
+      if (isHi && (highlight?.label || p.label)) {
+        const label = highlight?.label || p.label || "";
+        ctx.font = `700 22px "Segoe UI", system-ui, sans-serif`;
+        const tw = Math.min(ctx.measureText(label).width + 28, width * 0.7);
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(p.x - tw / 2, p.y + 22, tw, 36);
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, p.x, p.y + 40, tw - 12);
+      }
     }
     ctx.restore();
   }
@@ -500,6 +633,7 @@ function paintMapOverlays(
   }
 }
 
+
 function drawPlaceSticker(
   ctx: CanvasRenderingContext2D,
   sticker: string,
@@ -523,22 +657,32 @@ function drawPlaceSticker(
 
 function paintChapterCard(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  _img: HTMLImageElement,
   frameMeta: ReelFramePlan,
   t: number,
   width: number,
   height: number
 ) {
-  ctx.fillStyle = "#0b1020";
+  // Solid chapter card — never reuse the next clip's still (that looked like a loop).
+  const g = ctx.createLinearGradient(0, 0, width * 0.2, height);
+  g.addColorStop(0, "#0b1020");
+  g.addColorStop(0.55, "#111827");
+  g.addColorStop(1, "#0f172a");
+  ctx.fillStyle = g;
   ctx.fillRect(0, 0, width, height);
-  drawCover(ctx, img, width, height, 1.08, 0, 0, 0.45);
-  ctx.fillStyle = `rgba(0,0,0,${0.35 + t * 0.1})`;
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(45,212,191,0.12)";
+  ctx.fillRect(0, height * 0.42, width, 3);
   const label =
     frameMeta.dayIndex != null
       ? `Día ${frameMeta.dayIndex}`
       : frameMeta.dayLabel || "Nuevo día";
-  const appear = easeInOut(Math.min(1, t / 0.55));
+  // Readable for almost the whole chapter card.
+  const appear =
+    t < 0.1
+      ? easeInOut(t / 0.1)
+      : t > 0.9
+        ? easeInOut((1 - t) / 0.1)
+        : 1;
   ctx.save();
   ctx.globalAlpha = appear;
   drawSafeText(
@@ -581,7 +725,8 @@ function paintPhotoClip(
   width: number,
   height: number,
   map: ReelMapPlan | null,
-  mapImg: HTMLImageElement | null
+  mapImg: HTMLImageElement | null,
+  showChrome = true
 ) {
   if (frameMeta.role === "hook") {
     paintHookClip(ctx, img, t, width, height);
@@ -589,6 +734,20 @@ function paintPhotoClip(
   }
   if (frameMeta.role === "chapter") {
     paintChapterCard(ctx, img, frameMeta, t, width, height);
+    return;
+  }
+
+  // Motion-only pass used during crossfade inbound so captions don't peek then restart.
+  if (!showChrome) {
+    const zoomFrom = frameMeta.kenBurns === "in" ? 1.0 : 1.12;
+    const zoomTo = frameMeta.kenBurns === "in" ? 1.1 : 1.0;
+    const scale = zoomFrom + (zoomTo - zoomFrom) * easeInOut(t);
+    const panX = frameMeta.kenBurns === "in" ? -0.07 + t * 0.14 : 0.07 - t * 0.14;
+    const panY = index % 2 === 0 ? -0.05 + t * 0.09 : 0.05 - t * 0.09;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, width, height);
+    drawCover(ctx, img, width, height, scale, panX, panY);
+    drawScrim(ctx, width, height);
     return;
   }
 
@@ -778,7 +937,7 @@ function paintPhotoClip(
   // clean — minimal chrome
   if (frameMeta.dayNote) {
     drawStoryCaption(ctx, frameMeta.dayNote, "sideAccent", width, height, t, null);
-  } else if (frameMeta.dayLabel && index % 2 === 0) {
+  } else if (frameMeta.dayLabel && frameMeta.showDayChip) {
     drawMetaChip(ctx, frameMeta.dayLabel, width, height * 0.84);
   }
 }
@@ -807,7 +966,12 @@ function paintMapIntro(
       { text: title, size: 56, weight: "700" },
       ...(dateRangeLabel ? [{ text: dateRangeLabel, size: 28, weight: "500" }] : []),
       {
-        text: `${map.points.length} puntos en el recorrido`,
+        text:
+          map.overview === "flights"
+            ? map.flightLegs.length > 1
+              ? "Ida y vuelta en el mapa"
+              : "Trayecto de vuelo"
+            : `${map.points.length} puntos en el recorrido`,
         size: 24,
         weight: "500",
       },
@@ -1065,6 +1229,8 @@ export async function encodeInstagramReelMp4(
     paint: (localT: number) => void,
     label: string
   ) => {
+    // 0s must paint 0 frames (Math.max(1,…) caused a 1-frame title flash).
+    if (seconds <= 0) return;
     const frameCount = Math.max(1, Math.round(seconds * fps));
     for (let i = 0; i < frameCount; i++) {
       const localT = frameCount === 1 ? 1 : i / (frameCount - 1);
@@ -1120,12 +1286,30 @@ export async function encodeInstagramReelMp4(
     const nextImg = nextIdx != null ? images[nextIdx] : undefined;
     const nextMeta = nextIdx != null ? manifest.frames[nextIdx] : undefined;
     // Floor so a scaled-down clip still shows before the ~0.4 s transition.
-    const hold = Math.max(0.5, meta.durationSeconds - (nextImg ? crossfade : 0));
+    const needsRead = Boolean(
+      meta.caption || meta.dayNote || meta.role === "chapter"
+    );
+    const hold = Math.max(
+      needsRead ? 2.0 : 0.7,
+      meta.durationSeconds - (nextImg ? crossfade : 0)
+    );
 
+    // Hold uses full 0→1 motion; captions fade in once at the start of the hold.
     await addSegment(
       hold,
       (t) =>
-        paintPhotoClip(ctx, img, meta, t * 0.85, i, width, height, mapPlan, mapImg),
+        paintPhotoClip(
+          ctx,
+          img,
+          meta,
+          t,
+          i,
+          width,
+          height,
+          mapPlan,
+          mapImg,
+          true
+        ),
       meta.role === "chapter"
         ? `Capítulo…`
         : `Clip ${bi + 1}/${bodyIndices.length}`
@@ -1137,9 +1321,11 @@ export async function encodeInstagramReelMp4(
         meta.role === "chapter" ? "fade" : (meta.transitionOut ?? "fade");
       for (let f = 0; f < fadeFrames; f++) {
         const u = fadeFrames === 1 ? 1 : f / (fadeFrames - 1);
-        const tA = 0.85 + u * 0.15;
-        const tB = u * 0.2;
-        paintPhotoClip(ctxA, img, meta, tA, i, width, height, mapPlan, mapImg);
+        // Outgoing: freeze near end of Ken Burns with chrome on (layer alpha fades).
+        const tA = 1;
+        // Incoming: ease into Ken Burns WITHOUT chrome so text doesn't peek then restart.
+        const tB = u * 0.15;
+        paintPhotoClip(ctxA, img, meta, tA, i, width, height, mapPlan, mapImg, true);
         paintPhotoClip(
           ctxB,
           nextImg,
@@ -1149,7 +1335,8 @@ export async function encodeInstagramReelMp4(
           width,
           height,
           mapPlan,
-          mapImg
+          mapImg,
+          false
         );
         blendTransition(ctx, layerA, layerB, u, transition, width, height);
         const timestamp = frameIndex / fps;

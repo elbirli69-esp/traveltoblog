@@ -48,6 +48,14 @@ export interface GalleryPlace {
   highlightScore?: number;
 }
 
+export type AddPlaceFromPhotoPayload = {
+  photoId: string;
+  latitude: number;
+  longitude: number;
+  /** EXIF / capture time — seeds “visited at” on the new place. */
+  visitedAt?: string | null;
+};
+
 interface PhotoGalleryProps {
   travelId: string;
   userId: string;
@@ -56,6 +64,8 @@ interface PhotoGalleryProps {
   onPhotoDeleted?: () => void;
   focusPhotoId?: string | null;
   onOpenPlace?: (placeId: string) => void;
+  /** Open Lugares with a draft pinned at this photo’s GPS. */
+  onAddPlaceFromPhoto?: (payload: AddPlaceFromPhotoPayload) => void;
   onAddPhoto?: () => void;
   /** Increment to reload gallery (tras subir fotos). */
   refreshSignal?: number;
@@ -138,6 +148,7 @@ export default function PhotoGallery({
   onNoteCreated,
   focusPhotoId = null,
   onOpenPlace,
+  onAddPlaceFromPhoto,
   onAddPhoto,
   onPhotoDeleted,
   refreshSignal = 0,
@@ -512,35 +523,68 @@ export default function PhotoGallery({
                       </button>
                     </div>
 
-                    {places.length > 0 && (
+                    {(places.length > 0 ||
+                      (onAddPlaceFromPhoto &&
+                        isValidGps(photo.latitude, photo.longitude))) && (
                       <div className="space-y-1.5">
                         <label className="block text-xs font-semibold text-fg-secondary">
                           Lugar asociado
                         </label>
-                        <select
-                          className="form-input form-input-sm w-full"
-                          value={photo.placeId ?? ""}
-                          onChange={(e) => {
-                            const nextPlaceId = e.target.value || null;
-                            void applyPlaceLink(photo, nextPlaceId);
-                          }}
-                        >
-                          <option value="">Sin lugar</option>
-                          {places.map((place) => (
-                            <option key={place.id} value={place.id}>
-                              {place.name}
-                            </option>
-                          ))}
-                        </select>
-                        {photo.placeId && onOpenPlace && (
-                          <button
-                            type="button"
-                            onClick={() => onOpenPlace(photo.placeId!)}
-                            className="text-xs font-medium text-accent-mint underline-offset-2 hover:underline"
+                        {places.length > 0 && (
+                          <select
+                            className="form-input form-input-sm w-full"
+                            value={photo.placeId ?? ""}
+                            onChange={(e) => {
+                              const nextPlaceId = e.target.value || null;
+                              void applyPlaceLink(photo, nextPlaceId);
+                            }}
                           >
-                            Ver lugar en el mapa
-                          </button>
+                            <option value="">Sin lugar</option>
+                            {places.map((place) => (
+                              <option key={place.id} value={place.id}>
+                                {place.name}
+                              </option>
+                            ))}
+                          </select>
                         )}
+                        <div className="flex flex-wrap gap-2">
+                          {photo.placeId && onOpenPlace && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenPlace(photo.placeId!)}
+                              className="text-xs font-medium text-accent-mint underline-offset-2 hover:underline"
+                            >
+                              Ver lugar en el mapa
+                            </button>
+                          )}
+                          {onAddPlaceFromPhoto &&
+                            isValidGps(photo.latitude, photo.longitude) && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onAddPlaceFromPhoto({
+                                    photoId: photo.id,
+                                    latitude: photo.latitude!,
+                                    longitude: photo.longitude!,
+                                    visitedAt: photo.exifDateTime,
+                                  })
+                                }
+                                className="chip-btn"
+                              >
+                                {photo.placeId
+                                  ? "Crear otro lugar aquí"
+                                  : "Añadir lugar"}
+                              </button>
+                            )}
+                        </div>
+                        {places.length === 0 &&
+                          onAddPlaceFromPhoto &&
+                          isValidGps(photo.latitude, photo.longitude) && (
+                            <p className="text-[11px] text-fg-secondary">
+                              Crea un lugar con el GPS de esta foto (nombre + tipo)
+                              y aparecerá en el mapa.
+                            </p>
+                          )}
                       </div>
                     )}
 
