@@ -595,6 +595,23 @@ function buildInteractiveScripts(template: ExportTemplateId): string {
 `;
 }
 
+export function exportOpenHintStyles(): string {
+  return `
+.export-open-hint {
+  display: none;
+  margin: 0;
+  padding: .75rem 1.25rem;
+  background: #422006;
+  color: #ffedd5;
+  font-family: system-ui, sans-serif;
+  font-size: .9rem;
+  line-height: 1.45;
+  border-bottom: 1px solid #9a3412;
+}
+.export-open-hint code { font-size: .85em; }
+`;
+}
+
 export function mapExportStyles(): string {
   return `
 .map-explorer {
@@ -721,6 +738,18 @@ export function mapExportStyles(): string {
   color: var(--muted);
 }
 .map-offline-note.is-visible { display: block; }
+.export-open-hint {
+  display: none;
+  margin: 0;
+  padding: .75rem 1.25rem;
+  background: #422006;
+  color: #ffedd5;
+  font-family: system-ui, sans-serif;
+  font-size: .9rem;
+  line-height: 1.45;
+  border-bottom: 1px solid #9a3412;
+}
+.export-open-hint a { color: #fdba74; }
 #map {
   height: min(62vh, 520px);
   min-height: 320px;
@@ -1420,10 +1449,16 @@ function buildMapScript(
   function preferStaticOffline(mapEl) {
     var isFile = typeof location !== "undefined" && location.protocol === "file:";
     var offline = typeof navigator !== "undefined" && navigator.onLine === false;
-    if (isFile || offline) {
-      return showStaticFallback(mapEl);
-    }
-    return false;
+    if (!(isFile || offline)) return false;
+    if (showStaticFallback(mapEl)) return true;
+    // file:// without packed PNG: don't leave a black Leaflet canvas
+    showMapLoadError(
+      mapEl,
+      isFile
+        ? "Mapa offline no incluido. Descomprime el ZIP completo (index.html junto a map/ y photos/) o ábrelo con red."
+        : "Sin conexión y sin mapa estático en el export."
+    );
+    return true;
   }
 
   function watchTileErrors(map, mapEl) {
@@ -2191,6 +2226,7 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
     themePackCss(resolvedThemePack) + typePackCss(resolvedTypePack);
   const extraStyles =
     (isMagazine || isVisual ? timelineExportStyles() : "") +
+    exportOpenHintStyles() +
     (hasMap && (isMagazine || isVisual) ? mapExportStyles() : "") +
     playModeStyles() +
     htmlDirectiveStyles();
@@ -2237,6 +2273,8 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
   <style>${templateStyles(template)}${packStyles}${extraStyles}</style>
 </head>
 <body class="${bodyClass}" data-theme-pack="${resolvedThemePack}" data-type-pack="${resolvedTypePack}">
+  <p id="export-open-hint" class="export-open-hint" role="status">Si no ves fotos o el mapa: descomprime el ZIP completo y abre el <strong>index.html</strong> de esa carpeta (debe estar junto a <code>photos/</code>, <code>assets/</code> y <code>map/</code>). No hace falta una ruta concreta.</p>
+  <script>(function(){if(location.protocol==="file:"){var e=document.getElementById("export-open-hint");if(e)e.style.display="block";}})();</script>
   ${briefComment}${headerBlock}
   ${mapOuter}
   <div class="wrap">
@@ -2493,11 +2531,32 @@ function addCommonZipFiles(zip: JSZip, ctx: ExportContext, html: string): void {
   const explicitType =
     ctx.typology && ctx.typology !== "auto" ? ctx.typology : ctx.travel.travelType ?? "GENERIC";
   const staticNote = ctx.mapStaticLocalPath
-    ? "\nMapa: interactivo online + PNG estático offline (map/*.png)."
-    : "";
+    ? "\n- Mapa: online = tiles interactivos; offline/file = PNG en map/*.png"
+    : "\n- Mapa: sin PNG estático (hace falta red para tiles)";
   zip.file(
     "README.txt",
-    `TravelToBlog export\nTipología: ${explicitType}\nPlantilla: ${ctx.template}\nGenerado: ${new Date().toISOString()}${staticNote}\nLos vídeos del ZIP se reproducen en Recorrido y Galería (carpeta videos/).\n`
+    `TravelToBlog — diario HTML (ZIP)
+
+CÓMO ABRIRLO
+1) Descomprime TODO el ZIP en cualquier carpeta (Escritorio, Descargas, USB…).
+   No hace falta una ruta concreta.
+2) Entra en la carpeta descomprimida. Debe verse juntos:
+   index.html  photos/  assets/  map/  (y videos/ si hay)
+3) Abre index.html con el navegador (doble clic o arrastrar a Chrome/Edge/Firefox).
+
+IMPORTANTE
+- No abras el index.html “desde dentro” del ZIP sin extraer (el explorador
+  de archivos comprimidos no sirve: fotos y mapa saldrán en negro/vacíos).
+- No muevas solo el index.html: tiene que quedarse junto a photos/, assets/ y map/.
+- En file:// el mapa interactivo no puede cargar tiles de internet; se muestra
+  el mapa estático incluido. Con un servidor local (o subido a la web) sí
+  verás el mapa interactivo.
+
+Tipología: ${explicitType}
+Plantilla: ${ctx.template}
+Generado: ${new Date().toISOString()}${staticNote}
+Vídeos: carpeta videos/ (Recorrido y Galería).
+`
   );
 
   const timelineEvents = buildExportTimelineEvents(ctx);
