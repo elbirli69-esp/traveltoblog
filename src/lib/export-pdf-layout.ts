@@ -463,23 +463,40 @@ function renderMosaic(
   const { width, height } = pageDimensions(format);
   const cols = mosaicColumnCount(photos.length);
   const dense = photos.length >= 5;
-  const gridClass = dense ? "mosaic-grid mosaic-grid--dense" : "mosaic-grid";
+  const cellWidth = `${(100 / cols).toFixed(4)}%`;
+  const pageClass = dense ? "page page-mosaic page-mosaic--dense" : "page page-mosaic";
 
-  const cells = photos
-    .map(
-      (photo) => `
-    <div class="mosaic-cell">
-      <div class="photo-mat mosaic-mat">
-        <img src="${escapeHtml(photoSrc(photo))}" alt="" />
-      </div>
-      <p class="mosaic-caption">${escapeHtml(photoCaption(photo))}</p>
-    </div>`
-    )
-    .join("");
+  // WeasyPrint has weak CSS Grid support — use HTML tables (N columns × rows).
+  const rowsHtml: string[] = [];
+  for (let i = 0; i < photos.length; i += cols) {
+    const rowPhotos = photos.slice(i, i + cols);
+    const cells = rowPhotos
+      .map(
+        (photo) => `
+      <td class="mosaic-cell" style="width:${cellWidth}">
+        <div class="photo-mat mosaic-mat">
+          <img src="${escapeHtml(photoSrc(photo))}" alt="" />
+        </div>
+        <p class="mosaic-caption">${escapeHtml(photoCaption(photo))}</p>
+      </td>`
+      )
+      .join("");
+    // Pad incomplete last row so column widths stay even in WeasyPrint.
+    const pad = cols - rowPhotos.length;
+    const pads =
+      pad > 0
+        ? Array.from({ length: pad }, () => `<td class="mosaic-cell mosaic-cell--empty" style="width:${cellWidth}"></td>`).join("")
+        : "";
+    rowsHtml.push(`<tr class="mosaic-row">${cells}${pads}</tr>`);
+  }
 
   return `
-  <section class="page page-mosaic" style="width:${width};height:${height}">
-    <div class="${gridClass}" style="--mosaic-cols:${cols}">${cells}</div>
+  <section class="${pageClass}" style="width:${width};height:${height}">
+    <table class="mosaic-table" cellspacing="0" cellpadding="0">
+      <tbody>
+        ${rowsHtml.join("\n")}
+      </tbody>
+    </table>
     ${renderPageFooter(page.pageNumber, totalPages)}
   </section>`;
 }
