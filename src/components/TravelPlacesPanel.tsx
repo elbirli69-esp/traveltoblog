@@ -486,26 +486,32 @@ export default function TravelPlacesPanel({
     <div ref={panelRef} id="travel-places-panel" className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-fg">Lugares del viaje</h2>
+          <h2 className="text-lg font-semibold text-fg">
+            {fromPhoto ? "Añadir lugar desde la foto" : "Lugares del viaje"}
+          </h2>
           <p className="text-sm text-fg-secondary">
-            Marca hoteles, restaurantes, miradores… Igual que en DogTrainer: usa tu GPS o elige en el mapa Mapbox.
+            {fromPhoto
+              ? "Revisa el pin ampliado en el mapa y completa el formulario."
+              : "Marca hoteles, restaurantes, miradores… Igual que en DogTrainer: usa tu GPS o elige en el mapa Mapbox."}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setAddMode((v) => !v);
-            setDraft(null);
-            setEditForm(null);
-            setError(null);
-            setPickOnMap(true);
-          }}
-          className={`rounded-xl px-4 py-2 text-sm font-semibold ${
-            addMode ? "btn-secondary" : "btn-primary"
-          }`}
-        >
-          {addMode ? "Cancelar marcado" : "+ Marcar lugar"}
-        </button>
+        {!fromPhoto && (
+          <button
+            type="button"
+            onClick={() => {
+              setAddMode((v) => !v);
+              setDraft(null);
+              setEditForm(null);
+              setError(null);
+              setPickOnMap(true);
+            }}
+            className={`rounded-xl px-4 py-2 text-sm font-semibold ${
+              addMode ? "btn-secondary" : "btn-primary"
+            }`}
+          >
+            {addMode ? "Cancelar marcado" : "+ Marcar lugar"}
+          </button>
+        )}
       </div>
 
       {!fromPhoto && <SecureLocationHint />}
