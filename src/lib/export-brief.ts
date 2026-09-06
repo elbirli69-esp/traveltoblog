@@ -251,13 +251,28 @@ export function groundExportBriefHeuristically(
     notes.push("fotos más grandes (sin repetirlas)");
   }
   if (
-    /\b(poca\s+cronica|menos\s+texto|poco\s+texto\s+(en\s+)?(html|pagina|pdf))\b/.test(
+    /\b(poca\s+cronica|menos\s+texto|poco\s+texto\s+(en\s+)?(html|pagina|pdf)|poca\s+prosa)\b/.test(
       text
     )
   ) {
     html.proseDensity = "low";
     pdf.proseDensity = "low";
     notes.push("poca prosa");
+  }
+  if (
+    /\b(mosaicos?|collage|grid\s+de\s+fotos|muchas\s+fotos\s+por\s+pagina)\b/.test(
+      text
+    )
+  ) {
+    pdf.mosaicBias = "high";
+    notes.push("más mosaicos");
+  }
+  if (
+    /\b(full[\s-]?bleed|a\s+sangre|fotos?\s+a\s+pagina\s+completa)\b/.test(text)
+  ) {
+    pdf.preferFullBleed = "high";
+    pdf.imageEmphasis = "high";
+    notes.push("full-bleed");
   }
   if (
     /\b(mas\s+cronica|mucho\s+texto|prosa\s+larga|leer\s+bien)\b/.test(text)

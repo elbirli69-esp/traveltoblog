@@ -1,3 +1,5 @@
+import { featuredPdfPresetCatalog, type PdfPresetId } from "@/lib/export/pdf-preset-catalog";
+import type { TypePackId } from "@/lib/export/type-packs";
 import { NextRequest, NextResponse } from "next/server";
 import { buildPdfArtifact } from "@/lib/export-pdf";
 import { probeWeasyPrint } from "@/lib/export-pdf-render";
@@ -7,6 +9,28 @@ import type { PdfPipelineEvent } from "@/lib/export-pdf-pipeline";
 
 const FORMATS: PdfPageFormat[] = ["a4-landscape", "square"];
 const TEMPLATES: PdfTemplate[] = ["classic", "minimal", "dark-magazine"];
+const PDF_PRESETS: PdfPresetId[] = [
+  "pdf-classic",
+  "pdf-minimal",
+  "pdf-photo",
+  "pdf-dark",
+  "pdf-guide",
+];
+const TYPE_PACKS: TypePackId[] = ["serif-editorial", "sans-clean", "hybrid"];
+
+function parsePresetId(raw: unknown): PdfPresetId | null {
+  if (typeof raw === "string" && (PDF_PRESETS as string[]).includes(raw)) {
+    return raw as PdfPresetId;
+  }
+  return null;
+}
+
+function parseTypePack(raw: unknown): TypePackId | null {
+  if (typeof raw === "string" && (TYPE_PACKS as string[]).includes(raw)) {
+    return raw as TypePackId;
+  }
+  return null;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,13 +39,19 @@ export async function POST(request: NextRequest) {
     const {
       travelId,
       format = "a4-landscape",
-      template = "classic",
+      template,
       coverPhotoId = null,
+      presetId = null,
+      brief = "",
+      typePack = null,
     } = body as {
       travelId?: string;
       format?: PdfPageFormat;
       template?: PdfTemplate;
       coverPhotoId?: string | null;
+      presetId?: string | null;
+      brief?: string;
+      typePack?: string | null;
     };
 
     if (!travelId) {
@@ -32,14 +62,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Formato no válido" }, { status: 400 });
     }
 
-    if (!TEMPLATES.includes(template)) {
+    if (template && !TEMPLATES.includes(template)) {
       return NextResponse.json({ error: "Plantilla no válida" }, { status: 400 });
     }
+
+    const resolvedPresetId = parsePresetId(presetId);
+    const resolvedTypePack = parseTypePack(typePack);
 
     const run = async (emit?: (event: PdfPipelineEvent) => void) => {
       const { buffer, filename } = await buildPdfArtifact(
         travelId,
-        { format, template, coverPhotoId },
+        {
+          format,
+          template,
+          coverPhotoId,
+          presetId: resolvedPresetId,
+          brief,
+          typePack: resolvedTypePack,
+        },
         emit
       );
       return { buffer, filename };
@@ -116,6 +156,13 @@ export async function GET() {
       { id: "square", name: "Cuadrado", size: "210 × 210 mm" },
     ],
     templates: PDF_TEMPLATES,
+    presets: featuredPdfPresetCatalog().map((p) => ({
+      id: p.id,
+      label: p.label,
+      tagline: p.tagline,
+      theme: p.theme,
+      typePack: p.typePack,
+    })),
     engine: "weasyprint",
     available: probe.available,
     detail: probe.detail ?? null,

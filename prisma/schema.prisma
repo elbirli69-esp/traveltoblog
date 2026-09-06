@@ -38,6 +38,20 @@ model Travel {
   journalMarkdownPrevious String?
   /// Free-text brief: anecdotes, emphasis, tone for AI journal generation
   journalBrief String?
+  /// Shared free-text brief for HTML / Reel / PDF exports (session-persisted on travel)
+  exportBrief String?
+  /// Last grounded interpretation / directives cache (JSON)
+  exportBriefCache String?
+  /// Last chosen HTML template id (magazine, visual-journey, …)
+  htmlTemplateId String?
+  /// Last chosen HTML theme pack id
+  htmlThemePackId String?
+  /// Last chosen typography pack id
+  htmlTypePackId String?
+  /// Last chosen Reel montage preset id
+  reelPresetId String?
+  /// Last chosen PDF look preset id
+  pdfPresetId String?
   /// Export / narrative typology (null = auto-suggest on export)
   travelType   TravelType?
   createdAt    DateTime @default(now())

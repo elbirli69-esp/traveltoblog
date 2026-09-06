@@ -12,6 +12,8 @@ import {
   type RouteDayLegendEntry,
 } from "@/lib/mapbox-route";
 import type { PdfExportContext, PdfPageFormat, PdfPhotoAsset } from "@/lib/export-pdf-types";
+import { typePackCss } from "@/lib/export/type-packs";
+import type { TypePackId } from "@/lib/export/type-packs";
 
 export type PdfPageKind =
   | "cover"
@@ -211,13 +213,34 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
       dayNarratives
     );
 
-    const busyDay = dayPhotos.length >= 5;
+    const dir = ctx.pdfDirectives;
+    const mosaicBias = dir?.mosaicBias ?? "medium";
+    const preferFullBleed = dir?.preferFullBleed ?? "medium";
+    const imageEmphasis = dir?.imageEmphasis ?? "medium";
+    const proseDensity = dir?.proseDensity ?? "medium";
+
+    const busyThreshold =
+      mosaicBias === "high" ? 4 : mosaicBias === "low" ? 7 : 5;
+    const busyDay = dayPhotos.length >= busyThreshold;
+
+    const bleedScore =
+      preferFullBleed === "high" || imageEmphasis === "high"
+        ? 7
+        : preferFullBleed === "low" && imageEmphasis === "low"
+          ? 9
+          : 8;
+    const pairScoreCap =
+      imageEmphasis === "high" ? 6 : imageEmphasis === "low" ? 8 : 7;
+    const narrativeMinPhotos =
+      proseDensity === "high" ? 1 : proseDensity === "low" ? 4 : 2;
+    const includeNarrative =
+      proseDensity !== "low" && dayPhotos.length > narrativeMinPhotos;
 
     push({
       kind: "day-divider",
       dayKey,
       dayTitle,
-      narrative: dayPhotos.length > 2 ? narrative : undefined,
+      narrative: includeNarrative ? narrative : undefined,
     });
 
     let i = 0;
@@ -236,13 +259,17 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
         }
       }
 
-      if (isFirstOfDay || score >= 8) {
+      if (isFirstOfDay || score >= bleedScore) {
         push({ kind: "full-bleed", photos: [photo] });
         i += 1;
         continue;
       }
 
-      if (next && score < 7 && (next.highlightScore ?? 5) < 7) {
+      if (
+        next &&
+        score < pairScoreCap &&
+        (next.highlightScore ?? 5) < pairScoreCap
+      ) {
         push({ kind: "pair", photos: [photo, next] });
         i += 2;
         continue;
@@ -529,7 +556,14 @@ export function buildPrintHtml(ctx: PdfExportContext): string {
   const template = ctx.template ?? "classic";
   const pages = planPdfPages(ctx);
   const totalPages = pages.length;
-  const body = pages.map((p) => renderPage(ctx, p, ctx.format, totalPages)).join("\n");
+  const body = pages
+    .map((p) => renderPage(ctx, p, ctx.format, totalPages))
+    .join("\n");
+
+  const typePack: TypePackId =
+    ctx.typePack ??
+    (template === "minimal" ? "sans-clean" : "serif-editorial");
+  const packCss = typePackCss(typePack);
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -538,9 +572,10 @@ export function buildPrintHtml(ctx: PdfExportContext): string {
   <title>${escapeHtml(ctx.travel.title)} — Álbum</title>
   <style>
     ${getPdfThemeCss(template, ctx.format)}
+    ${packCss}
   </style>
 </head>
-<body>
+<body class="export-type--${typePack}" data-type-pack="${typePack}" data-pdf-template="${template}">
   ${body}
 </body>
 </html>`;

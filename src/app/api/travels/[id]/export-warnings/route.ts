@@ -3,11 +3,20 @@ import { prisma } from "@/lib/prisma";
 import { buildExportWarnings } from "@/lib/export-warnings";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    const url = new URL(request.url);
+    const formatParam = url.searchParams.get("format");
+    const format =
+      formatParam === "html" ||
+      formatParam === "zip" ||
+      formatParam === "pdf" ||
+      formatParam === "reel"
+        ? formatParam
+        : undefined;
 
     const travel = await prisma.travel.findUnique({
       where: { id },
@@ -47,6 +56,7 @@ export async function GET(
       endDate: travel.endDate,
       journalMarkdown: travel.journalMarkdown,
       placeCount: travel._count.places,
+      format,
       photos: travel.photos,
       notes: travel.notes,
     });

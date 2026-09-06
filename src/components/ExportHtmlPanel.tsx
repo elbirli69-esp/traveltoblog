@@ -11,6 +11,20 @@ import {
   type DownloadResult,
 } from "@/lib/download-blob";
 import { isCapacitorNative } from "@/lib/capacitor-native";
+import {
+  THEME_PACK_CATALOG,
+  defaultThemePackForTemplate,
+  type ThemePackId,
+} from "@/lib/export/theme-packs";
+import {
+  TYPE_PACK_CATALOG,
+  defaultTypePackForTemplate,
+  type TypePackId,
+} from "@/lib/export/type-packs";
+import {
+  fetchTravelExportPrefs,
+  saveTravelExportPrefs,
+} from "@/lib/export-prefs";
 
 export type ExportTemplateId = "magazine" | "visual-journey" | "editorial-clean" | "dark-photo-journey";
 export type ExportFormat = "zip" | "html";
@@ -93,6 +107,13 @@ export default function ExportHtmlPanel({
   hasGpsPhotos = false,
 }: ExportHtmlPanelProps) {
   const [template, setTemplate] = useState<ExportTemplateId>("magazine");
+  const [themePack, setThemePack] = useState<ThemePackId>("light-paper");
+  const [typePack, setTypePack] = useState<TypePackId>("serif-editorial");
+  const [packSuggestion, setPackSuggestion] = useState<{
+    themePack: ThemePackId | null;
+    typePack: TypePackId | null;
+    reasons: string[];
+  } | null>(null);
   const [typology, setTypology] = useState<ExportTypologyId>("auto");
   const [typologies, setTypologies] = useState<TypologyOption[]>([]);
   const [suggestion, setSuggestion] = useState<{ type: TravelType; reason: string } | null>(
@@ -128,6 +149,39 @@ export default function ExportHtmlPanel({
     [format, previewing]
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    void fetchTravelExportPrefs(travelId).then((prefs) => {
+      if (cancelled || !prefs) return;
+      if (prefs.exportBrief) setBrief(prefs.exportBrief);
+      if (prefs.htmlTemplateId) {
+        setTemplate(prefs.htmlTemplateId as ExportTemplateId);
+      }
+      if (prefs.htmlThemePackId) {
+        setThemePack(prefs.htmlThemePackId as ThemePackId);
+      }
+      if (prefs.htmlTypePackId) {
+        setTypePack(prefs.htmlTypePackId as TypePackId);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [travelId]);
+
+  const persistHtmlPrefs = useCallback(
+    (patch: {
+      exportBrief?: string | null;
+      htmlTemplateId?: string | null;
+      htmlThemePackId?: string | null;
+      htmlTypePackId?: string | null;
+      exportBriefCache?: string | null;
+    }) => {
+      void saveTravelExportPrefs(travelId, patch);
+    },
+    [travelId]
+  );
+
   const handleInterpret = async () => {
     setInterpreting(true);
     setError(null);
@@ -141,6 +195,8 @@ export default function ExportHtmlPanel({
           hasJournal,
           travelTitle: undefined,
           uiTemplate: template,
+          uiThemePack: themePack,
+          uiTypePack: typePack,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -158,6 +214,16 @@ export default function ExportHtmlPanel({
           structureLocked: boolean;
           differsFromUi: boolean;
         } | null;
+        themePackMatch?: {
+          suggestedThemePackId: ThemePackId;
+          label: string;
+          differsFromUi: boolean;
+        } | null;
+        typePackMatch?: {
+          suggestedTypePackId: TypePackId;
+          label: string;
+          differsFromUi: boolean;
+        } | null;
       };
       if (!res.ok) {
         throw new Error(data.error ?? "Error al interpretar el brief");
@@ -165,7 +231,34 @@ export default function ExportHtmlPanel({
       setInterpretation(data.interpretation ?? data.message ?? null);
       setSummary(data.summary ?? null);
       setTemplateSuggestion(data.templateMatch ?? null);
+      const reasons: string[] = [];
+      if (data.themePackMatch?.differsFromUi) {
+        reasons.push(`tema «${data.themePackMatch.label}»`);
+      }
+      if (data.typePackMatch?.differsFromUi) {
+        reasons.push(`tipografía «${data.typePackMatch.label}»`);
+      }
+      setPackSuggestion({
+        themePack: data.themePackMatch?.suggestedThemePackId ?? null,
+        typePack: data.typePackMatch?.suggestedTypePackId ?? null,
+        reasons,
+      });
       if (data.warning) setError(data.warning);
+      persistHtmlPrefs({
+        exportBrief: brief.trim() || null,
+        htmlTemplateId: template,
+        htmlThemePackId: themePack,
+        htmlTypePackId: typePack,
+        exportBriefCache: JSON.stringify({
+          target: "html",
+          interpretation: data.interpretation ?? data.message ?? null,
+          summary: data.summary ?? null,
+          templateMatch: data.templateMatch ?? null,
+          themePackMatch: data.themePackMatch ?? null,
+          typePackMatch: data.typePackMatch ?? null,
+          at: new Date().toISOString(),
+        }),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al interpretar");
     } finally {
@@ -195,11 +288,11 @@ export default function ExportHtmlPanel({
   }, [travelId]);
 
   useEffect(() => {
-    void fetch(`/api/travels/${travelId}/export-warnings`)
+    void fetch(`/api/travels/${travelId}/export-warnings?format=${format}`)
       .then((r) => r.json())
       .then((data) => setWarnings(data.warnings ?? []))
       .catch(() => setWarnings([]));
-  }, [travelId]);
+  }, [travelId, format]);
 
   const runExport = useCallback(
     async (mode: "download" | "preview") => {
@@ -237,6 +330,8 @@ export default function ExportHtmlPanel({
             includeGpsTrail,
             stream: true,
             brief: brief.trim() || undefined,
+            themePack,
+            typePack,
           }),
         });
 
@@ -388,7 +483,19 @@ export default function ExportHtmlPanel({
             <button
               key={t.id}
               type="button"
-              onClick={() => setTemplate(t.id)}
+              onClick={() => {
+                setTemplate(t.id);
+                const nextTheme = defaultThemePackForTemplate(t.id);
+                const nextType = defaultTypePackForTemplate(t.id);
+                setThemePack(nextTheme);
+                setTypePack(nextType);
+                setPackSuggestion(null);
+                persistHtmlPrefs({
+                  htmlTemplateId: t.id,
+                  htmlThemePackId: nextTheme,
+                  htmlTypePackId: nextType,
+                });
+              }}
               disabled={busy}
               className={`select-card p-4 ${template === t.id ? "select-card-active" : ""}`}
             >
@@ -397,6 +504,51 @@ export default function ExportHtmlPanel({
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block text-sm">
+          <span className="mb-1.5 block font-semibold text-fg-secondary">Tema de color</span>
+          <select
+            value={themePack}
+            onChange={(e) => {
+              setThemePack(e.target.value as ThemePackId);
+              persistHtmlPrefs({ htmlThemePackId: e.target.value });
+              setPackSuggestion((prev) =>
+                prev ? { ...prev, themePack: null } : prev
+              );
+            }}
+            disabled={busy}
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg focus:border-accent-cyan focus:outline-none"
+          >
+            {THEME_PACK_CATALOG.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label} — {p.tagline}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1.5 block font-semibold text-fg-secondary">Tipografía</span>
+          <select
+            value={typePack}
+            onChange={(e) => {
+              setTypePack(e.target.value as TypePackId);
+              persistHtmlPrefs({ htmlTypePackId: e.target.value });
+              setPackSuggestion((prev) =>
+                prev ? { ...prev, typePack: null } : prev
+              );
+            }}
+            disabled={busy}
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg focus:border-accent-cyan focus:outline-none"
+          >
+            {TYPE_PACK_CATALOG.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label} — {p.tagline}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <label className="flex cursor-pointer items-start gap-2 text-sm text-fg-secondary">
@@ -444,8 +596,9 @@ export default function ExportHtmlPanel({
         </div>
         {format === "html" && (
           <p className="callout callout-warning mt-2 text-xs">
-            El HTML único embebe todas las fotos en un solo archivo: puede pesar mucho más y tardar
-            más en generarse. Para compartir o archivar, recomendamos ZIP.
+            El HTML único embebe todas las fotos en base64: con muchas imágenes el archivo puede
+            superar fácilmente decenas de MB y tardar más en generarse. Para compartir o archivar,
+            recomendamos ZIP (WebP + mapa offline).
           </p>
         )}
       </div>
@@ -518,7 +671,19 @@ export default function ExportHtmlPanel({
             {templateSuggestion.differsFromUi && (
               <button
                 type="button"
-                onClick={() => setTemplate(templateSuggestion.suggestedTemplateId)}
+                onClick={() => {
+                  setTemplate(templateSuggestion.suggestedTemplateId);
+                  setThemePack(
+                    defaultThemePackForTemplate(
+                      templateSuggestion.suggestedTemplateId
+                    )
+                  );
+                  setTypePack(
+                    defaultTypePackForTemplate(
+                      templateSuggestion.suggestedTemplateId
+                    )
+                  );
+                }}
                 disabled={busy}
                 className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
               >
@@ -527,6 +692,34 @@ export default function ExportHtmlPanel({
             )}
           </div>
         )}
+        {packSuggestion &&
+          (packSuggestion.themePack || packSuggestion.typePack) &&
+          packSuggestion.reasons.length > 0 && (
+            <div className="callout callout-info space-y-2 text-sm">
+              <p className="font-semibold text-fg">
+                Look sugerido: {packSuggestion.reasons.join(" · ")}
+              </p>
+              <p className="text-xs text-fg-secondary">
+                No cambia la estructura de la plantilla; solo color y tipografía tipados.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (packSuggestion.themePack) {
+                    setThemePack(packSuggestion.themePack);
+                  }
+                  if (packSuggestion.typePack) {
+                    setTypePack(packSuggestion.typePack);
+                  }
+                  setPackSuggestion(null);
+                }}
+                disabled={busy}
+                className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+              >
+                Aplicar look
+              </button>
+            </div>
+          )}
       </div>
 
       {warnings.length > 0 && (

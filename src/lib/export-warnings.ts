@@ -10,6 +10,10 @@ export interface ExportWarningsInput {
   endDate: Date | null;
   journalMarkdown: string | null;
   placeCount?: number;
+  /** When "html", add single-file embed weight warnings. */
+  format?: "zip" | "html" | "pdf" | "reel";
+  /** Force HTML embed weight warnings even if format is unset. */
+  warnHtmlEmbed?: boolean;
   photos: {
     latitude: number | null;
     longitude: number | null;
@@ -105,6 +109,21 @@ export function buildExportWarnings(input: ExportWarningsInput): ExportWarning[]
       level: "info",
       message: `${photoCount} fotos seleccionadas. Las re-exportaciones reutilizan imágenes optimizadas en caché.`,
     });
+  }
+
+  // Single-file HTML embeds images as base64 — be honest about weight.
+  if (input.format === "html" || input.warnHtmlEmbed) {
+    if (photoCount >= 25) {
+      warnings.push({
+        level: "warning",
+        message: `HTML único con ${photoCount} fotos: el archivo puede superar fácilmente decenas de MB. Preferimos ZIP (WebP + mapa offline) para compartir.`,
+      });
+    } else if (photoCount >= 12) {
+      warnings.push({
+        level: "info",
+        message: `HTML único embebe ~${photoCount} fotos en base64: más pesado que el ZIP. Úsalo solo si necesitas un solo archivo.`,
+      });
+    }
   }
 
   const videos = input.photos.filter((p) => p.mediaType === "VIDEO");

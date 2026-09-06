@@ -65,6 +65,16 @@ import {
   resolveHtmlTemplateFromBrief,
 } from "@/lib/export-html-directives";
 import type { ExportHtmlDirectives } from "@/lib/export-directives";
+import {
+  defaultThemePackForTemplate,
+  themePackCss,
+  type ThemePackId,
+} from "@/lib/export/theme-packs";
+import {
+  defaultTypePackForTemplate,
+  typePackCss,
+  type TypePackId,
+} from "@/lib/export/type-packs";
 import { buildMapTileLayerScript } from "@/lib/export/map-tiles";
 import { fetchHtmlStaticMapImages } from "@/lib/export-html-map";
 import { exportPhotoPaths, EXPORT_IMAGE_MIME } from "@/lib/export-images";
@@ -142,6 +152,10 @@ export interface ExportContext {
   template: ExportTemplateId;
   typology?: ExportTypologyId;
   includeGpsTrail?: boolean;
+  /** Color token pack (CSS vars). Does not change structure. */
+  themePack?: ThemePackId | null;
+  /** Typography pack (typed stacks only). */
+  typePack?: TypePackId | null;
   /** Grounded free-text brief → HTML presentation knobs. */
   htmlDirectives?: ExportHtmlDirectives | null;
   briefInterpretation?: string | null;
@@ -2166,6 +2180,12 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
     : "";
 
   const timelineJson = JSON.stringify(timelineEvents).replace(/</g, "\\u003c");
+  const resolvedThemePack =
+    ctx.themePack ?? defaultThemePackForTemplate(template);
+  const resolvedTypePack =
+    ctx.typePack ?? defaultTypePackForTemplate(template);
+  const packStyles =
+    themePackCss(resolvedThemePack) + typePackCss(resolvedTypePack);
   const extraStyles =
     (isMagazine || isVisual ? timelineExportStyles() : "") +
     (hasMap && (isMagazine || isVisual) ? mapExportStyles() : "") +
@@ -2192,7 +2212,13 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
     : "";
 
   const exportBootScript = `<script>${buildExportPhotoBootScript()}</script>`;
-  const bodyClass = bodyClassForHtmlDirectives(htmlDir);
+  const bodyClass = [
+    bodyClassForHtmlDirectives(htmlDir),
+    `export-theme--${resolvedThemePack}`,
+    `export-type--${resolvedTypePack}`,
+  ]
+    .filter(Boolean)
+    .join(" ");
   const briefComment = ctx.briefInterpretation
     ? `<!-- export-brief: ${escapeHtml(ctx.briefInterpretation)} -->\n`
     : "";
@@ -2205,9 +2231,9 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
   <title>${escapeHtml(travel.title)} — TravelToBlog</title>
   ${headMeta}
   ${hasMap ? '<link rel="stylesheet" href="assets/leaflet.css">' : ""}
-  <style>${templateStyles(template)}${extraStyles}</style>
+  <style>${templateStyles(template)}${packStyles}${extraStyles}</style>
 </head>
-<body class="${bodyClass}">
+<body class="${bodyClass}" data-theme-pack="${resolvedThemePack}" data-type-pack="${resolvedTypePack}">
   ${briefComment}${headerBlock}
   ${mapOuter}
   <div class="wrap">
