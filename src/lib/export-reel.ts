@@ -803,6 +803,7 @@ function collectFlightMapPoints(photos: ReelPhotoInput[]): ReelMapPoint[] {
     inbound.photo.latitude != null &&
     inbound.photo.longitude != null
   ) {
+    // Keep vuelta even when GPS matches ida — labels differ; coalesce later.
     points.push({
       lat: inbound.photo.latitude,
       lng: inbound.photo.longitude,
@@ -812,6 +813,123 @@ function collectFlightMapPoints(photos: ReelPhotoInput[]): ReelMapPoint[] {
     });
   }
   return points;
+}
+
+/** Destination centroid: prefer places; else the GPS cluster farthest from origin (skip layovers). */
+function destinationCentroid(
+  photos: ReelPhotoInput[],
+  places: ReelPlaceInput[],
+  origin: { lat: number; lng: number } | null
+): { lat: number; lng: number } | null {
+  const placePts = places.filter(
+    (p) => p.latitude != null && p.longitude != null
+  ) as Array<ReelPlaceInput & { latitude: number; longitude: number }>;
+  const photoPts = photos.filter(
+    (p) =>
+      p.selected &&
+      !p.isTransportStart &&
+      !p.isTransportEnd &&
+      p.latitude != null &&
+      p.longitude != null
+  ) as Array<ReelPhotoInput & { latitude: number; longitude: number }>;
+  let pts =
+    placePts.length > 0
+      ? placePts.map((p) => ({ lat: p.latitude, lng: p.longitude }))
+      : photoPts.map((p) => ({ lat: p.latitude, lng: p.longitude }));
+  if (pts.length === 0) return null;
+  if (origin) {
+    // Ignore GPS near the home airport and keep the farthest cluster (destination).
+    const far = pts.filter((p) => Math.hypot(p.lat - origin.lat, p.lng - origin.lng) > 2.5);
+    if (far.length > 0) pts = far;
+    let farthest = pts[0]!;
+    let best = -1;
+    for (const p of pts) {
+      const d = Math.hypot(p.lat - origin.lat, p.lng - origin.lng);
+      if (d > best) {
+        best = d;
+        farthest = p;
+      }
+    }
+    pts = pts.filter((p) => Math.hypot(p.lat - farthest.lat, p.lng - farthest.lng) < 3);
+  }
+  return {
+    lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length,
+    lng: pts.reduce((s, p) => s + p.lng, 0) / pts.length,
+  };
+}
+
+function sameSpot(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+  eps = 0.15
+): boolean {
+  return Math.hypot(a.lat - b.lat, a.lng - b.lng) < eps;
+}
+
+/**
+ * Build visible flight arcs for the reel intro.
+ * Prefer geometry legs when they already span home↔destination; otherwise
+ * synthesize origin→destination (ida/vuelta often share the same airport GPS,
+ * so adjacent-node legs alone can stop at a layover).
+ */
+function buildFlightOverviewLegs(
+  photos: ReelPhotoInput[],
+  places: ReelPlaceInput[],
+  geometryLegs: Array<Array<{ lat: number; lng: number }>>
+): Array<Array<{ lat: number; lng: number }>> {
+  const airports = collectFlightMapPoints(photos);
+  const out = airports.find((p) => p.label?.includes("ida") || p.label?.includes("Ida"));
+  const inbound = airports.find((p) => p.label?.includes("vuelta") || p.label?.includes("Vuelta"));
+  const origin = out ?? inbound ?? null;
+  const dest = destinationCentroid(photos, places, origin);
+
+  const synthesized: Array<Array<{ lat: number; lng: number }>> = [];
+  if (origin && dest && !sameSpot(origin, dest)) {
+    synthesized.push([
+      { lat: origin.lat, lng: origin.lng },
+      { lat: dest.lat, lng: dest.lng },
+    ]);
+    if (inbound && out && !sameSpot(out, inbound)) {
+      synthesized.push([
+        { lat: dest.lat, lng: dest.lng },
+        { lat: inbound.lat, lng: inbound.lng },
+      ]);
+    } else if (inbound || out) {
+      // Round trip to same airport: draw return as dest → origin too.
+      synthesized.push([
+        { lat: dest.lat, lng: dest.lng },
+        { lat: origin.lat, lng: origin.lng },
+      ]);
+    }
+  }
+
+  const fromGeometry = geometryLegs
+    .filter((leg) => leg.length >= 2)
+    .filter((leg) => {
+      const a = leg[0]!;
+      const b = leg[leg.length - 1]!;
+      return Math.hypot(a.lat - b.lat, a.lng - b.lng) > 0.05;
+    });
+
+  // Prefer synthesized home↔destination when it reaches farther than geometry
+  // (geometry often stops at a layover when ida/vuelta coalesce to one node).
+  if (synthesized.length > 0) {
+    const synthSpan = Math.max(
+      ...synthesized.map((leg) =>
+        Math.hypot(leg[0]!.lat - leg.at(-1)!.lat, leg[0]!.lng - leg.at(-1)!.lng)
+      )
+    );
+    const geoSpan =
+      fromGeometry.length === 0
+        ? 0
+        : Math.max(
+            ...fromGeometry.map((leg) =>
+              Math.hypot(leg[0]!.lat - leg.at(-1)!.lat, leg[0]!.lng - leg.at(-1)!.lng)
+            )
+          );
+    if (synthSpan >= geoSpan - 0.01) return synthesized;
+  }
+  return fromGeometry.length > 0 ? fromGeometry : synthesized;
 }
 
 function buildReelMapFromTravel(input: {
@@ -843,21 +961,46 @@ function buildReelMapFromTravel(input: {
   );
   const geometry = buildDirectRouteGeometry(nodes);
 
-  // Match Lugares dual-map "Trayecto": frame airport pins (e.g. Spain↔Poland),
-  // not layover photos / GPS trails that pull the map to France.
-  if (hasFlightOverview(geometry)) {
+  const hasTransport = input.photos.some(
+    (p) =>
+      (p.isTransportStart || p.isTransportEnd) &&
+      p.latitude != null &&
+      p.longitude != null
+  );
+
+  // Match Lugares trayecto: origin↔destination arcs with plane markers.
+  if (hasTransport || hasFlightOverview(geometry)) {
     const airports = collectFlightMapPoints(input.photos);
-    const flightLegs =
-      airports.length >= 2
-        ? [airports.slice(0, 2).map((p) => ({ lat: p.lat, lng: p.lng }))]
-        : geometry!.flightLegs.map((leg) =>
-            leg.map((p) => ({ lat: p.lat, lng: p.lng }))
-          );
-    const flightPlan = buildReelMapPlan(airports, [], {
-      overview: "flights",
-      flightLegs,
-    });
-    if (flightPlan) return flightPlan;
+    const flightLegs = buildFlightOverviewLegs(
+      input.photos,
+      places,
+      (geometry?.flightLegs ?? []).map((leg) =>
+        leg.map((p) => ({ lat: p.lat, lng: p.lng }))
+      )
+    );
+    if (flightLegs.length > 0) {
+      // Ensure destination endpoint is marked when airports are only origin.
+      const originPin = airports[0] ?? null;
+      const dest = destinationCentroid(input.photos, places, originPin);
+      const pins = [...airports];
+      if (
+        dest &&
+        !pins.some((p) => sameSpot(p, dest))
+      ) {
+        pins.push({
+          lat: dest.lat,
+          lng: dest.lng,
+          kind: "flight",
+          label: "🛬 Destino",
+          at: null,
+        });
+      }
+      const flightPlan = buildReelMapPlan(pins, [], {
+        overview: "flights",
+        flightLegs,
+      });
+      if (flightPlan) return flightPlan;
+    }
   }
 
   return buildReelMapPlan(collectMapPoints(input.photos, places), input.gpsTrails);

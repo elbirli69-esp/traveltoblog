@@ -328,6 +328,68 @@ function drawPlacePinBadge(
   ctx.restore();
 }
 
+
+/** Canvas plane silhouette — emoji fonts are unreliable in OffscreenCanvas/encode. */
+function drawPlaneIcon(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  angleRad: number,
+  size: number,
+  fill = "#f8fafc"
+) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angleRad);
+  ctx.scale(size / 28, size / 28);
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = "rgba(15, 23, 42, 0.55)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  // Fuselage
+  ctx.moveTo(14, 0);
+  ctx.lineTo(-10, 3.5);
+  ctx.lineTo(-10, -3.5);
+  ctx.closePath();
+  // Wings
+  ctx.moveTo(2, 0);
+  ctx.lineTo(-4, 12);
+  ctx.lineTo(-7, 12);
+  ctx.lineTo(-2, 0);
+  ctx.lineTo(-7, -12);
+  ctx.lineTo(-4, -12);
+  ctx.closePath();
+  // Tail
+  ctx.moveTo(-8, 0);
+  ctx.lineTo(-13, 5);
+  ctx.lineTo(-11, 0);
+  ctx.lineTo(-13, -5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function flightPathAngle(
+  coords: Array<[number, number]>,
+  t: number,
+  project: (lat: number, lng: number) => { x: number; y: number }
+): { x: number; y: number; angle: number } {
+  const n = coords.length - 1;
+  const f = Math.max(0, Math.min(1, t)) * n;
+  const i = Math.min(n - 1, Math.floor(f));
+  const local = f - i;
+  const a = coords[i]!;
+  const b = coords[i + 1]!;
+  const pa = project(a[0], a[1]);
+  const pb = project(b[0], b[1]);
+  return {
+    x: pa.x + (pb.x - pa.x) * local,
+    y: pa.y + (pb.y - pa.y) * local,
+    angle: Math.atan2(pb.y - pa.y, pb.x - pa.x),
+  };
+}
+
 function paintMapOverlays(
   ctx: CanvasRenderingContext2D,
   map: ReelMapPlan,
@@ -407,13 +469,13 @@ function paintMapOverlays(
     };
   });
 
-  // Flight arcs (Lugares trayecto) — dashed indigo, animated by progress.
+  // Flight arcs (Lugares trayecto) — dashed indigo + moving plane icon.
   const flightLegs = map.flightLegs ?? [];
   if (flightLegs.length > 0) {
     ctx.save();
     ctx.strokeStyle = "rgba(129, 140, 248, 0.95)";
-    ctx.lineWidth = 5;
-    ctx.setLineDash([14, 10]);
+    ctx.lineWidth = 6;
+    ctx.setLineDash([16, 12]);
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     ctx.globalAlpha = 0.95;
@@ -437,6 +499,11 @@ function paintMapOverlays(
         ctx.lineTo(pa.x + (pb.x - pa.x) * segT, pa.y + (pb.y - pa.y) * segT);
       }
       ctx.stroke();
+
+      // Moving plane along the drawn portion of the arc.
+      const planeT = Math.max(0.02, Math.min(1, routeT));
+      const plane = flightPathAngle(leg.coords, planeT, project);
+      drawPlaneIcon(ctx, plane.x, plane.y, plane.angle, allVisible ? 34 : 38, "#f8fafc");
     }
     ctx.restore();
   } else if (projected.length >= 2) {
@@ -490,19 +557,33 @@ function paintMapOverlays(
     ctx.save();
     ctx.globalAlpha = appear;
     if (p.kind === "flight") {
-      const emoji = p.label?.includes("🛬") ? "🛬" : "✈️";
-      ctx.font = `700 ${isHi ? 44 : 36}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(emoji, p.x, p.y);
-      if (isHi && p.label) {
+      // Airport marker + plane icon (emoji fonts often fail while encoding).
+      ctx.fillStyle = "rgba(15, 23, 42, 0.72)";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, isHi ? 22 : 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = isHi ? 3 : 2;
+      ctx.stroke();
+      const inbound = Boolean(p.label?.includes("🛬") || p.label?.toLowerCase().includes("vuelta"));
+      drawPlaneIcon(
+        ctx,
+        p.x,
+        p.y,
+        inbound ? Math.PI * 0.85 : -Math.PI * 0.15,
+        isHi ? 30 : 26,
+        inbound ? "#86efac" : "#fde68a"
+      );
+      if (p.label) {
         const label = p.label.replace(/^[✈️🛬]\s*/, "");
-        ctx.font = `700 22px "Segoe UI", system-ui, sans-serif`;
-        const tw = Math.min(ctx.measureText(label).width + 28, width * 0.7);
-        ctx.fillStyle = "rgba(0,0,0,0.6)";
-        ctx.fillRect(p.x - tw / 2, p.y + 22, tw, 36);
+        ctx.font = `700 20px "Segoe UI", system-ui, sans-serif`;
+        const tw = Math.min(ctx.measureText(label).width + 24, width * 0.7);
+        ctx.fillStyle = "rgba(0,0,0,0.62)";
+        ctx.fillRect(p.x - tw / 2, p.y + 24, tw, 32);
         ctx.fillStyle = "#fff";
-        ctx.fillText(label, p.x, p.y + 40, tw - 12);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, p.x, p.y + 40, tw - 10);
       }
     } else {
       ctx.fillStyle = isHi ? "#f97316" : p.kind === "place" ? "#f97316" : "#06b6d4";

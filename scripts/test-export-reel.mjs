@@ -319,8 +319,22 @@ assert.ok(
   !flightManifest.map.points.some((p) => Math.abs(p.lat - 49.01) < 0.5),
   "France layover must not pin the flight overview"
 );
+// Ida+vuelta share Madrid GPS — trayecto must still span to Poland, not collapse.
+const flightCoords = flightManifest.map.flightLegs.flatMap((leg) => leg.coords);
 assert.ok(
-  flightManifest.map.center.lng < 10 && flightManifest.map.center.lng > -5,
+  flightCoords.some((c) => c[1] > 15),
+  "flight path must reach Poland longitude"
+);
+assert.ok(
+  flightCoords.some((c) => c[1] < 0),
+  "flight path must include Spain longitude"
+);
+assert.ok(
+  flightCoords.length > 4,
+  "flight path should be densified into a visible arc"
+);
+assert.ok(
+  flightManifest.map.center.lng > 0 && flightManifest.map.center.lng < 20,
   `flight center should sit between Spain and Poland, got lng=${flightManifest.map.center.lng}`
 );
 assert.ok(flightManifest.map.points.some((p) => p.kind === "flight"));

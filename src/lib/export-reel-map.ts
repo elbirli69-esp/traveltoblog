@@ -127,6 +127,39 @@ export function buildReelMapStaticUrl(
   return `https://api.mapbox.com/styles/v1/${stylePath}/static/${center.lng},${center.lat},${zoom},0/${STATIC_CSS_W}x${STATIC_CSS_H}@2x?access_token=${encodeURIComponent(token)}&logo=false&attribution=false`;
 }
 
+
+/** Densify a straight leg into a gentle great-circle arc (more flight-like on map). */
+/** Densify a leg into a curved arc so the trayecto reads as a flight path. */
+export function densifyFlightLeg(
+  coords: Array<[number, number]>,
+  segments = 28
+): Array<[number, number]> {
+  if (coords.length < 2) return coords;
+  const out: Array<[number, number]> = [];
+  for (let i = 0; i < coords.length - 1; i++) {
+    const [lat1, lng1] = coords[i]!;
+    const [lat2, lng2] = coords[i + 1]!;
+    const midLat = (lat1 + lat2) / 2;
+    const midLng = (lng1 + lng2) / 2;
+    // Bulge the midpoint perpendicular to the chord (gentle flight arc).
+    const dx = lng2 - lng1;
+    const dy = lat2 - lat1;
+    const len = Math.hypot(dx, dy) || 1;
+    const bulge = Math.min(8, len * 0.18);
+    const ctrlLat = midLat + (dx / len) * bulge;
+    const ctrlLng = midLng - (dy / len) * bulge;
+    for (let s = 0; s < segments; s++) {
+      const t = s / segments;
+      const u = 1 - t;
+      const lat = u * u * lat1 + 2 * u * t * ctrlLat + t * t * lat2;
+      const lng = u * u * lng1 + 2 * u * t * ctrlLng + t * t * lng2;
+      out.push([lat, lng]);
+    }
+  }
+  out.push(coords[coords.length - 1]!);
+  return out;
+}
+
 export function buildReelMapPlan(
   rawPoints: ReelMapPoint[],
   gpsTrails: GpsTrailPolyline[] = [],
@@ -151,7 +184,12 @@ export function buildReelMapPlan(
   // Flight overview (same idea as Lugares → Trayecto): fit only ida/vuelta legs,
   // never destination GPS trails that can pull the frame to a layover country.
   if (overview === "flights" && flightLegs.length > 0) {
-    const fromLegs: ReelMapPoint[] = flightLegs.flatMap((leg) =>
+    const denseLegs: ReelMapFlightLeg[] = flightLegs.map((leg) => ({
+      coords: densifyFlightLeg(leg.coords, 28),
+    }));
+    // Fit the frame to the flight path itself (Spain↔Poland), not only airport
+    // pins — ida+vuelta often share the same origin GPS and would collapse the view.
+    const fromLegs: ReelMapPoint[] = denseLegs.flatMap((leg) =>
       leg.coords.map(([lat, lng]) => ({
         lat,
         lng,
@@ -160,14 +198,12 @@ export function buildReelMapPlan(
         at: null,
       }))
     );
-    const points = coalesceMapPoints(rawPoints.length > 0 ? rawPoints : fromLegs);
-    const viewSource = points.length >= 2 ? points : fromLegs;
-    if (viewSource.length < 2) return null;
-    const view = computeMapView(viewSource);
-    // Slightly pull back so airport pins sit inside the 9:16 crop.
+    if (fromLegs.length < 2) return null;
+    const airportPins = coalesceMapPoints(rawPoints);
+    const view = computeMapView(fromLegs);
     const zoom = Math.max(2, view.zoom - 1);
     return {
-      points: points.length >= 1 ? points : coalesceMapPoints(fromLegs),
+      points: airportPins.length >= 1 ? airportPins : coalesceMapPoints(fromLegs.slice(0, 1).concat(fromLegs.slice(-1))),
       staticUrl: buildReelMapStaticUrl(view.center, zoom),
       center: view.center,
       zoom,
@@ -175,7 +211,7 @@ export function buildReelMapPlan(
       imageHeight: STATIC_CSS_H,
       gpsTrails: [],
       overview: "flights",
-      flightLegs,
+      flightLegs: denseLegs,
     };
   }
 
