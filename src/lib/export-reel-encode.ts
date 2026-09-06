@@ -11,7 +11,7 @@ import type {
   ReelManifest,
   ReelTransition,
 } from "@/lib/export-reel";
-import { REEL_BITRATE, REEL_HEIGHT, REEL_WIDTH } from "@/lib/export-reel";
+import { REEL_BITRATE, REEL_HEIGHT, REEL_WIDTH, truncateAtWordBoundary } from "@/lib/export-reel";
 import { projectMapPoint, type ReelMapPlan,
   buildReelPlaceBasemapPath,
   REEL_PLACE_FOCUS_ZOOM,
@@ -27,6 +27,20 @@ export type ReelEncodeProgress = {
 
 function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/**
+ * Map→photo reveal inside mapFocus/mapInset:
+ * early = map-led, mid = expand photo, late = photo-led.
+ */
+function mapToPhotoReveal(t: number): number {
+  if (t <= 0.36) return 0;
+  if (t >= 0.78) return 1;
+  return easeInOut((t - 0.36) / 0.42);
 }
 
 function loadImage(url: string): Promise<HTMLImageElement> {
@@ -95,6 +109,31 @@ function drawSafeText(
   ctx.restore();
 }
 
+/** Ellipsize to width, dropping whole words first (never mid-word when avoidable). */
+function ellipsizeCanvasLine(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number
+): string {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (words.length === 0) return "";
+  if (words.length > 1) {
+    let kept = words.slice();
+    while (kept.length > 1) {
+      kept.pop();
+      const candidate = `${kept.join(" ")}…`;
+      if (ctx.measureText(candidate).width <= maxWidth) return candidate;
+    }
+  }
+  // Single overlong token: character trim is the only option left.
+  let hard = words[0]!;
+  while (hard.length > 1 && ctx.measureText(`${hard}…`).width > maxWidth) {
+    hard = hard.slice(0, -1);
+  }
+  return `${hard}…`;
+}
+
 function wrapCanvasText(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -116,11 +155,7 @@ function wrapCanvasText(
     current = word;
     if (lines.length >= maxLines - 1) {
       const rest = [word, ...words.slice(i + 1)].join(" ");
-      let last = rest;
-      while (last.length > 1 && ctx.measureText(`${last}…`).width > maxWidth) {
-        last = last.slice(0, -1).trimEnd();
-      }
-      lines.push(ctx.measureText(rest).width <= maxWidth ? rest : `${last}…`);
+      lines.push(ellipsizeCanvasLine(ctx, rest, maxWidth));
       return lines.slice(0, maxLines);
     }
   }
@@ -299,7 +334,7 @@ function drawPlacePinBadge(
   pulse = 1
 ) {
   ctx.save();
-  const label = placeName.length > 28 ? `${placeName.slice(0, 27)}…` : placeName;
+  const label = truncateAtWordBoundary(placeName, 28);
   ctx.font = `700 28px "Segoe UI", system-ui, sans-serif`;
   const tw = Math.min(ctx.measureText(label).width + 56, 520);
   const th = 52;
@@ -822,67 +857,120 @@ function paintPhotoClip(
       focusMap.imageWidth,
       focusMap.imageHeight
     );
+    const reveal = mapToPhotoReveal(t);
     // Mild canvas zoom — geographic zoom already comes from the place basemap.
-    const zoom = placeEntry ? 1.0 + easeInOut(t) * 0.08 : 1.08 + easeInOut(t) * 0.5;
-    const panTowardX = ((width / 2 - pin.x) / width) * easeInOut(t) * (placeEntry ? 0.35 : 1.35);
-    const panTowardY = ((height / 2 - pin.y) / height) * easeInOut(t) * (placeEntry ? 0.35 : 1.35);
+    const mapT = Math.min(1, t / 0.72);
+    const zoom = placeEntry ? 1.0 + easeInOut(mapT) * 0.08 : 1.08 + easeInOut(mapT) * 0.5;
+    const panTowardX = ((width / 2 - pin.x) / width) * easeInOut(mapT) * (placeEntry ? 0.35 : 1.35);
+    const panTowardY = ((height / 2 - pin.y) / height) * easeInOut(mapT) * (placeEntry ? 0.35 : 1.35);
+    // Map layer fades as photo expands so the handoff isn't a hard cut.
+    ctx.save();
+    ctx.globalAlpha = 1 - reveal * 0.92;
     drawCover(ctx, focusImg, width, height, zoom, panTowardX, panTowardY);
     ctx.fillStyle = "rgba(0,0,0,0.18)";
     ctx.fillRect(0, 0, width, height);
     paintMapOverlays(ctx, focusMap, 1, width, height, undefined, true, highlight);
-    const insetW = Math.round(width * 0.38);
-    const insetH = Math.round(height * 0.22);
-    const insetX = width - insetW - 36;
-    const insetY = height - insetH - 120;
-    ctx.save();
-    roundedRectPath(ctx, insetX, insetY, insetW, insetH, 18);
-    ctx.clip();
-    drawCover(ctx, img, insetW, insetH, 1.05, 0, 0);
     ctx.restore();
-    ctx.strokeStyle = "rgba(255,255,255,0.85)";
-    ctx.lineWidth = 4;
-    roundedRectPath(ctx, insetX, insetY, insetW, insetH, 18);
-    ctx.stroke();
-    if (frameMeta.placeName) {
+
+    const insetW0 = Math.round(width * 0.38);
+    const insetH0 = Math.round(height * 0.22);
+    const insetX0 = width - insetW0 - 36;
+    const insetY0 = height - insetH0 - 120;
+    const photoW = Math.round(lerp(insetW0, width, reveal));
+    const photoH = Math.round(lerp(insetH0, height, reveal));
+    const photoX = Math.round(lerp(insetX0, 0, reveal));
+    const photoY = Math.round(lerp(insetY0, 0, reveal));
+    const radius = Math.round(lerp(18, 0, reveal));
+    ctx.save();
+    roundedRectPath(ctx, photoX, photoY, photoW, photoH, radius);
+    ctx.clip();
+    drawCover(ctx, img, photoW, photoH, 1.0 + reveal * 0.08, 0, 0);
+    ctx.restore();
+    if (reveal < 0.92) {
+      ctx.strokeStyle = `rgba(255,255,255,${0.85 * (1 - reveal)})`;
+      ctx.lineWidth = 4;
+      roundedRectPath(ctx, photoX, photoY, photoW, photoH, Math.max(2, radius));
+      ctx.stroke();
+    }
+    if (reveal > 0.55) {
+      drawScrim(ctx, width, height);
+    }
+    if (frameMeta.placeName && reveal < 0.85) {
       const pulse = 1 + Math.sin(t * Math.PI * 2) * 0.06;
       drawPlacePinBadge(ctx, frameMeta.placeName, width / 2, height * 0.2, pulse);
     }
-    if (frameMeta.sticker) {
+    if (frameMeta.sticker && reveal > 0.4) {
       drawPlaceSticker(ctx, frameMeta.sticker, width, height, t);
+    }
+    if (showChrome && reveal > 0.62 && frameMeta.caption) {
+      drawStoryCaption(
+        ctx,
+        frameMeta.caption,
+        frameMeta.captionStyle ?? "glassCard",
+        width,
+        height,
+        Math.max(0, (t - 0.62) / 0.38),
+        frameMeta.placeName
+      );
     }
     return;
   }
 
   if (treatment === "mapFocus" && map && mapImg) {
+    const reveal = mapToPhotoReveal(t);
     const pulse = 1 + Math.sin(t * Math.PI * 2) * 0.06;
-    drawCover(ctx, mapImg, width, height, 1.08 + t * 0.04, 0, 0);
+    ctx.save();
+    ctx.globalAlpha = 1 - reveal * 0.92;
+    drawCover(ctx, mapImg, width, height, 1.08 + Math.min(1, t / 0.72) * 0.04, 0, 0);
     ctx.fillStyle = "rgba(0,0,0,0.28)";
     ctx.fillRect(0, 0, width, height);
     paintMapOverlays(ctx, map, 1, width, height, undefined, true, highlight);
-    const insetW = Math.round(width * 0.38);
-    const insetH = Math.round(height * 0.22);
-    const insetX = width - insetW - 36;
-    const insetY = height - insetH - 120;
-    ctx.save();
-    roundedRectPath(ctx, insetX, insetY, insetW, insetH, 18);
-    ctx.clip();
-    drawCover(ctx, img, insetW, insetH, 1.05, 0, 0);
     ctx.restore();
-    ctx.strokeStyle = "rgba(255,255,255,0.85)";
-    ctx.lineWidth = 4;
-    roundedRectPath(ctx, insetX, insetY, insetW, insetH, 18);
-    ctx.stroke();
-    if (frameMeta.placeName) {
+    const insetW0 = Math.round(width * 0.38);
+    const insetH0 = Math.round(height * 0.22);
+    const insetX0 = width - insetW0 - 36;
+    const insetY0 = height - insetH0 - 120;
+    const photoW = Math.round(lerp(insetW0, width, reveal));
+    const photoH = Math.round(lerp(insetH0, height, reveal));
+    const photoX = Math.round(lerp(insetX0, 0, reveal));
+    const photoY = Math.round(lerp(insetY0, 0, reveal));
+    const radius = Math.round(lerp(18, 0, reveal));
+    ctx.save();
+    roundedRectPath(ctx, photoX, photoY, photoW, photoH, radius);
+    ctx.clip();
+    drawCover(ctx, img, photoW, photoH, 1.0 + reveal * 0.08, 0, 0);
+    ctx.restore();
+    if (reveal < 0.92) {
+      ctx.strokeStyle = `rgba(255,255,255,${0.85 * (1 - reveal)})`;
+      ctx.lineWidth = 4;
+      roundedRectPath(ctx, photoX, photoY, photoW, photoH, Math.max(2, radius));
+      ctx.stroke();
+    }
+    if (reveal > 0.55) drawScrim(ctx, width, height);
+    if (frameMeta.placeName && reveal < 0.85) {
       drawPlacePinBadge(ctx, frameMeta.placeName, width / 2, height * 0.22, pulse);
     }
-    if (frameMeta.sticker) {
+    if (frameMeta.sticker && reveal > 0.4) {
       drawPlaceSticker(ctx, frameMeta.sticker, width, height, t);
+    }
+    if (showChrome && reveal > 0.62 && frameMeta.caption) {
+      drawStoryCaption(
+        ctx,
+        frameMeta.caption,
+        frameMeta.captionStyle ?? "glassCard",
+        width,
+        height,
+        Math.max(0, (t - 0.62) / 0.38),
+        frameMeta.placeName
+      );
     }
     return;
   }
 
   if (treatment === "mapInset" && map && mapImg) {
-    const photoH = Math.round(height * 0.58);
+    // Start map-heavier, end photo-heavier so both get readable time.
+    const photoShare = lerp(0.42, 0.72, mapToPhotoReveal(t));
+    const photoH = Math.round(height * photoShare);
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, width, photoH);
@@ -1375,12 +1463,23 @@ export async function encodeInstagramReelMp4(
     const nextImg = nextIdx != null ? images[nextIdx] : undefined;
     const nextMeta = nextIdx != null ? manifest.frames[nextIdx] : undefined;
     // Floor so a scaled-down clip still shows before the ~0.4 s transition.
+    // Map treatments need a longer on-screen hold for the map→photo reveal.
+    const isMapTx =
+      meta.treatment === "mapFocus" || meta.treatment === "mapInset";
+    const nextIsMap =
+      nextMeta?.treatment === "mapFocus" || nextMeta?.treatment === "mapInset";
     const needsRead = Boolean(
-      meta.caption || meta.dayNote || meta.role === "chapter"
+      meta.caption || meta.dayNote || meta.role === "chapter" || isMapTx
     );
+    const fadeSec =
+      nextImg && (isMapTx || nextIsMap)
+        ? Math.max(crossfade, 0.7)
+        : nextImg
+          ? crossfade
+          : 0;
     const hold = Math.max(
-      needsRead ? 2.0 : 0.7,
-      meta.durationSeconds - (nextImg ? crossfade : 0)
+      isMapTx ? 2.6 : needsRead ? 2.0 : 0.7,
+      meta.durationSeconds - fadeSec
     );
 
     // Hold uses full 0→1 motion; captions fade in once at the start of the hold.
@@ -1406,9 +1505,13 @@ export async function encodeInstagramReelMp4(
     );
 
     if (nextImg && nextMeta) {
-      const fadeFrames = Math.max(1, Math.round(crossfade * fps));
+      const fadeFrames = Math.max(1, Math.round(fadeSec * fps));
       const transition =
-        meta.role === "chapter" ? "fade" : (meta.transitionOut ?? "fade");
+        meta.role === "chapter"
+          ? "fade"
+          : isMapTx || nextIsMap
+            ? "fade"
+            : (meta.transitionOut ?? "fade");
       for (let f = 0; f < fadeFrames; f++) {
         const u = fadeFrames === 1 ? 1 : f / (fadeFrames - 1);
         // Outgoing: freeze near end of Ken Burns with chrome on (layer alpha fades).

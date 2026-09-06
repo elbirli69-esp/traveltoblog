@@ -282,13 +282,29 @@ function resolveSticker(type: string | null | undefined): string | null {
   return placeEmoji(type as PlaceType);
 }
 
-export function clipOverlayText(text: string, max = REEL_CAPTION_MAX_CHARS): string {
+/**
+ * Truncate for on-screen overlays at a word boundary (never mid-word when
+ * there is at least one complete word that fits). Ellipsis is included in `max`.
+ */
+export function truncateAtWordBoundary(text: string, max: number): string {
   const t = text.replace(/\s+/g, " ").trim();
   if (!t) return "";
   if (t.length <= max) return t;
-  const sliced = t.slice(0, max - 1);
-  const neat = sliced.replace(/\s+\S*$/, "").trim();
-  return `${neat || sliced.trim()}…`;
+  const budget = Math.max(1, max - 1); // room for …
+  let cut = t.slice(0, budget);
+  const next = t[budget];
+  // Mid-word cut → drop the partial token.
+  if (next && !/\s/.test(next) && cut.length > 0 && !/\s/.test(cut[cut.length - 1]!)) {
+    const sp = cut.lastIndexOf(" ");
+    if (sp >= 1) cut = cut.slice(0, sp);
+  }
+  cut = cut.trimEnd();
+  if (!cut) cut = t.slice(0, budget).trimEnd();
+  return `${cut}…`;
+}
+
+export function clipOverlayText(text: string, max = REEL_CAPTION_MAX_CHARS): string {
+  return truncateAtWordBoundary(text, max);
 }
 
 /** How many caption characters fit a clip hold at reel overlay size. */
@@ -457,10 +473,13 @@ export function assignReelTreatments(
       sticker: frame.sticker,
       durationSeconds:
         treatment === "mapFocus"
-          ? Math.max(frame.durationSeconds, frame.hero ? 2.1 : 1.45)
-          : treatment === "story"
-            ? Math.max(frame.durationSeconds, frame.hero ? 2.0 : 1.25)
-            : frame.durationSeconds,
+          ? // Map→photo reveal needs a real two-beat hold (was ~1.5s and felt cut).
+            Math.max(frame.durationSeconds, frame.hero ? 3.4 : 3.0)
+          : treatment === "mapInset"
+            ? Math.max(frame.durationSeconds, frame.hero ? 3.0 : 2.6)
+            : treatment === "story"
+              ? Math.max(frame.durationSeconds, frame.hero ? 2.0 : 1.25)
+              : frame.durationSeconds,
     };
   });
 }
@@ -1029,12 +1048,12 @@ function fitClipDurations(
     const pattern = patternList[beat % patternList.length]!;
     beat += 1;
     const base = f.hero ? Math.max(pattern, pacing === "punchy" ? 1.5 : 1.85) : pattern;
-    const boosted =
-      f.treatment === "mapFocus"
-        ? Math.max(base, f.hero ? 2.0 : 1.45)
-        : f.treatment === "story"
-          ? Math.max(base, f.hero ? 1.85 : 1.15)
-          : base;
+    const isMap = f.treatment === "mapFocus" || f.treatment === "mapInset";
+    const boosted = isMap
+      ? Math.max(base, f.treatment === "mapFocus" ? (f.hero ? 3.4 : 3.0) : f.hero ? 3.0 : 2.6)
+      : f.treatment === "story"
+        ? Math.max(base, f.hero ? 1.85 : 1.15)
+        : base;
     return { ...f, durationSeconds: boosted };
   });
 
@@ -1047,17 +1066,23 @@ function fitClipDurations(
     if (f.role === "hook" || f.role === "chapter") return f;
     // Keep holds usable after subtracting crossfade in the encoder.
     const hasText = Boolean(f.caption || f.dayNote);
+    const isMap = f.treatment === "mapFocus" || f.treatment === "mapInset";
     // durationSeconds includes outgoing crossfade; keep readable on-screen hold.
-    const minHold = hasText
-      ? REEL_CAPTION_MIN_HOLD_SECONDS
-      : pacing === "punchy"
-        ? 1.0
-        : pacing === "calm"
-          ? 1.5
-          : 1.25;
+    const minHold = isMap
+      ? f.treatment === "mapFocus"
+        ? 2.8
+        : 2.4
+      : hasText
+        ? REEL_CAPTION_MIN_HOLD_SECONDS
+        : pacing === "punchy"
+          ? 1.0
+          : pacing === "calm"
+            ? 1.5
+            : 1.25;
     const min = minHold + REEL_CROSSFADE_SECONDS * 0.85;
-    const max =
-      pacing === "punchy"
+    const max = isMap
+      ? 5.0
+      : pacing === "punchy"
         ? hasText || f.hero
           ? 3.4
           : 2.4

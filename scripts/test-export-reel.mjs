@@ -3,6 +3,7 @@ import {
   selectReelFrames,
   buildReelManifest,
   clipOverlayText,
+  truncateAtWordBoundary,
   resolveFrameCaption,
   resolveReadableCaption,
   fitCaptionsToClipHolds,
@@ -43,6 +44,16 @@ const photos = Array.from({ length: 28 }, (_, i) => ({
 
 assert.ok(clipOverlayText("a".repeat(100)).endsWith("…"));
 assert.ok(clipOverlayText("a".repeat(100)).length <= REEL_CAPTION_MAX_CHARS + 1);
+// Word-boundary truncate: never split a word when a shorter complete phrase fits.
+assert.equal(
+  truncateAtWordBoundary("plaza mayor de Madrid centro", 18),
+  "plaza mayor de…"
+);
+{
+  const clipped = truncateAtWordBoundary("amanecer sobre el Duero", 16);
+  assert.equal(clipped, "amanecer sobre…");
+  assert.ok(clipped.endsWith("…"));
+}
 assert.equal(resolveReadableCaption({ comments: ["Sol en Belém"] }, 1.6), "Sol en Belém");
 assert.equal(
   resolveReadableCaption(
