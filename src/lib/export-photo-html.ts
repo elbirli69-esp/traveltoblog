@@ -15,7 +15,9 @@ export function exportThumbImgTag(
   extraClass = ""
 ): string {
   const cls = extraClass ? ` class="${escapeHtml(extraClass)}"` : "";
-  return `<img data-export-src="${escapeHtml(photo.thumbPath)}" data-export-display="${escapeHtml(photo.localPath)}" alt="${escapeHtml(alt)}" loading="lazy"${cls}>`;
+  // Relative src so ZIP works on file:// without waiting for boot JS.
+  // Single-file export still rewrites src from __EXPORT_PHOTOS__.
+  return `<img src="${escapeHtml(photo.thumbPath)}" data-export-src="${escapeHtml(photo.thumbPath)}" data-export-display="${escapeHtml(photo.localPath)}" alt="${escapeHtml(alt)}" loading="eager"${cls}>`;
 }
 
 export function exportDisplayPathFromPhotoPath(photoPath: string): string {

@@ -153,14 +153,14 @@ function renderPhotoCard(
       : isVideo
         ? `<figure class="story-media story-media--video">
         <button type="button" class="story-media-btn" aria-label="Ampliar vídeo">
-          <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="Vídeo del viaje" loading="lazy" class="story-photo-img">
+          <img src="${escapeHtml(ev.mediaUrl)}" data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="Vídeo del viaje" loading="eager" class="story-photo-img">
           <span class="story-video-badge">▶ Vídeo${duration ? ` · ${escapeHtml(duration)}` : ""}</span>
         </button>
         <figcaption class="story-photo-caption">${escapeHtml(ev.author ?? "Viajero")} · ${formatTime(ev.at)} · solo poster en HTML único</figcaption>
       </figure>`
         : `<figure class="story-media">
         <button type="button" class="story-media-btn" aria-label="Ampliar foto">
-          <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="Foto del viaje" loading="lazy" class="story-photo-img">
+          <img src="${escapeHtml(ev.mediaUrl)}" data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="Foto del viaje" loading="eager" class="story-photo-img">
         </button>
         <figcaption class="story-photo-caption">${escapeHtml(ev.author ?? "Viajero")} · ${formatTime(ev.at)}</figcaption>
       </figure>`
@@ -191,7 +191,7 @@ function renderPlaceCard(ev: TimelineEvent): string {
   const body = ev.body ? `<div class="story-place-note">${bodyParagraphs(ev.body)}</div>` : "";
   const media = ev.mediaUrl
     ? `<figure class="story-media story-media--compact">
-        <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="" loading="lazy" class="story-photo-img">
+        <img src="${escapeHtml(ev.mediaUrl)}" data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="" loading="eager" class="story-photo-img">
       </figure>`
     : "";
 
@@ -239,7 +239,7 @@ function renderFlightCard(ev: TimelineEvent): string {
   const label = isOut ? "Salida — inicio del viaje" : "Regreso — fin del viaje";
   const media = ev.mediaUrl
     ? `<figure class="story-media story-media--compact">
-        <img data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="" loading="lazy" class="story-photo-img">
+        <img src="${escapeHtml(ev.mediaUrl)}" data-export-src="${escapeHtml(ev.mediaUrl)}" data-export-display="${escapeHtml(exportDisplayPathFromThumb(ev.mediaUrl))}" alt="" loading="eager" class="story-photo-img">
       </figure>`
     : "";
 
