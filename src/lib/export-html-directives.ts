@@ -213,6 +213,17 @@ body.export-dir--theme-dark .mag-hero {
 body.export-dir--theme-dark .mag-hero::before {
   background: linear-gradient(to top, rgba(12,10,9,.96) 0%, rgba(12,10,9,.5) 50%, rgba(12,10,9,.2) 100%);
 }
+body.export-dir--theme-dark .mag-deck {
+  color: var(--muted);
+}
+body.export-dir--theme-dark .mag-section-nav {
+  background: rgba(12,10,9,.92);
+  border-bottom-color: var(--border);
+}
+body.export-dir--theme-dark .mag-section-nav a:hover {
+  color: var(--text);
+  background: rgba(45,212,191,.12);
+}
 body.export-dir--theme-dark .mag-toc,
 body.export-dir--theme-dark .mag-callout-card,
 body.export-dir--theme-dark .story-card,

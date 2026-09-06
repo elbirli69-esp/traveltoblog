@@ -310,7 +310,12 @@ body {
   min-height: 68vh;
   display: flex;
   align-items: flex-end;
-  background: linear-gradient(135deg, #ccfbf1 0%, #faf9f7 60%, #fef3c7 100%);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 22%, var(--bg)) 0%,
+    var(--bg) 60%,
+    color-mix(in srgb, var(--accent-2) 18%, var(--bg)) 100%
+  );
   background-size: cover;
   background-position: center;
 }
@@ -318,7 +323,12 @@ body {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(250,249,247,.97) 0%, rgba(250,249,247,.55) 50%, rgba(250,249,247,.2) 100%);
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--bg) 97%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 55%, transparent) 50%,
+    color-mix(in srgb, var(--bg) 20%, transparent) 100%
+  );
 }
 .mag-hero-inner {
   position: relative;
@@ -348,7 +358,7 @@ body {
   margin: 0 0 1rem;
   font-size: 1.2rem;
   line-height: 1.55;
-  color: #44403c;
+  color: var(--muted);
   font-style: italic;
 }
 .mag-byline {
@@ -365,7 +375,7 @@ body {
   display: flex;
   gap: .35rem;
   padding: .65rem 1rem;
-  background: rgba(250,249,247,.92);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(10px);
   overflow-x: auto;
@@ -381,7 +391,10 @@ body {
   border-radius: 999px;
   transition: color .15s, background .15s;
 }
-.mag-section-nav a:hover { color: var(--text); background: rgba(13,148,136,.08); }
+.mag-section-nav a:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
 
 #cronologia,
 #mapa,
