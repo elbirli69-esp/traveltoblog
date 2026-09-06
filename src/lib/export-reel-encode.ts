@@ -129,7 +129,7 @@ function ellipsizeCanvasLine(
   const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
   if (words.length === 0) return "";
   if (words.length > 1) {
-    let kept = words.slice();
+    const kept = words.slice();
     while (kept.length > 1) {
       kept.pop();
       const candidate = `${kept.join(" ")}…`;
