@@ -510,8 +510,11 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
               seedFromPhoto={placeSeedFromPhoto}
               onOpenFotosTab={() => setActiveTab("photos")}
               onOpenPhoto={(photoId) => {
-                setFocusPhotoId(photoId);
+                setPlaceSeedFromPhoto(null);
+                // Force gallery focus effect even if returning to the same photo.
+                setFocusPhotoId(null);
                 setActiveTab("photos");
+                queueMicrotask(() => setFocusPhotoId(photoId));
               }}
               onAddPlace={() => applyAddMemory("place")}
               travelStartDate={travel.startDate}

@@ -428,9 +428,13 @@ export default function TravelPlacesPanel({
             createdAt: new Date().toISOString(),
           });
         }
+        const returnToPhotoId = draft.linkPhotoId ?? null;
         setDraft(null);
         setAddMode(false);
         onChanged?.();
+        if (returnToPhotoId) {
+          onOpenPhoto?.(returnToPhotoId);
+        }
         return;
       }
 
@@ -461,9 +465,13 @@ export default function TravelPlacesPanel({
         });
       }
 
+      const returnToPhotoId = draft.linkPhotoId ?? null;
       setDraft(null);
       setAddMode(false);
       onChanged?.();
+      if (returnToPhotoId) {
+        onOpenPhoto?.(returnToPhotoId);
+      }
     } catch {
       setError("Error al guardar el lugar");
     } finally {
@@ -737,9 +745,13 @@ export default function TravelPlacesPanel({
               <button
                 type="button"
                 onClick={() => {
+                  const returnToPhotoId = draft.linkPhotoId ?? null;
                   setDraft(null);
                   setAddMode(false);
                   setError(null);
+                  if (returnToPhotoId) {
+                    onOpenPhoto?.(returnToPhotoId);
+                  }
                 }}
                 disabled={saving}
                 className="btn-secondary rounded-lg px-4 py-2 text-sm"
