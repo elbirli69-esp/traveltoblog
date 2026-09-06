@@ -133,6 +133,33 @@ assert.ok(
   ),
   "hook cover photo must not repeat as chapter/clip in the body"
 );
+
+// Body clips must be chronological by dayKey (undated last); chapters once per day.
+const bodyClips = manifest.frames.filter((f) => f.role === "clip" && f.dayKey);
+const clipDays = bodyClips.map((f) => f.dayKey);
+for (let i = 1; i < clipDays.length; i++) {
+  assert.ok(
+    clipDays[i] >= clipDays[i - 1],
+    `clip days must be chronological, got ${clipDays.join(",")}`
+  );
+}
+const chapters = manifest.frames.filter((f) => f.role === "chapter");
+const chapterDays = chapters.map((f) => f.dayKey);
+assert.equal(
+  chapterDays.length,
+  new Set(chapterDays).size,
+  `chapters must appear once per day, got ${chapterDays.join(",")}`
+);
+for (let i = 0; i < manifest.frames.length - 1; i++) {
+  const a = manifest.frames[i];
+  const b = manifest.frames[i + 1];
+  if (a.role === "chapter" && b.role === "clip") {
+    // Chapter is a solid card in the encoder; photoId may match for asset loading
+    // but chapters must not visually loop — we still assert day progression.
+    assert.ok(a.dayKey === b.dayKey, "chapter must label the following clip day");
+  }
+}
+
 const chapter = manifest.frames.find((f) => f.role === "chapter");
 assert.ok(chapter && Math.abs(chapter.durationSeconds - REEL_CHAPTER_SECONDS) < 0.05);
 const clipDurations = manifest.frames

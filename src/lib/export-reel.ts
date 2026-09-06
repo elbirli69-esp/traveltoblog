@@ -152,6 +152,8 @@ export interface ReelFramePlan {
   dayIndex: number | null;
   /** Place-type emoji sticker */
   sticker: string | null;
+  /** Show day chip once when this day first appears in the body */
+  showDayChip?: boolean;
 }
 
 export interface ReelManifest {
@@ -526,7 +528,12 @@ export function selectReelFrames(
     });
   }
 
-  const dayKeys = [...byDay.keys()].sort((a, b) => a.localeCompare(b));
+  // Dated days ascending; undated bucket always last (never opens the story).
+  const dayKeys = [...byDay.keys()].sort((a, b) => {
+    if (a === "_sin_fecha") return 1;
+    if (b === "_sin_fecha") return -1;
+    return a.localeCompare(b);
+  });
   const maxFrames = Math.min(
     maxFramesForDuration(durationSeconds, opts.targetPhotoCount),
     pool.length
@@ -554,79 +561,115 @@ export function selectReelFrames(
           ? 2
           : 1;
 
-  let pass = 0;
-  while (frames.length < maxFrames && pass < 8) {
+  const tryPick = (
+    dayKey: string,
+    candidate: ReelPhotoInput,
+    firstOfDay: boolean,
+    allowWeak: boolean
+  ): boolean => {
+    if (frames.length >= maxFrames || pickedIds.has(candidate.id)) return false;
+    const caption = resolveFrameCaption(candidate);
+    const priority = computeReelPhotoPriority({
+      highlightScore: candidate.highlightScore,
+      hasCaption: Boolean(caption),
+      placeName: candidate.placeName,
+      placeHighlightScore: candidate.placeHighlightScore,
+    });
+    if (!allowWeak && priority < minPriority && pool.length > maxFrames) {
+      return false;
+    }
+    if (
+      isNearDuplicateReelCandidate(candidate, pickedMeta, {
+        maxMeters: 45,
+        maxSeconds: 90,
+      })
+    ) {
+      return false;
+    }
+    pickedIds.add(candidate.id);
+    pickedMeta.push({
+      id: candidate.id,
+      photoId: candidate.id,
+      placeName: candidate.placeName,
+      latitude: candidate.latitude,
+      longitude: candidate.longitude,
+      exifDateTime: candidate.exifDateTime,
+    });
+    const realDay = dayKey === "_sin_fecha" ? null : dayKey;
+    let dayNote: string | null = null;
+    if (
+      firstOfDay &&
+      realDay &&
+      notesByDay.has(realDay) &&
+      !usedDayNotes.has(realDay) &&
+      opts.captionMode !== "none" &&
+      opts.captionMode !== "placeOnly"
+    ) {
+      dayNote = notesByDay.get(realDay) ?? null;
+      usedDayNotes.add(realDay);
+    }
+    frames.push({
+      photoId: candidate.id,
+      dayKey: realDay,
+      dayLabel: realDay ? formatDateKey(realDay, "short") : null,
+      placeName: candidate.placeName?.trim() || null,
+      highlightScore: candidate.highlightScore ?? 5,
+      caption,
+      dayNote,
+      hero: false,
+      durationSeconds: 1.2,
+      layout: "full",
+      treatment: "clean",
+      transitionOut: "fade",
+      captionStyle: "glassCard",
+      kenBurns: frames.length % 2 === 0 ? "in" : "out",
+      latitude: candidate.latitude ?? null,
+      longitude: candidate.longitude ?? null,
+      role: "clip",
+      dayIndex: null,
+      sticker: resolveSticker(candidate.placeType),
+      showDayChip: Boolean(firstOfDay && realDay),
+    });
+    return true;
+  };
+
+  // Chronological fill: walk days in order, take a fair quota from each (priority-sorted).
+  for (let di = 0; di < dayKeys.length; di++) {
+    if (frames.length >= maxFrames) break;
+    const dayKey = dayKeys[di]!;
+    const list = byDay.get(dayKey) ?? [];
+    const daysLeft = dayKeys.length - di;
+    const quota = Math.min(
+      list.length,
+      Math.max(1, Math.ceil((maxFrames - frames.length) / daysLeft))
+    );
+    let taken = 0;
+    let firstOfDay = true;
+    for (const candidate of list) {
+      if (taken >= quota || frames.length >= maxFrames) break;
+      if (tryPick(dayKey, candidate, firstOfDay, taken > 0 || list.length <= quota)) {
+        taken += 1;
+        firstOfDay = false;
+      }
+    }
+  }
+
+  // Top up remaining slots in the same chronological day order (weaker shots ok).
+  if (frames.length < maxFrames) {
     for (const dayKey of dayKeys) {
       if (frames.length >= maxFrames) break;
       const list = byDay.get(dayKey) ?? [];
-      const candidate = list[pass];
-      if (!candidate || pickedIds.has(candidate.id)) continue;
-      const caption = resolveFrameCaption(candidate);
-      const priority = computeReelPhotoPriority({
-        highlightScore: candidate.highlightScore,
-        hasCaption: Boolean(caption),
-        placeName: candidate.placeName,
-        placeHighlightScore: candidate.placeHighlightScore,
-      });
-      // On early passes, skip weak clips if stronger ones remain.
-      if (pass === 0 && priority < minPriority && pool.length > maxFrames) {
-        continue;
-      }
-      // Skip near-duplicates (same place or very close in time/GPS to an already picked clip).
-      if (
-        isNearDuplicateReelCandidate(candidate, pickedMeta, {
-          maxMeters: 45,
-          maxSeconds: 90,
-        })
-      ) {
-        continue;
-      }
-      pickedIds.add(candidate.id);
-      pickedMeta.push({
-        id: candidate.id,
-        photoId: candidate.id,
-        placeName: candidate.placeName,
-        latitude: candidate.latitude,
-        longitude: candidate.longitude,
-        exifDateTime: candidate.exifDateTime,
-      });
-      const realDay = dayKey === "_sin_fecha" ? null : dayKey;
-      let dayNote: string | null = null;
-      if (
-        realDay &&
-        notesByDay.has(realDay) &&
-        !usedDayNotes.has(realDay) &&
-        opts.captionMode !== "none" &&
-        opts.captionMode !== "placeOnly"
-      ) {
-        if (frames.length % 3 === 1 || !caption) {
-          dayNote = notesByDay.get(realDay) ?? null;
-          usedDayNotes.add(realDay);
+      const alreadyInDay = frames.some(
+        (f) => (dayKey === "_sin_fecha" ? f.dayKey == null : f.dayKey === dayKey)
+      );
+      let firstOfDay = !alreadyInDay;
+      for (const candidate of list) {
+        if (frames.length >= maxFrames) break;
+        if (tryPick(dayKey, candidate, firstOfDay, true)) {
+          firstOfDay = false;
         }
       }
-      frames.push({
-        photoId: candidate.id,
-        dayKey: realDay,
-        dayLabel: realDay ? formatDateKey(realDay, "short") : null,
-        placeName: candidate.placeName?.trim() || null,
-        highlightScore: candidate.highlightScore ?? 5,
-        caption,
-        dayNote,
-        hero: false,
-        durationSeconds: 1.2,
-        layout: "full",
-        treatment: "clean",
-        transitionOut: "fade",
-        captionStyle: "glassCard",
-        kenBurns: frames.length % 2 === 0 ? "in" : "out",
-        latitude: candidate.latitude ?? null,
-        longitude: candidate.longitude ?? null,
-        role: "clip",
-        dayIndex: null,
-        sticker: resolveSticker(candidate.placeType),
-      });
     }
-    pass += 1;
   }
 
   const heroBudget =
@@ -933,13 +976,16 @@ function insertDayChapters(frames: ReelFramePlan[]): ReelFramePlan[] {
   if (dayKeys.length < 2) return frames;
 
   const out: ReelFramePlan[] = [];
-  let lastDay: string | null = null;
+  const openedDays = new Set<string>();
   let chapterCount = 0;
   for (const frame of frames) {
+    // Only one chapter per dayKey (first time it appears). Chronological body
+    // already avoids revisiting days; this guard keeps chapters stable if the
+    // pick order ever changes.
     if (
       frame.role === "clip" &&
       frame.dayKey &&
-      frame.dayKey !== lastDay &&
+      !openedDays.has(frame.dayKey) &&
       chapterCount < 4
     ) {
       const dayIndex = dayKeys.indexOf(frame.dayKey) + 1;
@@ -957,11 +1003,11 @@ function insertDayChapters(frames: ReelFramePlan[]): ReelFramePlan[] {
         durationSeconds: REEL_CHAPTER_SECONDS,
         sticker: null,
         kenBurns: "out",
+        showDayChip: false,
       });
       chapterCount += 1;
-      lastDay = frame.dayKey;
+      openedDays.add(frame.dayKey);
     }
-    if (frame.role === "clip" && frame.dayKey) lastDay = frame.dayKey;
     out.push(frame);
   }
   return out;

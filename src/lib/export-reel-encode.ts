@@ -135,7 +135,8 @@ function drawStoryCaption(
   t: number,
   meta?: string | null
 ) {
-  const appear = Math.min(1, easeInOut(Math.max(0, (t - 0.04) / 0.22)));
+  // Hold timeline is 0→1; fade in once over ~12% then stay opaque (no mid-clip blink).
+  const appear = Math.min(1, easeInOut(Math.max(0, t / 0.12)));
   if (appear <= 0.01 || !text.trim()) return;
 
   ctx.save();
@@ -523,22 +524,27 @@ function drawPlaceSticker(
 
 function paintChapterCard(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  _img: HTMLImageElement,
   frameMeta: ReelFramePlan,
   t: number,
   width: number,
   height: number
 ) {
-  ctx.fillStyle = "#0b1020";
+  // Solid chapter card — never reuse the next clip's still (that looked like a loop).
+  const g = ctx.createLinearGradient(0, 0, width * 0.2, height);
+  g.addColorStop(0, "#0b1020");
+  g.addColorStop(0.55, "#111827");
+  g.addColorStop(1, "#0f172a");
+  ctx.fillStyle = g;
   ctx.fillRect(0, 0, width, height);
-  drawCover(ctx, img, width, height, 1.08, 0, 0, 0.45);
-  ctx.fillStyle = `rgba(0,0,0,${0.35 + t * 0.1})`;
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(45,212,191,0.12)";
+  ctx.fillRect(0, height * 0.42, width, 3);
   const label =
     frameMeta.dayIndex != null
       ? `Día ${frameMeta.dayIndex}`
       : frameMeta.dayLabel || "Nuevo día";
-  const appear = easeInOut(Math.min(1, t / 0.55));
+  // Quick fade-in then hold (t is 0→1 over the chapter hold).
+  const appear = easeInOut(Math.min(1, t / 0.18));
   ctx.save();
   ctx.globalAlpha = appear;
   drawSafeText(
@@ -581,7 +587,8 @@ function paintPhotoClip(
   width: number,
   height: number,
   map: ReelMapPlan | null,
-  mapImg: HTMLImageElement | null
+  mapImg: HTMLImageElement | null,
+  showChrome = true
 ) {
   if (frameMeta.role === "hook") {
     paintHookClip(ctx, img, t, width, height);
@@ -589,6 +596,20 @@ function paintPhotoClip(
   }
   if (frameMeta.role === "chapter") {
     paintChapterCard(ctx, img, frameMeta, t, width, height);
+    return;
+  }
+
+  // Motion-only pass used during crossfade inbound so captions don't peek then restart.
+  if (!showChrome) {
+    const zoomFrom = frameMeta.kenBurns === "in" ? 1.0 : 1.12;
+    const zoomTo = frameMeta.kenBurns === "in" ? 1.1 : 1.0;
+    const scale = zoomFrom + (zoomTo - zoomFrom) * easeInOut(t);
+    const panX = frameMeta.kenBurns === "in" ? -0.07 + t * 0.14 : 0.07 - t * 0.14;
+    const panY = index % 2 === 0 ? -0.05 + t * 0.09 : 0.05 - t * 0.09;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, width, height);
+    drawCover(ctx, img, width, height, scale, panX, panY);
+    drawScrim(ctx, width, height);
     return;
   }
 
@@ -778,7 +799,7 @@ function paintPhotoClip(
   // clean — minimal chrome
   if (frameMeta.dayNote) {
     drawStoryCaption(ctx, frameMeta.dayNote, "sideAccent", width, height, t, null);
-  } else if (frameMeta.dayLabel && index % 2 === 0) {
+  } else if (frameMeta.dayLabel && frameMeta.showDayChip) {
     drawMetaChip(ctx, frameMeta.dayLabel, width, height * 0.84);
   }
 }
@@ -1065,6 +1086,8 @@ export async function encodeInstagramReelMp4(
     paint: (localT: number) => void,
     label: string
   ) => {
+    // 0s must paint 0 frames (Math.max(1,…) caused a 1-frame title flash).
+    if (seconds <= 0) return;
     const frameCount = Math.max(1, Math.round(seconds * fps));
     for (let i = 0; i < frameCount; i++) {
       const localT = frameCount === 1 ? 1 : i / (frameCount - 1);
@@ -1122,9 +1145,7 @@ export async function encodeInstagramReelMp4(
     // Floor so a scaled-down clip still shows before the ~0.4 s transition.
     const hold = Math.max(0.5, meta.durationSeconds - (nextImg ? crossfade : 0));
 
-    // Hold progress stays in the "captions fully on" band (≈0.5–0.95).
-    // Using t*0.85 from 0 made overlays fade in, then the next clip reset t→0
-    // after the crossfade so text vanished and blinked back in.
+    // Hold uses full 0→1 motion; captions fade in once at the start of the hold.
     await addSegment(
       hold,
       (t) =>
@@ -1132,12 +1153,13 @@ export async function encodeInstagramReelMp4(
           ctx,
           img,
           meta,
-          0.55 + t * 0.4,
+          t,
           i,
           width,
           height,
           mapPlan,
-          mapImg
+          mapImg,
+          true
         ),
       meta.role === "chapter"
         ? `Capítulo…`
@@ -1150,12 +1172,11 @@ export async function encodeInstagramReelMp4(
         meta.role === "chapter" ? "fade" : (meta.transitionOut ?? "fade");
       for (let f = 0; f < fadeFrames; f++) {
         const u = fadeFrames === 1 ? 1 : f / (fadeFrames - 1);
-        // Outgoing: keep chrome stable while the layer fades via blend.
-        const tA = 0.92;
-        // Incoming: stay below caption appear threshold so text does not
-        // peek during the blend and then restart its fade on the hold.
-        const tB = 0.02;
-        paintPhotoClip(ctxA, img, meta, tA, i, width, height, mapPlan, mapImg);
+        // Outgoing: freeze near end of Ken Burns with chrome on (layer alpha fades).
+        const tA = 1;
+        // Incoming: ease into Ken Burns WITHOUT chrome so text doesn't peek then restart.
+        const tB = u * 0.15;
+        paintPhotoClip(ctxA, img, meta, tA, i, width, height, mapPlan, mapImg, true);
         paintPhotoClip(
           ctxB,
           nextImg,
@@ -1165,7 +1186,8 @@ export async function encodeInstagramReelMp4(
           width,
           height,
           mapPlan,
-          mapImg
+          mapImg,
+          false
         );
         blendTransition(ctx, layerA, layerB, u, transition, width, height);
         const timestamp = frameIndex / fps;
