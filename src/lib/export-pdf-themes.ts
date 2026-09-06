@@ -93,15 +93,16 @@ const THEMES: Record<PdfTemplate, ThemeTokens> = {
     coverEyebrow: "#fb923c",
     dividerBg: "#171717",
     dividerText: "#fafaf9",
-    matBg: "#262626",
-    matBorder: "#404040",
-    featuredColBg: "#171717",
-    pairBorder: "#262626",
+    // Mats match the page so letterboxing never reads as a black void.
+    matBg: "#0f0f0f",
+    matBorder: "#1f1f1f",
+    featuredColBg: "#0f0f0f",
+    pairBorder: "#1f1f1f",
     closingBg: "#000000",
     closingText: "#fafaf9",
     closingMuted: "#78716c",
     mapBg: "#0a0a0a",
-    mosaicBg: "#141414",
+    mosaicBg: "#0f0f0f",
   },
 };
 
@@ -357,9 +358,12 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
     .divider-intro h2 { font-size: 13pt; margin-bottom: 3mm; color: ${t.text}; }
 
     /* —— Full bleed —— */
-    .page-bleed { background: #000; }
+    /* Fallback only; photo is absolute+cover so this should not show as bars. */
+    .page-bleed { background: ${t.pageBg}; }
 
     .bleed-photo {
+      position: absolute;
+      inset: 0;
       width: 100%;
       height: 100%;
       object-fit: cover;
@@ -391,32 +395,35 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       max-width: 160mm;
     }
 
-    /* —— Mosaic: HTML table (WeasyPrint-safe), 3–4 cols × 1–2 rows —— */
+    /* —— Mosaic: HTML table (WeasyPrint-safe), full sheets 2×3 / 2×4 —— */
     .page-mosaic {
       background: ${t.mosaicBg};
       box-sizing: border-box;
+      padding: 2mm;
     }
 
     .mosaic-table {
       width: 100%;
       height: 100%;
       border-collapse: separate;
-      border-spacing: 3mm 2.5mm;
+      border-spacing: 1.5mm;
       table-layout: fixed;
     }
 
-    .mosaic-row {
-      height: 50%;
+    /* Fixed mm heights — % on <tr> collapses the 2nd row in WeasyPrint (looks like “only 3”). */
+    .page-mosaic--dense .mosaic-row {
+      height: ${format === "square" ? "100mm" : "100mm"};
     }
 
     .page-mosaic:not(.page-mosaic--dense) .mosaic-row {
-      height: 100%;
+      height: ${format === "square" ? "200mm" : "200mm"};
     }
 
     .mosaic-cell {
       text-align: center;
-      vertical-align: middle;
-      padding: ${bleed + 1}mm ${bleed}mm;
+      vertical-align: top;
+      padding: 0;
+      height: inherit;
     }
 
     .mosaic-cell--empty {
@@ -424,27 +431,44 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       padding: 0;
     }
 
-    .mosaic-mat img {
-      display: block;
-      max-height: ${format === "square" ? "82mm" : "95mm"};
+    .mosaic-frame {
+      position: relative;
       width: 100%;
-      margin: 0 auto;
+      height: ${format === "square" ? "96mm" : "96mm"};
+      overflow: hidden;
+      background: ${t.pageBg};
+    }
+
+    .page-mosaic:not(.page-mosaic--dense) .mosaic-frame {
+      height: ${format === "square" ? "196mm" : "196mm"};
+    }
+
+    .mosaic-frame img {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
       object-fit: cover;
     }
 
-    .page-mosaic--dense .mosaic-mat img {
-      max-height: ${format === "square" ? "68mm" : "78mm"};
-    }
-
     .mosaic-caption {
-      margin-top: 2mm;
-      font-size: 6.5pt;
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      margin: 0;
+      padding: 4mm 2mm 1.5mm;
+      font-size: 6pt;
       letter-spacing: 0.06em;
       text-transform: uppercase;
-      color: ${t.textMuted};
+      color: #fafaf9;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.55));
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      text-align: left;
+      z-index: 1;
     }
 
     /* —— Featured (photo-led; crónica lives on day-divider) —— */
@@ -463,26 +487,29 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
 
     .photo-mat {
       background: ${t.matBg};
-      padding: 2mm;
-      border: 0.2mm solid ${t.matBorder};
+      padding: 0;
+      border: none;
+      overflow: hidden;
     }
 
     .photo-mat img {
       display: block;
       width: 100%;
       max-height: 165mm;
-      object-fit: contain;
+      object-fit: cover;
     }
 
     .featured-mat {
       display: inline-block;
-      max-width: ${format === "square" ? "175mm" : "250mm"};
+      max-width: ${format === "square" ? "190mm" : "275mm"};
       width: 100%;
       text-align: left;
     }
 
     .featured-mat img {
-      max-height: ${format === "square" ? "145mm" : "165mm"};
+      max-height: ${format === "square" ? "160mm" : "175mm"};
+      height: ${format === "square" ? "160mm" : "175mm"};
+      object-fit: cover;
     }
 
     .featured-caption {
@@ -514,13 +541,15 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       display: table;
       table-layout: fixed;
       width: 100%;
+      height: 100%;
+      background: ${t.pageBg};
     }
 
     .pair-cell {
       display: table-cell;
       width: 50%;
       vertical-align: middle;
-      padding: ${bleed + 5}mm ${bleed + 4}mm;
+      padding: 3mm;
       text-align: center;
     }
 
@@ -528,8 +557,20 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       border-right: 0.2mm solid ${t.pairBorder};
     }
 
+    .pair-mat {
+      position: relative;
+      width: 100%;
+      height: ${format === "square" ? "175mm" : "185mm"};
+      overflow: hidden;
+    }
+
     .pair-mat img {
-      max-height: ${format === "square" ? "140mm" : "155mm"};
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      max-height: none;
+      object-fit: cover;
     }
 
     .pair-caption {
