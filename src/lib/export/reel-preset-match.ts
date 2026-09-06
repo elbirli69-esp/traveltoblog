@@ -45,6 +45,10 @@ function normalizeBrief(brief: string): string {
 /** Explicit preset naming (highest priority). */
 const NAMED_PRESET_CUES: Array<{ id: ReelPresetId; re: RegExp }> = [
   {
+    id: "memories",
+    re: /\brecuerdos?\b|\bmemories\b|\biphone\b|\bestilo\s+recuerdo|\bpreset\s+recuerdos?\b|\bcomo\s+el\s+iphone\b|\bcomo\s+recuerdos\b/,
+  },
+  {
     id: "calm-story",
     re: /\bcronica\s+calmada\b|\bcalm\s+story\b|\bpreset\s+calmad\w*\b/,
   },
@@ -74,6 +78,8 @@ export function namedReelPresetInBrief(brief: string): ReelPresetId | null {
   const text = normalizeBrief(brief);
   const hits = NAMED_PRESET_CUES.filter((n) => n.re.test(text)).map((n) => n.id);
   if (hits.length === 0) return null;
+  // Memories / iPhone cues win over generic textless or map phrases.
+  if (hits.includes("memories")) return "memories";
   // Map + place phrases often co-occur; prefer map-pulse when the brief leads with mapa/recorrido.
   if (
     hits.includes("map-pulse") &&
@@ -214,9 +220,18 @@ function scoreEntry(
     ) {
       score += 0.06;
     }
+    if (
+      entry.id === "memories" &&
+      /\b(recuerdos?|memories|iphone|nostalgic\w*|como\s+el\s+iphone)\b/.test(
+        briefNorm
+      )
+    ) {
+      score += 0.16;
+      reasons.push("estilo Recuerdos / iPhone");
+    }
   }
 
-  score += (7 - entry.uiOrder) * 0.001;
+  score += (8 - entry.uiOrder) * 0.001;
 
   return {
     score: Math.max(0, Math.min(1, score)),

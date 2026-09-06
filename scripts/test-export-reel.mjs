@@ -422,6 +422,63 @@ assert.ok(tightView.zoom >= 14, `nearby places zoom too low: ${tightView.zoom}`)
 assert.equal(REEL_PLACE_FOCUS_ZOOM, 16);
 assert.ok(buildReelPlaceBasemapPath(38.71, -9.14).includes("zoom=16"));
 
+// Memories look: cinematic map intro, no captions/chapters, soft fades.
+const memoriesManifest = buildReelManifest({
+  title: "Lisboa",
+  participants: ["Ada"],
+  startDate: new Date("2024-06-01"),
+  endDate: new Date("2024-06-05"),
+  durationSeconds: 30,
+  reelDirectives: {
+    pacing: "calm",
+    captionMode: "none",
+    captionPlacement: "bottom",
+    transitionStyle: "softFade",
+    transitionSeconds: 0.75,
+    heroBias: "high",
+    mapBias: "high",
+    look: "memories",
+    targetPhotoCount: 8,
+  },
+  photos,
+  places: [
+    {
+      id: "pl1",
+      name: "Belém",
+      type: "VIEWPOINT",
+      latitude: 38.697,
+      longitude: -9.206,
+      comment: null,
+      visitedAt: new Date("2024-06-02"),
+      highlightScore: 8,
+    },
+  ],
+});
+assert.equal(memoriesManifest.look, "memories");
+assert.ok(
+  memoriesManifest.mapIntroSeconds >= 3,
+  `memories map intro too short: ${memoriesManifest.mapIntroSeconds}`
+);
+assert.ok(
+  memoriesManifest.crossfadeSeconds >= 0.7,
+  `memories crossfade too short: ${memoriesManifest.crossfadeSeconds}`
+);
+assert.equal(
+  memoriesManifest.frames.filter((f) => f.role === "chapter").length,
+  0,
+  "memories should skip day chapters"
+);
+assert.ok(
+  memoriesManifest.frames.every((f) => !f.caption && f.transitionOut === "fade"),
+  "memories clips should be captionless fades"
+);
+assert.ok(
+  memoriesManifest.frames
+    .filter((f) => f.role === "clip")
+    .every((f) => f.treatment === "clean"),
+  "memories body should stay photo-clean (map is intro)"
+);
+
 console.log("export-reel ok", {
   frames30: frames.length,
   frames60: frames60.length,

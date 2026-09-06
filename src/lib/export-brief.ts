@@ -178,6 +178,24 @@ export function groundExportBriefHeuristically(
     notes.push("textos cortos");
   }
 
+  // iPhone Memories / Recuerdos look (no audio yet).
+  if (
+    /\b(recuerdos?|memories|iphone|estilo\s+recuerdo|como\s+(el\s+)?iphone|como\s+recuerdos)\b/.test(
+      text
+    )
+  ) {
+    reel.look = "memories";
+    reel.pacing = "calm";
+    reel.captionMode = "none";
+    reel.transitionStyle = "softFade";
+    reel.transitionSeconds = 0.75;
+    reel.heroBias = "high";
+    reel.mapBias = "high";
+    reel.targetPhotoCount =
+      duration <= 15 ? 5 : duration <= 30 ? 8 : 12;
+    notes.push("estilo Recuerdos (iPhone)");
+  }
+
   if (
     /\b(tranquil\w*|calmad\w*|lent\w*|suaves?|pausad\w*|relax|chill|slow)\b/.test(
       text

@@ -11,11 +11,23 @@ import {
   namedReelPresetInBrief,
 } from "../src/lib/export/reel-preset-match.ts";
 
-assert.equal(REEL_PRESET_CATALOG.length, 6);
+assert.equal(REEL_PRESET_CATALOG.length, 7);
 assert.ok(getReelPresetCatalogEntry("balanced-story"));
 assert.equal(
   getReelPresetCatalogEntry("textless-photos")?.defaultDirectives.captionMode,
   "none"
+);
+assert.equal(
+  getReelPresetCatalogEntry("memories")?.defaultDirectives.look,
+  "memories"
+);
+assert.equal(
+  getReelPresetCatalogEntry("memories")?.defaultDirectives.captionMode,
+  "none"
+);
+assert.equal(
+  namedReelPresetInBrief("Quiero un vídeo como los Recuerdos del iPhone"),
+  "memories"
 );
 
 // calm brief → calm-story

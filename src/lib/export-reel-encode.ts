@@ -11,6 +11,7 @@ import type {
   ReelManifest,
   ReelTransition,
 } from "@/lib/export-reel";
+import type { ReelLook } from "@/lib/export-directives";
 import { REEL_BITRATE, REEL_HEIGHT, REEL_WIDTH, truncateAtWordBoundary } from "@/lib/export-reel";
 import { projectMapPoint, type ReelMapPlan,
   buildReelPlaceBasemapPath,
@@ -42,6 +43,15 @@ function mapToPhotoReveal(t: number): number {
   if (t >= 0.78) return 1;
   return easeInOut((t - 0.36) / 0.42);
 }
+
+function kenBurnsZoom(direction: "in" | "out", look?: ReelLook): { from: number; to: number; pan: number } {
+  // Memories: barely-there drift (iPhone Recuerdos). Default: stronger travel-reel push.
+  const max = look === "memories" ? 1.08 : 1.24;
+  const pan = look === "memories" ? 0.04 : 0.1;
+  if (direction === "in") return { from: 1.0, to: max, pan };
+  return { from: max, to: 1.0, pan };
+}
+
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -792,7 +802,8 @@ function paintPhotoClip(
   map: ReelMapPlan | null,
   mapImg: HTMLImageElement | null,
   showChrome = true,
-  placeMaps?: Map<string, PlaceBasemapEntry>
+  placeMaps?: Map<string, PlaceBasemapEntry>,
+  look?: ReelLook
 ) {
   if (frameMeta.role === "hook") {
     paintHookClip(ctx, img, t, width, height);
@@ -806,12 +817,11 @@ function paintPhotoClip(
   // Motion-only pass used during crossfade inbound so captions don't peek then restart.
   if (!showChrome) {
     // Full photo at the contain end: zoom-in starts at 1.0, zoom-out ends at 1.0 (letterboxed stills).
-    const zoomFrom = frameMeta.kenBurns === "in" ? 1.0 : 1.24;
-    const zoomTo = frameMeta.kenBurns === "in" ? 1.24 : 1.0;
-    const scale = zoomFrom + (zoomTo - zoomFrom) * easeInOut(t);
+    const kb = kenBurnsZoom(frameMeta.kenBurns === "in" ? "in" : "out", look);
+    const scale = kb.from + (kb.to - kb.from) * easeInOut(t);
     const panAmt = frameMeta.kenBurns === "in" ? t : 1 - t; // 0 when full photo is shown
-    const panX = (index % 2 === 0 ? -1 : 1) * 0.1 * panAmt;
-    const panY = (index % 2 === 0 ? -1 : 1) * 0.06 * panAmt;
+    const panX = (index % 2 === 0 ? -1 : 1) * kb.pan * panAmt;
+    const panY = (index % 2 === 0 ? -1 : 1) * kb.pan * 0.6 * panAmt;
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, width, height);
     drawCover(ctx, img, width, height, scale, panX, panY);
@@ -820,12 +830,11 @@ function paintPhotoClip(
   }
 
   // Full photo at the contain end: zoom-in starts at 1.0, zoom-out ends at 1.0 (letterboxed stills).
-  const zoomFrom = frameMeta.kenBurns === "in" ? 1.0 : 1.24;
-  const zoomTo = frameMeta.kenBurns === "in" ? 1.24 : 1.0;
-  const scale = zoomFrom + (zoomTo - zoomFrom) * easeInOut(t);
+  const kb = kenBurnsZoom(frameMeta.kenBurns === "in" ? "in" : "out", look);
+  const scale = kb.from + (kb.to - kb.from) * easeInOut(t);
   const panAmt = frameMeta.kenBurns === "in" ? t : 1 - t; // 0 when full photo is shown
-  const panX = (index % 2 === 0 ? -1 : 1) * 0.1 * panAmt;
-  const panY = (index % 2 === 0 ? -1 : 1) * 0.06 * panAmt;
+  const panX = (index % 2 === 0 ? -1 : 1) * kb.pan * panAmt;
+  const panY = (index % 2 === 0 ? -1 : 1) * kb.pan * 0.6 * panAmt;
   const treatment = frameMeta.treatment ?? "clean";
   const highlight =
     frameMeta.latitude != null && frameMeta.longitude != null
@@ -1089,33 +1098,42 @@ function paintMapIntro(
   title: string,
   dateRangeLabel: string | null,
   width: number,
-  height: number
+  height: number,
+  look?: ReelLook
 ) {
-  const progress = easeInOut(Math.min(1, t / 0.85));
-  const scale = 1.12 - easeInOut(t) * 0.1;
+  const memories = look === "memories";
+  const progress = easeInOut(Math.min(1, t / (memories ? 0.92 : 0.85)));
+  const scale = memories
+    ? 1.06 - easeInOut(t) * 0.04
+    : 1.12 - easeInOut(t) * 0.1;
   ctx.fillStyle = "#0b1020";
   ctx.fillRect(0, 0, width, height);
   drawCover(ctx, mapImg, width, height, scale, 0, 0.02 * (1 - t));
-  ctx.fillStyle = `rgba(0,0,0,${0.18 + t * 0.12})`;
+  ctx.fillStyle = `rgba(0,0,0,${(memories ? 0.22 : 0.18) + t * (memories ? 0.1 : 0.12)})`;
   ctx.fillRect(0, 0, width, height);
-  paintMapOverlays(ctx, map, progress, width, height);
+  paintMapOverlays(ctx, map, progress, width, height, undefined, true);
+  const subtitle = memories
+    ? dateRangeLabel
+      ? dateRangeLabel
+      : "Recuerdos del viaje"
+    : map.overview === "flights"
+      ? map.flightLegs.length > 1
+        ? "Ida y vuelta en el mapa"
+        : "Trayecto de vuelo"
+      : `${map.points.length} puntos en el recorrido`;
   drawSafeText(
     ctx,
     [
-      { text: title, size: 56, weight: "700" },
-      ...(dateRangeLabel ? [{ text: dateRangeLabel, size: 28, weight: "500" }] : []),
-      {
-        text:
-          map.overview === "flights"
-            ? map.flightLegs.length > 1
-              ? "Ida y vuelta en el mapa"
-              : "Trayecto de vuelo"
-            : `${map.points.length} puntos en el recorrido`,
-        size: 24,
-        weight: "500",
-      },
+      ...(memories
+        ? [{ text: "Recuerdos", size: 28, weight: "600" as const }]
+        : []),
+      { text: title, size: memories ? 64 : 56, weight: "700" },
+      ...(dateRangeLabel && !memories
+        ? [{ text: dateRangeLabel, size: 28, weight: "500" }]
+        : []),
+      { text: subtitle, size: memories ? 26 : 24, weight: "500" },
     ],
-    height * 0.18,
+    height * (memories ? 0.2 : 0.18),
     width
   );
 }
@@ -1316,6 +1334,7 @@ export async function encodeInstagramReelMp4(
   const titleIntroSeconds = manifest.titleIntroSeconds;
   const outroSeconds = manifest.outroSeconds;
   const crossfade = manifest.crossfadeSeconds;
+  const look = manifest.look === "memories" ? "memories" : "default";
 
   const hookIndices: number[] = [];
   const bodyIndices: number[] = [];
@@ -1425,7 +1444,7 @@ export async function encodeInstagramReelMp4(
     const img = images[hi]!;
     await addSegment(
       meta.durationSeconds,
-      (t) => paintPhotoClip(ctx, img, meta, t, hi, width, height, mapPlan, mapImg, true, placeMaps),
+      (t) => paintPhotoClip(ctx, img, meta, t, hi, width, height, mapPlan, mapImg, true, placeMaps, look),
       "Gancho…"
     );
   }
@@ -1445,7 +1464,8 @@ export async function encodeInstagramReelMp4(
           manifest.title,
           manifest.dateRangeLabel,
           width,
-          height
+          height,
+          look
         ),
       "Mapa del viaje…"
     );
@@ -1497,7 +1517,8 @@ export async function encodeInstagramReelMp4(
           mapPlan,
           mapImg,
           true,
-          placeMaps
+          placeMaps,
+          look
         ),
       meta.role === "chapter"
         ? `Capítulo…`
@@ -1518,7 +1539,7 @@ export async function encodeInstagramReelMp4(
         const tA = 1;
         // Incoming: ease into Ken Burns WITHOUT chrome so text doesn't peek then restart.
         const tB = u * 0.15;
-        paintPhotoClip(ctxA, img, meta, tA, i, width, height, mapPlan, mapImg, true, placeMaps);
+        paintPhotoClip(ctxA, img, meta, tA, i, width, height, mapPlan, mapImg, true, placeMaps, look);
         paintPhotoClip(
           ctxB,
           nextImg,
@@ -1530,7 +1551,8 @@ export async function encodeInstagramReelMp4(
           mapPlan,
           mapImg,
           false,
-          placeMaps
+          placeMaps,
+          look
         );
         blendTransition(ctx, layerA, layerB, u, transition, width, height);
         const timestamp = frameIndex / fps;
@@ -1587,7 +1609,8 @@ export async function encodeInstagramReelMp4(
       manifest.title,
       manifest.dateRangeLabel,
       width,
-      height
+      height,
+          look
     );
   } else {
     paintTitleIntro(0.35);
