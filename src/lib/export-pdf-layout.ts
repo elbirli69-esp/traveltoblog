@@ -167,14 +167,15 @@ function isLowScore(photo: PdfPhotoAsset): boolean {
 }
 
 /**
- * Pack small/low-score photos densely: prefer 8 (2×4), then 6/5 (2×3),
- * then a single row of 4 or 3.
+ * Pack small/low-score photos densely: only full sheets 8 (2×4) or 6 (2×3) —
+ * never a half-empty single row of 3–4.
  */
 function takeMosaicBatch(dayPhotos: PdfPhotoAsset[], start: number): number {
   const remaining = dayPhotos.length - start;
-  if (remaining < 3) return 0;
+  // Full pages only: 2×4 or 2×3. Never a lone row of 3–4 with empty space below.
+  if (remaining < 6) return 0;
 
-  for (const size of [8, 6, 5, 4, 3] as const) {
+  for (const size of [8, 6] as const) {
     if (remaining < size) continue;
     const slice = dayPhotos.slice(start, start + size);
     if (slice.every(isLowScore)) return size;
@@ -202,9 +203,10 @@ function dividerIntroClass(narrative: string | undefined): string {
 
 /** Mosaic grid columns: 4 for 7–8 / 4 photos, 3 for 5–6 / 3. */
 function mosaicColumnCount(photoCount: number): number {
-  if (photoCount >= 7) return 4;
-  if (photoCount >= 5) return 3;
-  if (photoCount === 4) return 4;
+  if (photoCount >= 8) return 4;
+  if (photoCount >= 6) return 3;
+  // Fallbacks should not appear after packing rules; keep render safe.
+  if (photoCount >= 4) return 4;
   return 3;
 }
 
@@ -309,9 +311,9 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
         continue;
       }
 
-      // Featured is photo-led: crónica stays on the day-divider only.
+      // Single photo → full-bleed so it fills the whole page (no empty mat margins).
       push({
-        kind: "featured",
+        kind: "full-bleed",
         photos: [photo],
       });
       i += 1;
