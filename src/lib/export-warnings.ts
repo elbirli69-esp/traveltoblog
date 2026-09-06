@@ -107,7 +107,7 @@ export function buildExportWarnings(input: ExportWarningsInput): ExportWarning[]
   } else if (photoCount >= 20) {
     warnings.push({
       level: "info",
-      message: `${photoCount} fotos seleccionadas. Las re-exportaciones reutilizan imágenes optimizadas en caché.`,
+      message: `${photoCount} fotos seleccionadas. Las re-exportaciones reutilizan JPEG/WebP optimizados en caché (HTML y PDF).`,
     });
   }
 

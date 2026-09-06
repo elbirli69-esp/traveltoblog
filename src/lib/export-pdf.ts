@@ -2,15 +2,8 @@ import path from "path";
 import { mkdir, writeFile, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { randomBytes } from "crypto";
-import sharp from "sharp";
 import type { Note, Photo, Travel, User } from "@prisma/client";
-import { getOrCreateExportImageSet } from "@/lib/export-image-cache";
-import {
-  createPdfBleedImage,
-  createPdfPrintImage,
-  PDF_BLEED_JPEG_QUALITY,
-  PDF_JPEG_QUALITY,
-} from "@/lib/export-images";
+import { getOrCreatePdfImageSet } from "@/lib/export-image-cache";
 import { readPhotoBuffer } from "@/lib/export-html";
 import { fetchPdfDualMapImages } from "@/lib/export-pdf-map";
 import { prisma } from "@/lib/prisma";
@@ -44,44 +37,30 @@ export interface PdfBuildResult {
   cleanup: () => Promise<void>;
 }
 
-async function readPhotoSource(
-  travelId: string,
-  photo: Photo & { url: string; filename: string }
-): Promise<Buffer | null> {
-  const cached = await getOrCreateExportImageSet(travelId, photo.id, photo.url);
-  if (cached) return cached.display;
-
-  const original = await readPhotoBuffer(photo.url);
-  return original;
-}
-
 async function preparePdfImageBuffers(
   travelId: string,
   photo: Photo & { url: string; filename: string }
 ): Promise<{ standard: Buffer; bleed: Buffer } | null> {
-  const ext = path.extname(photo.filename) || ".jpg";
-  const source = await readPhotoSource(travelId, photo);
-  if (!source) return null;
-
-  const cached = await getOrCreateExportImageSet(travelId, photo.id, photo.url);
-  if (cached) {
+  // Persist print/bleed JPEGs under data/export-cache so re-exports skip sharp work.
+  const cached = await getOrCreatePdfImageSet(
+    travelId,
+    photo.id,
+    photo.url,
+    photo.filename
+  );
+  if (!cached) {
+    // Fallback when source file is missing from disk / stat failed.
+    const original = await readPhotoBuffer(photo.url);
+    if (!original) return null;
+    const { createPdfPrintImage, createPdfBleedImage } = await import("@/lib/export-images");
+    const ext = path.extname(photo.filename) || ".jpg";
     const [standard, bleed] = await Promise.all([
-      sharp(cached.display)
-        .jpeg({ quality: PDF_JPEG_QUALITY, mozjpeg: true })
-        .toBuffer(),
-      sharp(cached.display)
-        .resize({ width: 3500, withoutEnlargement: true })
-        .jpeg({ quality: PDF_BLEED_JPEG_QUALITY, mozjpeg: true })
-        .toBuffer(),
+      createPdfPrintImage(original, ext),
+      createPdfBleedImage(original, ext),
     ]);
     return { standard, bleed };
   }
-
-  const [standard, bleed] = await Promise.all([
-    createPdfPrintImage(source, ext),
-    createPdfBleedImage(source, ext),
-  ]);
-  return { standard, bleed };
+  return { standard: cached.print, bleed: cached.bleed };
 }
 
 export async function preparePdfAssets(
@@ -300,7 +279,7 @@ export async function buildPdfArtifact(
 
   emitStep("load", "done");
 
-  emitStep("photos", "running", `Optimizando 0/${imagePhotos.length} fotos…`);
+  emitStep("photos", "running", `Preparando 0/${imagePhotos.length} fotos…`);
   const ctx = await preparePdfAssets(
     {
       ...travel,
@@ -321,7 +300,7 @@ export async function buildPdfArtifact(
       emit?.({
         step: "photos",
         status: "running",
-        message: `Optimizando fotos ${current}/${total}…`,
+        message: `Preparando fotos ${current}/${total}…`,
         current,
         total,
       });
