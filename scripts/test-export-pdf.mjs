@@ -391,4 +391,69 @@ const pollutedHtml = buildPrintHtml({
 assert.ok(!pollutedHtml.includes("Foto de Irene"), "HTML has no alt-text column");
 assert.ok(pollutedHtml.includes("divider-intro img"), "CSS hides leftover imgs");
 
+
+// Dense mosaic: eight small photos → one 2×4 page
+function lowScorePhoto(id, day) {
+  return {
+    id,
+    url: `/${id}`,
+    filename: `${id}.jpg`,
+    imagePath: `photos/${id}.jpg`,
+    bleedImagePath: `photos/${id}-bleed.jpg`,
+    latitude: 40.4,
+    longitude: -3.7,
+    exifDateTime: new Date(`2024-06-0${day}T12:00:00Z`),
+    alias: "Ana",
+    highlightScore: 2,
+    notes: [],
+  };
+}
+
+const densePages = planPdfPages({
+  travel: {
+    id: "t-dense",
+    title: "Densidad",
+    startDate: null,
+    endDate: null,
+    journalMarkdown: null,
+  },
+  users: [{ alias: "Ana" }],
+  photos: Array.from({ length: 8 }, (_, i) => lowScorePhoto(`d${i + 1}`, 1)),
+  notes: [],
+  format: "a4-landscape",
+  template: "classic",
+  pdfDirectives: { mosaicBias: "high", preferFullBleed: "low", imageEmphasis: "low" },
+});
+const denseMosaics = densePages.filter((p) => p.kind === "mosaic");
+assert.ok(denseMosaics.length >= 1, "eight small photos produce mosaic");
+assert.ok(
+  denseMosaics.some((p) => (p.photos?.length ?? 0) === 8),
+  `small photos pack 8 per mosaic page (got ${denseMosaics.map((p) => p.photos?.length).join(",")})`
+);
+
+const longDay = "Llegamos temprano al mercado y paseamos sin prisa. ".repeat(20);
+const wideHtml = buildPrintHtml({
+  travel: {
+    id: "t-wide",
+    title: "Crónica larga",
+    startDate: null,
+    endDate: null,
+    journalMarkdown: `## Día 1\n\n${longDay}`,
+  },
+  users: [{ alias: "Ana" }],
+  photos: [
+    lowScorePhoto("w1", 1),
+    { ...lowScorePhoto("w2", 1), highlightScore: 9 },
+    lowScorePhoto("w3", 1),
+  ],
+  notes: [],
+  format: "a4-landscape",
+  template: "classic",
+});
+assert.ok(
+  wideHtml.includes("divider-intro--wide") || wideHtml.includes("divider-intro--xl"),
+  "long day summary widens the text column"
+);
+assert.ok(wideHtml.includes("mosaic-grid") || wideHtml.includes("--mosaic-cols"), "mosaic uses CSS grid");
+
 console.log("export-pdf ok");

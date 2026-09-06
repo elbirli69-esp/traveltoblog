@@ -165,13 +165,46 @@ function isLowScore(photo: PdfPhotoAsset): boolean {
   return (photo.highlightScore ?? 5) < 7;
 }
 
+/**
+ * Pack small/low-score photos densely: prefer 8 (2×4), then 6/5 (2×3),
+ * then a single row of 4 or 3.
+ */
 function takeMosaicBatch(dayPhotos: PdfPhotoAsset[], start: number): number {
   const remaining = dayPhotos.length - start;
   if (remaining < 3) return 0;
-  const slice = dayPhotos.slice(start, start + 4);
-  if (!slice.every(isLowScore)) return 0;
-  if (remaining >= 4) return 4;
-  return remaining >= 3 ? 3 : 0;
+
+  for (const size of [8, 6, 5, 4, 3] as const) {
+    if (remaining < size) continue;
+    const slice = dayPhotos.slice(start, start + size);
+    if (slice.every(isLowScore)) return size;
+  }
+  return 0;
+}
+
+/** Plain-text length of day narrative HTML — drives column width. */
+function narrativePlainLength(html: string | undefined): number {
+  if (!html) return 0;
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[a-z]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim().length;
+}
+
+/** Wider column when the day summary needs more room to stay on one page. */
+function dividerIntroClass(narrative: string | undefined): string {
+  const len = narrativePlainLength(narrative);
+  if (len >= 650) return "divider-intro divider-intro--xl";
+  if (len >= 280) return "divider-intro divider-intro--wide";
+  return "divider-intro";
+}
+
+/** Mosaic grid columns: 4 for 7–8 / 4 photos, 3 for 5–6 / 3. */
+function mosaicColumnCount(photoCount: number): number {
+  if (photoCount >= 7) return 4;
+  if (photoCount >= 5) return 3;
+  if (photoCount === 4) return 4;
+  return 3;
 }
 
 /** Build a rhythmic photobook page sequence (Fotoprix / CEWE style). */
@@ -393,7 +426,7 @@ function renderDayDivider(
       <h2 class="divider-title">${escapeHtml(page.dayTitle ?? "")}</h2>
       ${
         page.narrative
-          ? `<div class="divider-intro">${page.narrative}</div>`
+          ? `<div class="${dividerIntroClass(page.narrative)}">${page.narrative}</div>`
           : '<div class="divider-rule"></div>'
       }
     </div>
@@ -428,12 +461,14 @@ function renderMosaic(
   const photos = page.photos ?? [];
   if (photos.length < 3) return "";
   const { width, height } = pageDimensions(format);
-  const cellWidth = photos.length === 4 ? "25%" : `${(100 / photos.length).toFixed(2)}%`;
+  const cols = mosaicColumnCount(photos.length);
+  const dense = photos.length >= 5;
+  const gridClass = dense ? "mosaic-grid mosaic-grid--dense" : "mosaic-grid";
 
   const cells = photos
     .map(
       (photo) => `
-    <div class="mosaic-cell" style="width:${cellWidth}">
+    <div class="mosaic-cell">
       <div class="photo-mat mosaic-mat">
         <img src="${escapeHtml(photoSrc(photo))}" alt="" />
       </div>
@@ -444,7 +479,7 @@ function renderMosaic(
 
   return `
   <section class="page page-mosaic" style="width:${width};height:${height}">
-    <div class="mosaic-row">${cells}</div>
+    <div class="${gridClass}" style="--mosaic-cols:${cols}">${cells}</div>
     ${renderPageFooter(page.pageNumber, totalPages)}
   </section>`;
 }
