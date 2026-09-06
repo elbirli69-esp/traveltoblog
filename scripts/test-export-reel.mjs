@@ -121,6 +121,18 @@ assert.ok(
 );
 const hook = manifest.frames.find((f) => f.role === "hook");
 assert.ok(hook && Math.abs(hook.durationSeconds - REEL_HOOK_SECONDS) < 0.05);
+// Opening must not loop cover→map→same cover as Día 1 / title flash.
+assert.equal(
+  manifest.titleIntroSeconds,
+  0,
+  "skip redundant title flash when hook/map already open the reel"
+);
+assert.ok(
+  !manifest.frames.some(
+    (f) => f.role !== "hook" && f.photoId === hook.photoId
+  ),
+  "hook cover photo must not repeat as chapter/clip in the body"
+);
 const chapter = manifest.frames.find((f) => f.role === "chapter");
 assert.ok(chapter && Math.abs(chapter.durationSeconds - REEL_CHAPTER_SECONDS) < 0.05);
 const clipDurations = manifest.frames

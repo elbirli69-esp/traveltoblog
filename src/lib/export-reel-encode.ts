@@ -1122,10 +1122,23 @@ export async function encodeInstagramReelMp4(
     // Floor so a scaled-down clip still shows before the ~0.4 s transition.
     const hold = Math.max(0.5, meta.durationSeconds - (nextImg ? crossfade : 0));
 
+    // Hold progress stays in the "captions fully on" band (≈0.5–0.95).
+    // Using t*0.85 from 0 made overlays fade in, then the next clip reset t→0
+    // after the crossfade so text vanished and blinked back in.
     await addSegment(
       hold,
       (t) =>
-        paintPhotoClip(ctx, img, meta, t * 0.85, i, width, height, mapPlan, mapImg),
+        paintPhotoClip(
+          ctx,
+          img,
+          meta,
+          0.55 + t * 0.4,
+          i,
+          width,
+          height,
+          mapPlan,
+          mapImg
+        ),
       meta.role === "chapter"
         ? `Capítulo…`
         : `Clip ${bi + 1}/${bodyIndices.length}`
@@ -1137,8 +1150,11 @@ export async function encodeInstagramReelMp4(
         meta.role === "chapter" ? "fade" : (meta.transitionOut ?? "fade");
       for (let f = 0; f < fadeFrames; f++) {
         const u = fadeFrames === 1 ? 1 : f / (fadeFrames - 1);
-        const tA = 0.85 + u * 0.15;
-        const tB = u * 0.2;
+        // Outgoing: keep chrome stable while the layer fades via blend.
+        const tA = 0.92;
+        // Incoming: stay below caption appear threshold so text does not
+        // peek during the blend and then restart its fade on the hold.
+        const tB = 0.02;
         paintPhotoClip(ctxA, img, meta, tA, i, width, height, mapPlan, mapImg);
         paintPhotoClip(
           ctxB,

@@ -1001,7 +1001,6 @@ export function buildReelManifest(input: {
     gpsTrails
   );
   const mapIntroSeconds = map ? REEL_MAP_INTRO_SECONDS : 0;
-  const titleIntroSeconds = REEL_TITLE_INTRO_SECONDS;
   const outroSeconds = REEL_OUTRO_SECONDS;
 
   let frames = selectReelFrames(
@@ -1014,8 +1013,17 @@ export function buildReelManifest(input: {
 
   const best = pickBestCoverFrame(frames);
   const coverPhotoId = best?.photoId ?? frames[0]?.photoId ?? null;
+  // Hook already punches with the best still; map intro also paints the title.
+  // A third "title" beat on the same cover looked like a broken loop (cover→map→cover).
+  const titleIntroSeconds =
+    best || map ? 0 : REEL_TITLE_INTRO_SECONDS;
   if (best) {
-    frames = [buildHookFrame(best), ...insertDayChapters(frames)];
+    // Drop the cover still from the body so Día 1 does not re-open on the same photo.
+    const body = frames.filter((f) => f.photoId !== best.photoId);
+    frames = [
+      buildHookFrame(best),
+      ...insertDayChapters(body.length > 0 ? body : frames),
+    ];
   } else {
     frames = insertDayChapters(frames);
   }
