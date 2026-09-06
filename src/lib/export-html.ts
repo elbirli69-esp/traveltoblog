@@ -48,6 +48,7 @@ import {
   buildMagazineHero,
   buildMagazineInteractiveScript,
   buildMagazineNav,
+  buildVisualSectionNav,
   buildPlaceCalloutsHtml,
   buildTocHtml,
   extractDeck,
@@ -2013,12 +2014,7 @@ export function buildExportHtml(ctx: ExportContext): string {
     (routeSegments.roadSegments.length > 0 ||
       mapPoints.some((p) => p.kind === "photo" || p.kind === "place") ||
       hasGpsTrails);
-  const mapNavLinks = hasMap
-    ? dualMaps
-      ? '<a href="#mapa-trayecto">Trayecto</a><a href="#mapa">En destino</a>'
-      : '<a href="#mapa">Mapa</a>'
-    : "";
-
+  // Nav is appended after sectionOrder so tabs match body order (Magazine + tipologías).
   const headerBlock = isMagazine
     ? `${buildMagazineHero({
         title: travel.title,
@@ -2029,8 +2025,7 @@ export function buildExportHtml(ctx: ExportContext): string {
         coverPhotoPath: heroPhotoPath,
         heroGradient,
       })}
-${buildTocHtml(timelineEvents)}
-${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
+${buildTocHtml(timelineEvents)}`
     : isVisual
       ? `<header class="hero"${heroPhotoPath ? ` data-export-hero="${escapeHtml(heroPhotoPath)}" data-export-hero-gradient="${escapeHtml(heroGradient)}" style="background-image:${heroGradient}, url('${escapeHtml(heroPhotoPath).replace(/'/g, "%27")}');background-size:cover;background-position:center"` : ""}>
       <div class="hero-content reveal">
@@ -2043,13 +2038,7 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
           ${places.length > 0 ? `<span class="stat-pill">📍 ${places.length} lugares</span>` : ""}
         </div>
       </div>
-    </header>
-    <nav class="section-nav">
-      ${mapNavLinks}
-      <a href="#cronologia">El viaje</a>
-      <a href="#galeria">Galería</a>
-      ${profile.playProfile.showScrubber ? '<a href="#reproducir">Reproducir</a>' : ""}
-    </nav>`
+    </header>`
       : `<header>
       <h1>${escapeHtml(travel.title)}</h1>
       <p class="meta">${escapeHtml(dateRange)} · ${users.map((u) => escapeHtml(u.alias)).join(", ")} · ${escapeHtml(profile.label)}</p>
@@ -2197,11 +2186,21 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
   // Visual templates keep a full-bleed top map; Magazine/Editorial place map via sectionOrder.
   const showMapOuter = isVisual && hasMap;
 
+  const renderedSectionIds = sectionOrder.filter(
+    (id) =>
+      id !== "hero" &&
+      Boolean(sectionBlocks[id as keyof typeof sectionBlocks]) &&
+      !(showMapOuter && id === "map")
+  );
+  const sectionNav = isMagazine
+    ? buildMagazineNav(renderedSectionIds, { dualMaps })
+    : isVisual
+      ? buildVisualSectionNav(renderedSectionIds, { dualMaps })
+      : "";
+  const headerWithNav = sectionNav ? `${headerBlock}\n${sectionNav}` : headerBlock;
+
   const orderedMiddle = [
-    ...sectionOrder
-      .filter((id) => id !== "hero" && sectionBlocks[id as keyof typeof sectionBlocks])
-      .filter((id) => !(showMapOuter && id === "map"))
-      .map((id) => sectionBlocks[id as keyof typeof sectionBlocks]),
+    ...renderedSectionIds.map((id) => sectionBlocks[id as keyof typeof sectionBlocks]),
     ...(isMagazine ? [] : [calloutsBlock, closingBlock]),
   ]
     .filter(Boolean)
@@ -2274,7 +2273,7 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
 <body class="${bodyClass}" data-theme-pack="${resolvedThemePack}" data-type-pack="${resolvedTypePack}">
   <p id="export-open-hint" class="export-open-hint" role="status">Si no ves fotos o el mapa: descomprime el ZIP completo y abre el <strong>index.html</strong> de esa carpeta (debe estar junto a <code>photos/</code>, <code>assets/</code> y <code>map/</code>). No hace falta una ruta concreta.</p>
   <script>(function(){if(location.protocol==="file:"){var e=document.getElementById("export-open-hint");if(e)e.style.display="block";}})();</script>
-  ${briefComment}${headerBlock}
+  ${briefComment}${headerWithNav}
   ${mapOuter}
   <div class="wrap">
     ${mapInner}

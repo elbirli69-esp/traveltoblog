@@ -258,21 +258,74 @@ export function buildMagazineHero(input: {
 <div class="mag-progress" aria-hidden="true"><span class="mag-progress-bar"></span></div>`;
 }
 
+const MAG_NAV_BY_SECTION: Record<string, { href: string; label: string }> = {
+  flights: { href: "#vuelos", label: "Vuelos" },
+  stats: { href: "#stats", label: "Datos" },
+  timeline: { href: "#cronologia", label: "El viaje" },
+  gallery: { href: "#galeria", label: "Galería" },
+  guide: { href: "#guia", label: "Guía" },
+  closing: { href: "#cierre", label: "Cierre" },
+  play: { href: "#reproducir", label: "Reproducir" },
+};
+
+/**
+ * Sticky section tabs in the same order as rendered body sections.
+ * Passing `sectionOrder` keeps Magazine nav aligned with typology/brief layout.
+ */
 export function buildMagazineNav(
-  hasMap: boolean,
-  hasGuide = false,
-  hasFlightMap = false,
-  hasGallery = true
+  sectionOrder: string[],
+  options: { dualMaps?: boolean } = {}
 ): string {
-  const mapLinks = hasMap
-    ? `${hasFlightMap ? '<a href="#mapa-trayecto">Trayecto</a>' : ""}<a href="#mapa">${hasFlightMap ? "En destino" : "Mapa"}</a>`
-    : "";
+  const links: string[] = [];
+  const seen = new Set<string>();
+  for (const id of sectionOrder) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    if (id === "map") {
+      if (options.dualMaps) {
+        links.push('<a href="#mapa-trayecto">Trayecto</a>');
+        links.push('<a href="#mapa">En destino</a>');
+      } else {
+        links.push('<a href="#mapa">Mapa</a>');
+      }
+      continue;
+    }
+    const spec = MAG_NAV_BY_SECTION[id];
+    if (spec) links.push(`<a href="${spec.href}">${spec.label}</a>`);
+  }
+  if (links.length === 0) return "";
   return `<nav class="mag-section-nav">
-  ${mapLinks}
-  <a href="#cronologia">El viaje</a>
-  ${hasGallery ? '<a href="#galeria">Galería</a>' : ""}
-  ${hasGuide ? '<a href="#guia">Guía</a>' : ""}
-  <a href="#cierre">Cierre</a>
+  ${links.join("\n  ")}
+</nav>`;
+}
+
+/** Visual Journey sticky tabs — same order as rendered sections. */
+export function buildVisualSectionNav(
+  sectionOrder: string[],
+  options: { dualMaps?: boolean } = {}
+): string {
+  const links: string[] = [];
+  const seen = new Set<string>();
+  for (const id of sectionOrder) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    if (id === "map") {
+      if (options.dualMaps) {
+        links.push('<a href="#mapa-trayecto">Trayecto</a>');
+        links.push('<a href="#mapa">En destino</a>');
+      } else {
+        links.push('<a href="#mapa">Mapa</a>');
+      }
+      continue;
+    }
+    if (id === "timeline") links.push('<a href="#cronologia">El viaje</a>');
+    else if (id === "gallery") links.push('<a href="#galeria">Galería</a>');
+    else if (id === "play") links.push('<a href="#reproducir">Reproducir</a>');
+    else if (id === "flights") links.push('<a href="#vuelos">Vuelos</a>');
+  }
+  if (links.length === 0) return "";
+  return `<nav class="section-nav">
+  ${links.join("\n  ")}
 </nav>`;
 }
 
