@@ -12,7 +12,10 @@ import type {
   ReelTransition,
 } from "@/lib/export-reel";
 import { REEL_BITRATE, REEL_HEIGHT, REEL_WIDTH } from "@/lib/export-reel";
-import { projectMapPoint, type ReelMapPlan } from "@/lib/export-reel-map";
+import { projectMapPoint, type ReelMapPlan,
+  buildReelPlaceBasemapPath,
+  REEL_PLACE_FOCUS_ZOOM,
+} from "@/lib/export-reel-map";
 import { gpsTrailMapColor } from "@/lib/gps-track-map";
 
 export type ReelEncodeProgress = {
@@ -706,14 +709,41 @@ function paintHookClip(
   width: number,
   height: number
 ) {
-  const scale = 1.04 + easeInOut(t) * 0.08;
+  // Hook also begins on the full letterboxed still, then eases in.
+  const scale = 1.0 + easeInOut(t) * 0.18;
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, width, height);
-  drawCover(ctx, img, width, height, scale, 0, -0.02 + t * 0.04);
+  drawCover(ctx, img, width, height, scale, 0, -0.02 * easeInOut(t));
   // Soft edge vignette only — no title chrome on the hook.
   ctx.fillStyle = `rgba(0,0,0,${0.08 + t * 0.06})`;
   ctx.fillRect(0, 0, width, height * 0.18);
   ctx.fillRect(0, height * 0.82, width, height * 0.18);
+}
+
+type PlaceBasemapEntry = { img: HTMLImageElement; zoom: number };
+
+function placeBasemapKey(lat: number, lng: number): string {
+  return `${lat.toFixed(5)},${lng.toFixed(5)}`;
+}
+
+function focusedPlaceMapPlan(
+  map: ReelMapPlan,
+  highlight: { lat: number; lng: number; label?: string | null },
+  zoom: number
+): ReelMapPlan {
+  return {
+    ...map,
+    center: { lat: highlight.lat, lng: highlight.lng },
+    zoom,
+    gpsTrails: [],
+    flightLegs: [],
+    overview: "route",
+    points: map.points.filter((p) => {
+      const dlat = Math.abs(p.lat - highlight.lat);
+      const dlng = Math.abs(p.lng - highlight.lng);
+      return dlat < 0.03 && dlng < 0.03;
+    }),
+  };
 }
 
 function paintPhotoClip(
@@ -726,7 +756,8 @@ function paintPhotoClip(
   height: number,
   map: ReelMapPlan | null,
   mapImg: HTMLImageElement | null,
-  showChrome = true
+  showChrome = true,
+  placeMaps?: Map<string, PlaceBasemapEntry>
 ) {
   if (frameMeta.role === "hook") {
     paintHookClip(ctx, img, t, width, height);
@@ -739,11 +770,13 @@ function paintPhotoClip(
 
   // Motion-only pass used during crossfade inbound so captions don't peek then restart.
   if (!showChrome) {
-    const zoomFrom = frameMeta.kenBurns === "in" ? 1.0 : 1.12;
-    const zoomTo = frameMeta.kenBurns === "in" ? 1.1 : 1.0;
+    // Full photo at the contain end: zoom-in starts at 1.0, zoom-out ends at 1.0 (letterboxed stills).
+    const zoomFrom = frameMeta.kenBurns === "in" ? 1.0 : 1.24;
+    const zoomTo = frameMeta.kenBurns === "in" ? 1.24 : 1.0;
     const scale = zoomFrom + (zoomTo - zoomFrom) * easeInOut(t);
-    const panX = frameMeta.kenBurns === "in" ? -0.07 + t * 0.14 : 0.07 - t * 0.14;
-    const panY = index % 2 === 0 ? -0.05 + t * 0.09 : 0.05 - t * 0.09;
+    const panAmt = frameMeta.kenBurns === "in" ? t : 1 - t; // 0 when full photo is shown
+    const panX = (index % 2 === 0 ? -1 : 1) * 0.1 * panAmt;
+    const panY = (index % 2 === 0 ? -1 : 1) * 0.06 * panAmt;
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, width, height);
     drawCover(ctx, img, width, height, scale, panX, panY);
@@ -751,11 +784,13 @@ function paintPhotoClip(
     return;
   }
 
-  const zoomFrom = frameMeta.kenBurns === "in" ? 1.0 : 1.12;
-  const zoomTo = frameMeta.kenBurns === "in" ? 1.1 : 1.0;
+  // Full photo at the contain end: zoom-in starts at 1.0, zoom-out ends at 1.0 (letterboxed stills).
+  const zoomFrom = frameMeta.kenBurns === "in" ? 1.0 : 1.24;
+  const zoomTo = frameMeta.kenBurns === "in" ? 1.24 : 1.0;
   const scale = zoomFrom + (zoomTo - zoomFrom) * easeInOut(t);
-  const panX = frameMeta.kenBurns === "in" ? -0.07 + t * 0.14 : 0.07 - t * 0.14;
-  const panY = index % 2 === 0 ? -0.05 + t * 0.09 : 0.05 - t * 0.09;
+  const panAmt = frameMeta.kenBurns === "in" ? t : 1 - t; // 0 when full photo is shown
+  const panX = (index % 2 === 0 ? -1 : 1) * 0.1 * panAmt;
+  const panY = (index % 2 === 0 ? -1 : 1) * 0.06 * panAmt;
   const treatment = frameMeta.treatment ?? "clean";
   const highlight =
     frameMeta.latitude != null && frameMeta.longitude != null
@@ -770,24 +805,31 @@ function paintPhotoClip(
   ctx.fillRect(0, 0, width, height);
 
   if (treatment === "mapFocus" && map && mapImg && highlight) {
-    // Zoom toward the pin (point 7).
+    // Prefer a street-level basemap centered on the marked place (not the whole-trip overview).
+    const placeEntry = placeMaps?.get(placeBasemapKey(highlight.lat, highlight.lng));
+    const focusImg = placeEntry?.img ?? mapImg;
+    const focusZoom = placeEntry?.zoom ?? Math.max(map.zoom, REEL_PLACE_FOCUS_ZOOM);
+    const focusMap = placeEntry
+      ? focusedPlaceMapPlan(map, highlight, focusZoom)
+      : map;
     const pin = projectMapPoint(
       highlight.lat,
       highlight.lng,
-      map.center,
-      map.zoom,
+      focusMap.center,
+      focusMap.zoom,
       width,
       height,
-      map.imageWidth,
-      map.imageHeight
+      focusMap.imageWidth,
+      focusMap.imageHeight
     );
-    const zoom = 1.05 + easeInOut(t) * 0.42;
-    const panTowardX = ((width / 2 - pin.x) / width) * easeInOut(t) * 1.35;
-    const panTowardY = ((height / 2 - pin.y) / height) * easeInOut(t) * 1.35;
-    drawCover(ctx, mapImg, width, height, zoom, panTowardX, panTowardY);
-    ctx.fillStyle = "rgba(0,0,0,0.22)";
+    // Mild canvas zoom — geographic zoom already comes from the place basemap.
+    const zoom = placeEntry ? 1.0 + easeInOut(t) * 0.08 : 1.08 + easeInOut(t) * 0.5;
+    const panTowardX = ((width / 2 - pin.x) / width) * easeInOut(t) * (placeEntry ? 0.35 : 1.35);
+    const panTowardY = ((height / 2 - pin.y) / height) * easeInOut(t) * (placeEntry ? 0.35 : 1.35);
+    drawCover(ctx, focusImg, width, height, zoom, panTowardX, panTowardY);
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
     ctx.fillRect(0, 0, width, height);
-    paintMapOverlays(ctx, map, 1, width, height, undefined, true, highlight);
+    paintMapOverlays(ctx, focusMap, 1, width, height, undefined, true, highlight);
     const insetW = Math.round(width * 0.38);
     const insetH = Math.round(height * 0.22);
     const insetX = width - insetW - 36;
@@ -848,6 +890,15 @@ function paintPhotoClip(
     drawCover(ctx, img, width, photoH, scale, panX, panY);
     ctx.restore();
 
+    const placeEntry = highlight
+      ? placeMaps?.get(placeBasemapKey(highlight.lat, highlight.lng))
+      : undefined;
+    const insetMapImg = placeEntry?.img ?? mapImg;
+    const insetMap =
+      placeEntry && highlight
+        ? focusedPlaceMapPlan(map, highlight, placeEntry.zoom)
+        : map;
+
     const mapTop = photoH;
     const mapH = height - photoH;
     ctx.save();
@@ -855,10 +906,10 @@ function paintPhotoClip(
     ctx.rect(0, mapTop, width, mapH);
     ctx.clip();
     ctx.translate(0, mapTop);
-    drawCover(ctx, mapImg, width, mapH, 1.05, 0, 0);
+    drawCover(ctx, insetMapImg, width, mapH, 1.05, 0, 0);
     paintMapOverlays(
       ctx,
-      map,
+      insetMap,
       1,
       width,
       mapH,
@@ -1084,10 +1135,28 @@ export async function encodeInstagramReelMp4(
   const ctxB = layerB.getContext("2d", { alpha: false });
   if (!ctxA || !ctxB) throw new Error("Canvas auxiliar no disponible");
 
+  const placeCoords = new Map<string, { lat: number; lng: number }>();
+  for (const frame of manifest.frames) {
+    if (
+      (frame.treatment === "mapFocus" || frame.treatment === "mapInset") &&
+      frame.latitude != null &&
+      frame.longitude != null
+    ) {
+      placeCoords.set(placeBasemapKey(frame.latitude, frame.longitude), {
+        lat: frame.latitude,
+        lng: frame.longitude,
+      });
+    }
+  }
+  const placeCoordList = [...placeCoords.values()];
+
   onProgress?.({
     phase: "frames",
     current: 0,
-    total: manifest.frames.length + (manifest.map?.staticUrl ? 1 : 0),
+    total:
+      manifest.frames.length +
+      (manifest.map?.staticUrl ? 1 : 0) +
+      placeCoordList.length,
     message: "Descargando fotogramas…",
   });
 
@@ -1115,8 +1184,28 @@ export async function encodeInstagramReelMp4(
     onProgress?.({
       phase: "frames",
       current: i + 1 + (mapImg ? 1 : 0),
-      total: manifest.frames.length + (mapImg ? 1 : 0),
+      total: manifest.frames.length + (mapImg ? 1 : 0) + placeCoordList.length,
       message: `Fotograma ${i + 1}/${manifest.frames.length}`,
+    });
+  }
+
+  // Street-level basemaps centered on each marked place (mapFocus / mapInset).
+  const placeMaps = new Map<string, PlaceBasemapEntry>();
+  for (let pi = 0; pi < placeCoordList.length; pi++) {
+    const { lat, lng } = placeCoordList[pi]!;
+    const key = placeBasemapKey(lat, lng);
+    try {
+      const zoom = REEL_PLACE_FOCUS_ZOOM;
+      const img = await loadImage(buildReelPlaceBasemapPath(lat, lng, zoom));
+      placeMaps.set(key, { img, zoom });
+    } catch {
+      // Fall back to trip overview map in paintPhotoClip.
+    }
+    onProgress?.({
+      phase: "frames",
+      current: manifest.frames.length + (mapImg ? 1 : 0) + pi + 1,
+      total: manifest.frames.length + (mapImg ? 1 : 0) + placeCoordList.length,
+      message: `Mapa del lugar ${pi + 1}/${placeCoordList.length}`,
     });
   }
 
@@ -1248,7 +1337,7 @@ export async function encodeInstagramReelMp4(
     const img = images[hi]!;
     await addSegment(
       meta.durationSeconds,
-      (t) => paintPhotoClip(ctx, img, meta, t, hi, width, height, mapPlan, mapImg),
+      (t) => paintPhotoClip(ctx, img, meta, t, hi, width, height, mapPlan, mapImg, true, placeMaps),
       "Gancho…"
     );
   }
@@ -1308,7 +1397,8 @@ export async function encodeInstagramReelMp4(
           height,
           mapPlan,
           mapImg,
-          true
+          true,
+          placeMaps
         ),
       meta.role === "chapter"
         ? `Capítulo…`
@@ -1325,7 +1415,7 @@ export async function encodeInstagramReelMp4(
         const tA = 1;
         // Incoming: ease into Ken Burns WITHOUT chrome so text doesn't peek then restart.
         const tB = u * 0.15;
-        paintPhotoClip(ctxA, img, meta, tA, i, width, height, mapPlan, mapImg, true);
+        paintPhotoClip(ctxA, img, meta, tA, i, width, height, mapPlan, mapImg, true, placeMaps);
         paintPhotoClip(
           ctxB,
           nextImg,
@@ -1336,7 +1426,8 @@ export async function encodeInstagramReelMp4(
           height,
           mapPlan,
           mapImg,
-          false
+          false,
+          placeMaps
         );
         blendTransition(ctx, layerA, layerB, u, transition, width, height);
         const timestamp = frameIndex / fps;

@@ -2,7 +2,10 @@ import sharp from "sharp";
 import { normalizeImageForStorage } from "@/lib/photo-storage";
 import { REEL_HEIGHT, REEL_WIDTH } from "@/lib/export-reel";
 
-/** Cover-crop a still to Instagram Reels 9:16 JPEG. */
+/**
+ * Fit the full photo inside Instagram Reels 9:16 (letterbox on black).
+ * Ken Burns can then start/end on the complete image and only crop while zoomed.
+ */
 export async function createReelFrameJpeg(
   source: Buffer,
   originalExt = ".jpg"
@@ -18,8 +21,9 @@ export async function createReelFrameJpeg(
     .resize({
       width: REEL_WIDTH,
       height: REEL_HEIGHT,
-      fit: "cover",
-      position: "attention",
+      fit: "contain",
+      background: { r: 0, g: 0, b: 0, alpha: 1 },
+      withoutEnlargement: false,
     })
     .jpeg({ quality: 82, mozjpeg: true })
     .toBuffer();

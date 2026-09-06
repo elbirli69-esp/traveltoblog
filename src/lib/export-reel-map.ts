@@ -80,6 +80,9 @@ export function coalesceMapPoints(points: ReelMapPoint[], precision = 4): ReelMa
   });
 }
 
+/** Street-level zoom so a single marked place fills the reel map frame. */
+export const REEL_PLACE_FOCUS_ZOOM = 16;
+
 export function computeMapView(points: ReelMapPoint[]): {
   center: { lat: number; lng: number };
   zoom: number;
@@ -98,19 +101,27 @@ export function computeMapView(points: ReelMapPoint[]): {
     maxLng = Math.max(maxLng, p.lng);
   }
   const center = { lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2 };
-  const span = Math.max(maxLat - minLat, maxLng - minLng, 0.002);
-  let zoom = 12;
+  // Pad the span so pins aren't glued to the 9:16 edge, then pick a tighter zoom
+  // so marked places read clearly on phone screens.
+  const rawSpan = Math.max(maxLat - minLat, maxLng - minLng, 0.0008);
+  const span = rawSpan * 1.35;
+  let zoom = 15;
   if (span > 20) zoom = 3;
   else if (span > 8) zoom = 5;
-  else if (span > 3) zoom = 6;
-  else if (span > 1) zoom = 8;
-  else if (span > 0.35) zoom = 9;
-  else if (span > 0.12) zoom = 10;
-  else if (span > 0.04) zoom = 11;
-  else if (span > 0.015) zoom = 12;
-  else zoom = 13;
-  if (points.length === 1) zoom = Math.min(zoom, 12);
+  else if (span > 3) zoom = 7;
+  else if (span > 1) zoom = 9;
+  else if (span > 0.35) zoom = 11;
+  else if (span > 0.12) zoom = 12;
+  else if (span > 0.04) zoom = 13;
+  else if (span > 0.015) zoom = 14;
+  else if (span > 0.006) zoom = 15;
+  else zoom = 16;
+  if (points.length === 1) zoom = Math.max(zoom, REEL_PLACE_FOCUS_ZOOM);
   return { center, zoom };
+}
+
+export function buildReelPlaceBasemapPath(lat: number, lng: number, zoom = REEL_PLACE_FOCUS_ZOOM): string {
+  return `/api/export-reel/basemap?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}&zoom=${encodeURIComponent(String(zoom))}`;
 }
 
 const STATIC_CSS_W = 720;

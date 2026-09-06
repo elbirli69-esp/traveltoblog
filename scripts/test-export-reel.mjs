@@ -13,7 +13,7 @@ import {
   REEL_CROSSFADE_SECONDS,
   REEL_CAPTION_MAX_CHARS,
 } from "../src/lib/export-reel.ts";
-import { coalesceMapPoints, buildReelMapPlan } from "../src/lib/export-reel-map.ts";
+import { coalesceMapPoints, buildReelMapPlan, computeMapView, buildReelPlaceBasemapPath, REEL_PLACE_FOCUS_ZOOM } from "../src/lib/export-reel-map.ts";
 
 const PLACE_TYPES = ["RESTAURANT", "BEACH", "MUSEUM", "PARK", "CAFE"];
 
@@ -399,6 +399,17 @@ assert.equal(coalesced.length, 1);
 assert.equal(coalesced[0].kind, "place");
 
 assert.equal(buildReelMapPlan([{ lat: 1, lng: 1, kind: "photo", label: null, at: null }]), null);
+
+const singleView = computeMapView([{ lat: 38.71, lng: -9.14, kind: "place", label: "Mirador", at: null }]);
+assert.ok(singleView.zoom >= 15, `single place zoom too low: ${singleView.zoom}`);
+assert.equal(singleView.center.lat, 38.71);
+const tightView = computeMapView([
+  { lat: 38.71, lng: -9.14, kind: "place", label: "A", at: null },
+  { lat: 38.712, lng: -9.141, kind: "place", label: "B", at: null },
+]);
+assert.ok(tightView.zoom >= 14, `nearby places zoom too low: ${tightView.zoom}`);
+assert.equal(REEL_PLACE_FOCUS_ZOOM, 16);
+assert.ok(buildReelPlaceBasemapPath(38.71, -9.14).includes("zoom=16"));
 
 console.log("export-reel ok", {
   frames30: frames.length,
