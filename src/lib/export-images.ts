@@ -4,6 +4,9 @@ import { normalizeImageForStorage } from "@/lib/photo-storage";
 /** Bump when resize format/quality changes to invalidate on-disk cache. */
 export const EXPORT_CACHE_VERSION = 2;
 
+/** Bump when PDF JPEG size/quality changes to invalidate print/bleed cache. */
+export const PDF_CACHE_VERSION = 1;
+
 export const EXPORT_IMAGE_EXT = ".webp";
 export const EXPORT_IMAGE_MIME = "image/webp";
 
