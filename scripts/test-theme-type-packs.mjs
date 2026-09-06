@@ -150,6 +150,60 @@ assert.equal(
 // Chrome (hero + section nav) must follow dark pack — no hard-coded cream.
 const darkCss = themePackCss("dark-cinema");
 assert.ok(darkCss.includes(".mag-hero"), "dark pack styles mag-hero");
+assert.ok(sunsetCss.includes(".hero::before"), "sunset pack styles Visual Journey hero scrim");
+assert.ok(sunsetCss.includes("rgba(0,0,0"), "sunset hero scrim is dark for photo covers");
+assert.ok(sunsetCss.includes(".map-explorer"), "sunset pack resets map explorer wash");
+
+const vjSunset = buildExportHtml({
+  travel: {
+    id: "vj1",
+    title: "Atardecer en Lisboa",
+    startDate: new Date("2024-06-01"),
+    endDate: new Date("2024-06-04"),
+    journalMarkdown: "## Día 1\n\nLlegamos al atardecer.",
+  },
+  users: [{ id: "u1", alias: "Ana", createdAt: new Date(), updatedAt: new Date() }],
+  photos: [
+    {
+      id: "p1",
+      url: "/uploads/vj1/p1.jpg",
+      localPath: "photos/001.webp",
+      thumbPath: "photos/001-thumb.webp",
+      latitude: 38.72,
+      longitude: -9.14,
+      mediaType: "IMAGE",
+      videoPath: null,
+      exifDateTime: new Date("2024-06-01T19:00:00Z"),
+      alias: "Ana",
+      isTransportStart: false,
+      isTransportEnd: false,
+      highlightScore: 9,
+    },
+  ],
+  template: "visual-journey",
+  themePack: "warm-sunset",
+  typePack: "hybrid",
+  typology: "CITY_BREAK",
+});
+assert.ok(vjSunset.includes("export-theme--warm-sunset"), "body has sunset theme class");
+assert.ok(vjSunset.includes("export-type--hybrid"), "body has hybrid type class");
+assert.ok(
+  vjSunset.includes("rgba(0,0,0") && vjSunset.includes(".hero::before"),
+  "VJ+sunset keeps dark photo scrim for cover type"
+);
+assert.ok(
+  !vjSunset.includes("rgba(28,25,23,.55)"),
+  "VJ+sunset does not use dark map explorer wash"
+);
+assert.ok(
+  vjSunset.includes("color: #fafaf9") || vjSunset.includes("color:#fafaf9"),
+  "VJ hero forces light title color for readability"
+);
+assert.ok(
+  vjSunset.includes("article p") && vjSunset.includes("color: var(--text)"),
+  "VJ body copy uses theme text token (not light-gray on cream)"
+);
+
 assert.ok(darkCss.includes(".mag-section-nav"), "dark pack styles mag-section-nav");
 assert.ok(
   /rgba\(\s*11\s*,\s*17\s*,\s*32/.test(darkCss),

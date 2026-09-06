@@ -154,10 +154,18 @@ export function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-/** Cover-photo hero scrim — must use pack bg, not hard-coded cream. */
+/** Magazine-style hero scrim (tracks pack paper color). */
 export function themePackHeroOverlayGradient(pack: ThemePackId): string {
   const bg = THEME_PACK_TOKENS[pack].bg;
   return `linear-gradient(to top, ${hexToRgba(bg, 0.92)}, ${hexToRgba(bg, 0.4)})`;
+}
+
+/**
+ * Photo-cover scrim for Visual Journey / cinema heroes.
+ * Always dark so title/meta stay legible over the image (independent of pack --text).
+ */
+export function themePackPhotoHeroOverlayGradient(_pack: ThemePackId): string {
+  return "linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.2) 100%)";
 }
 
 function mixHex(a: string, b: string, t: number): string {
@@ -235,6 +243,50 @@ body.export-theme--${pack} .section-nav.scrolled {
 body.export-theme--${pack} .section-nav a:hover {
   color: var(--text);
   background: ${hoverPill};
+}
+
+/* Visual Journey photo cover: dark scrim + light type (never inherit dark --text on dark chrome). */
+body.export-theme--${pack} .hero::before {
+  background: linear-gradient(to top, rgba(0,0,0,.82) 0%, rgba(0,0,0,.35) 55%, rgba(0,0,0,.2) 100%);
+}
+body.export-theme--${pack} .hero h1,
+body.export-theme--${pack} .hero-content {
+  color: #fafaf9;
+}
+body.export-theme--${pack} .hero-meta,
+body.export-theme--${pack} .stat-pill {
+  color: #e7e5e4;
+}
+body.export-theme--${pack} .hero-badge {
+  color: #fafaf9;
+  background: ${hexToRgba(t.accent, 0.28)};
+  border-color: ${hexToRgba(t.accent, 0.55)};
+}
+body.export-theme--${pack} .stat-pill {
+  background: rgba(255,255,255,.12);
+  border-color: rgba(255,255,255,.22);
+}
+
+/* Map chrome: drop Visual Journey dark wash when the pack is light/warm/cool. */
+body.export-theme--${pack} .map-explorer {
+  background: linear-gradient(180deg, ${hexToRgba(t.accent, 0.1)} 0%, transparent 100%);
+}
+body.export-theme--${pack} .map-day-item {
+  background: ${hexToRgba(t.text, 0.04)};
+}
+body.export-theme--${pack} .map-day-item:hover {
+  background: ${hexToRgba(t.accent, 0.1)};
+}
+body.export-theme--${pack} .map-day-item.active {
+  background: ${hexToRgba(t.accent, 0.14)};
+  border-color: ${hexToRgba(t.accent, 0.4)};
+}
+body.export-theme--${pack} .map-explorer-header h2 {
+  color: var(--text);
+}
+body.export-theme--${pack} .map-lead,
+body.export-theme--${pack} .map-legend {
+  color: var(--muted);
 }
 `;
 }
