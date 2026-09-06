@@ -132,13 +132,27 @@ if (guideIdx >= 0) {
 if (closingIdx >= 0 && guideIdx >= 0) {
   assert.ok(guideIdx < closingIdx, "Guía before Cierre");
 }
+const navStart = international.indexOf('<nav class="mag-section-nav">');
+assert.ok(navStart >= 0, "magazine section nav present");
 const navChunk = international.slice(
-  international.indexOf("mag-section-nav"),
-  international.indexOf("</nav>", international.indexOf("mag-section-nav"))
+  navStart,
+  international.indexOf("</nav>", navStart)
 );
-const navGal = navChunk.indexOf("#galeria");
-const navGuide = navChunk.indexOf("#guia");
+const hrefPos = (hash) => navChunk.indexOf(`href="${hash}"`);
+const navMap = hrefPos("#mapa");
+const navTrip = hrefPos("#cronologia");
+const navGal = hrefPos("#galeria");
+const navGuide = hrefPos("#guia");
 assert.ok(navGal >= 0 && (navGuide < 0 || navGal < navGuide), "nav: Galería before Guía");
+assert.ok(navTrip >= 0 && navTrip < navGal, "nav: El viaje before Galería");
+if (navMap >= 0) {
+  assert.ok(navMap < navTrip, "nav: Mapa before El viaje (INTERNATIONAL)");
+}
+// Tabs must follow the same order as body sections.
+assert.ok(
+  (navMap < 0 || navMap < navTrip) && navTrip < navGal,
+  "nav order mirrors body: map → El viaje → Galería"
+);
 
 const beach = buildExportHtml({
   travel: { ...baseTravel, travelType: "BEACH_RESORT", journalMarkdown: null },

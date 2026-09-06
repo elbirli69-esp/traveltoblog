@@ -122,6 +122,20 @@ assert.equal(
   )[0],
   "guide"
 );
+// Brief prefer must not put Galería before El viaje (tabs/body mismatch).
+const intlBiased = applyHtmlSectionOrderBias(
+  ["flights", "map", "timeline", "gallery", "guide", "closing"],
+  ["gallery", "map", "timeline"],
+  "medium"
+);
+assert.ok(
+  intlBiased.indexOf("timeline") < intlBiased.indexOf("gallery"),
+  `gallery must stay after timeline, got ${intlBiased.join(",")}`
+);
+assert.deepEqual(intlBiased.slice(intlBiased.indexOf("timeline"), intlBiased.indexOf("timeline") + 2), [
+  "timeline",
+  "gallery",
+]);
 
 // --- apply to reel manifest ---
 const few = buildReelManifest({
@@ -342,9 +356,17 @@ const storySlice = darkHtml.includes('id="cronologia"')
     )
   : darkHtml;
 const storyThumbHits = (storySlice.match(/002-thumb\.webp/g) || []).length;
+// Primary story card should include the photo; guide/gallery must not be the only copy.
 assert.ok(
-  storyThumbHits <= 1,
-  `story should show each photo at most once, got ${storyThumbHits} thumb hits`
+  storyThumbHits >= 1,
+  `story should show the photo at least once, got ${storyThumbHits} thumb hits`
+);
+// El viaje before Galería even when the brief pushes gallery emphasis / prefer order.
+assert.ok(
+  darkHtml.indexOf('id="cronologia"') >= 0 &&
+    darkHtml.indexOf('id="galeria"') >= 0 &&
+    darkHtml.indexOf('id="cronologia"') < darkHtml.indexOf('id="galeria"'),
+  "dark magazine: El viaje before Galería in body"
 );
 
 const primary = collectPrimaryStoryPhotoIds([

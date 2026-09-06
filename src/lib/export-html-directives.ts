@@ -52,6 +52,8 @@ export function clampProseHtml(html: string, density: Emphasis, maxParagraphs = 
 
 /**
  * Soft-reorder middle sections from preferSectionOrder without dropping unknowns.
+ * Gallery emphasis is applied LAST so a brief cannot put Galería before El viaje
+ * (that mismatch with sticky tabs was the Magazine + Internacional bug).
  * Typology/template hard rules (e.g. visual map outer) are applied by the caller.
  */
 export function applyHtmlSectionOrderBias(
@@ -61,7 +63,25 @@ export function applyHtmlSectionOrderBias(
 ): string[] {
   let order = [...baseOrder];
 
-  // Gallery position bias even without preferSectionOrder
+  if (prefer && prefer.length > 0) {
+    const preferred = prefer.filter((id) => ORDERABLE.includes(id));
+    const preferredPresent = preferred.filter((id) => order.includes(id));
+    if (preferredPresent.length > 0) {
+      const remaining = order.filter((id) => !preferredPresent.includes(id as never));
+      // Insert preferred block where the first preferred id used to sit
+      const firstIdx = Math.min(
+        ...preferredPresent.map((id) => order.indexOf(id)).filter((i) => i >= 0)
+      );
+      const insertAt = Number.isFinite(firstIdx) ? firstIdx : remaining.length;
+      order = [
+        ...remaining.slice(0, insertAt),
+        ...preferredPresent,
+        ...remaining.slice(insertAt),
+      ];
+    }
+  }
+
+  // Gallery position wins over preferSectionOrder so tabs and body stay aligned.
   if (order.includes("gallery") && order.includes("timeline")) {
     order = order.filter((id) => id !== "gallery");
     if (galleryEmphasis === "low") {
@@ -87,25 +107,7 @@ export function applyHtmlSectionOrderBias(
     }
   }
 
-  if (!prefer || prefer.length === 0) return order;
-
-  const preferred = prefer.filter((id) => ORDERABLE.includes(id));
-  if (preferred.length === 0) return order;
-
-  const preferredPresent = preferred.filter((id) => order.includes(id));
-  if (preferredPresent.length === 0) return order;
-
-  const remaining = order.filter((id) => !preferredPresent.includes(id as never));
-  // Insert preferred block where the first preferred id used to sit
-  const firstIdx = Math.min(
-    ...preferredPresent.map((id) => order.indexOf(id)).filter((i) => i >= 0)
-  );
-  const insertAt = Number.isFinite(firstIdx) ? firstIdx : remaining.length;
-  return [
-    ...remaining.slice(0, insertAt),
-    ...preferredPresent,
-    ...remaining.slice(insertAt),
-  ];
+  return order;
 }
 
 /** CSS overrides keyed off body.export-dir--* classes. */
