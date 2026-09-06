@@ -40,15 +40,17 @@ export const REEL_TITLE_INTRO_SECONDS = 0.65;
 export const REEL_OUTRO_SECONDS = 1.9;
 export const REEL_HOOK_SECONDS = 1.05;
 /** Day chapter card — long enough to read the label. */
-export const REEL_CHAPTER_SECONDS = 0.95;
+export const REEL_CHAPTER_SECONDS = 1.4;
 /**
  * Clip hold pattern (includes outgoing transition).
  * With a 0.4 s crossfade, clean on-screen holds land ~0.55 / 0.95 / 1.6 s.
  */
-export const REEL_BEAT_PATTERN = [0.95, 1.35, 2.0] as const;
-/** Overlay reading pace (~chars/sec) for large on-screen type. */
-export const REEL_CAPTION_CHARS_PER_SEC = 14;
-export const REEL_CAPTION_MAX_CHARS = 48;
+export const REEL_BEAT_PATTERN = [2.1, 2.5, 3.0] as const;
+/** Overlay reading pace (~chars/sec) for large on-screen type — slower = more readable. */
+export const REEL_CAPTION_CHARS_PER_SEC = 10;
+export const REEL_CAPTION_MAX_CHARS = 56;
+/** Minimum on-screen hold (after crossfade) when a clip has a caption/day note. */
+export const REEL_CAPTION_MIN_HOLD_SECONDS = 2.3;
 
 export type ReelDurationPreset = 15 | 30 | 60;
 
@@ -213,8 +215,8 @@ export function resolveReelBuildOptions(
 }
 
 function beatPatternForPacing(pacing: ReelPacing): readonly number[] {
-  if (pacing === "calm") return [1.45, 1.9, 2.35];
-  if (pacing === "punchy") return [0.8, 1.05, 1.4];
+  if (pacing === "calm") return [2.4, 2.9, 3.4];
+  if (pacing === "punchy") return [1.6, 2.0, 2.4];
   return REEL_BEAT_PATTERN;
 }
 
@@ -312,21 +314,19 @@ export function resolveReadableCaption(
 
 export function resolveFrameCaption(photo: ReelPhotoInput): string | null {
   // Provisional: assume a typical ~1.6 s hold until durations are fitted.
-  return resolveReadableCaption(photo, 1.6);
+  return resolveReadableCaption(photo, 2.6);
 }
 
 /** After durations are known, drop captions that cannot be read in the hold. */
 export function fitCaptionsToClipHolds(frames: ReelFramePlan[]): ReelFramePlan[] {
   return frames.map((frame) => {
-    if (frame.role === "chapter") return frame;
+    if (frame.role === "chapter" || frame.role === "hook") return frame;
     if (!frame.caption) return frame;
     const hold = Math.max(0.45, frame.durationSeconds - REEL_CROSSFADE_SECONDS);
     const budget = captionCharBudget(hold);
-    if (frame.caption.length <= budget) {
-      return { ...frame, caption: clipOverlayText(frame.caption, budget) };
-    }
-    // Unreadable at this pace → place-only (or nothing if no place).
-    return { ...frame, caption: null };
+    // Tiny holds cannot carry text; otherwise truncate to what is readable.
+    if (budget < 12 || hold < 1.0) return { ...frame, caption: null };
+    return { ...frame, caption: clipOverlayText(frame.caption, budget) };
   });
 }
 
@@ -803,30 +803,28 @@ function fitClipDurations(
   return paced.map((f) => {
     if (f.role === "hook" || f.role === "chapter") return f;
     // Keep holds usable after subtracting crossfade in the encoder.
-    const min =
-      pacing === "punchy"
-        ? f.hero || f.caption
-          ? 1.2
-          : 0.95
+    const hasText = Boolean(f.caption || f.dayNote);
+    // durationSeconds includes outgoing crossfade; keep readable on-screen hold.
+    const minHold = hasText
+      ? REEL_CAPTION_MIN_HOLD_SECONDS
+      : pacing === "punchy"
+        ? 1.0
         : pacing === "calm"
-          ? f.hero || f.caption
-            ? 1.75
-            : 1.35
-          : f.hero || f.caption
-            ? 1.55
-            : 1.1;
+          ? 1.5
+          : 1.25;
+    const min = minHold + REEL_CROSSFADE_SECONDS * 0.85;
     const max =
       pacing === "punchy"
-        ? f.hero
-          ? 2.1
-          : 1.85
+        ? hasText || f.hero
+          ? 3.4
+          : 2.4
         : pacing === "calm"
-          ? f.hero
-            ? 3.0
-            : 2.6
-          : f.hero
-            ? 2.6
-            : 2.25;
+          ? hasText || f.hero
+            ? 4.2
+            : 3.2
+          : hasText || f.hero
+            ? 3.8
+            : 2.8;
     return {
       ...f,
       durationSeconds: Math.max(min, Math.min(max, f.durationSeconds * scale)),
@@ -969,44 +967,52 @@ function buildHookFrame(best: ReelFramePlan): ReelFramePlan {
   };
 }
 
-function insertDayChapters(frames: ReelFramePlan[]): ReelFramePlan[] {
+function insertDayChapters(
+  frames: ReelFramePlan[],
+  opts?: { skipDayKey?: string | null }
+): ReelFramePlan[] {
   const dayKeys = [
     ...new Set(frames.map((f) => f.dayKey).filter((k): k is string => Boolean(k))),
   ].sort((a, b) => a.localeCompare(b));
   if (dayKeys.length < 2) return frames;
 
+  const skipDayKey = opts?.skipDayKey ?? null;
   const out: ReelFramePlan[] = [];
   const openedDays = new Set<string>();
   let chapterCount = 0;
   for (const frame of frames) {
-    // Only one chapter per dayKey (first time it appears). Chronological body
-    // already avoids revisiting days; this guard keeps chapters stable if the
-    // pick order ever changes.
+    // Skip chapter for the hook's day — hook already opened that day, so a
+    // "Día 1" card right after felt like the same photo in staged repeats.
     if (
       frame.role === "clip" &&
       frame.dayKey &&
-      !openedDays.has(frame.dayKey) &&
-      chapterCount < 4
+      !openedDays.has(frame.dayKey)
     ) {
-      const dayIndex = dayKeys.indexOf(frame.dayKey) + 1;
-      out.push({
-        ...frame,
-        role: "chapter",
-        dayIndex: dayIndex > 0 ? dayIndex : null,
-        hero: false,
-        caption: null,
-        dayNote: null,
-        treatment: "clean",
-        layout: "full",
-        transitionOut: "fade",
-        captionStyle: "glassCard",
-        durationSeconds: REEL_CHAPTER_SECONDS,
-        sticker: null,
-        kenBurns: "out",
-        showDayChip: false,
-      });
-      chapterCount += 1;
-      openedDays.add(frame.dayKey);
+      if (skipDayKey && frame.dayKey === skipDayKey) {
+        openedDays.add(frame.dayKey);
+      } else if (chapterCount < 4) {
+        const dayIndex = dayKeys.indexOf(frame.dayKey) + 1;
+        out.push({
+          ...frame,
+          role: "chapter",
+          dayIndex: dayIndex > 0 ? dayIndex : null,
+          hero: false,
+          caption: null,
+          dayNote: null,
+          treatment: "clean",
+          layout: "full",
+          transitionOut: "fade",
+          captionStyle: "glassCard",
+          durationSeconds: REEL_CHAPTER_SECONDS,
+          sticker: null,
+          kenBurns: "out",
+          showDayChip: false,
+        });
+        chapterCount += 1;
+        openedDays.add(frame.dayKey);
+      } else {
+        openedDays.add(frame.dayKey);
+      }
     }
     out.push(frame);
   }
@@ -1068,7 +1074,10 @@ export function buildReelManifest(input: {
     const body = frames.filter((f) => f.photoId !== best.photoId);
     frames = [
       buildHookFrame(best),
-      ...insertDayChapters(body.length > 0 ? body : frames),
+      ...insertDayChapters(body.length > 0 ? body : frames, {
+        // If the hook still is from day 1, skip that day's chapter card.
+        skipDayKey: best.dayKey,
+      }),
     ];
   } else {
     frames = insertDayChapters(frames);

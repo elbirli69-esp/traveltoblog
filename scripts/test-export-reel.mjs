@@ -160,6 +160,22 @@ for (let i = 0; i < manifest.frames.length - 1; i++) {
   }
 }
 
+// If hook is from day D, that day must not also get a chapter card (avoids staged repeats).
+if (hook.dayKey) {
+  assert.ok(
+    !manifest.frames.some((f) => f.role === "chapter" && f.dayKey === hook.dayKey),
+    "hook day should skip chapter card"
+  );
+}
+// Captioned clips need a readable hold (after crossfade).
+for (const clip of manifest.frames.filter((f) => f.role === "clip" && f.caption)) {
+  const hold = clip.durationSeconds - REEL_CROSSFADE_SECONDS;
+  assert.ok(
+    hold >= 2.0,
+    `captioned clip hold too short: ${hold.toFixed(2)}s for "${clip.caption?.slice(0, 24)}"`
+  );
+}
+
 const chapter = manifest.frames.find((f) => f.role === "chapter");
 assert.ok(chapter && Math.abs(chapter.durationSeconds - REEL_CHAPTER_SECONDS) < 0.05);
 const clipDurations = manifest.frames
@@ -209,8 +225,19 @@ const fitted = fitCaptionsToClipHolds([
     placeName: "Mirador",
   },
 ]);
-assert.equal(fitted[0].caption, null, "unreadable caption cleared; place remains");
+assert.equal(fitted[0].caption, null, "sub-1s hold clears caption; place remains");
 assert.equal(fitted[0].placeName, "Mirador");
+
+const fittedOk = fitCaptionsToClipHolds([
+  {
+    ...frames[0],
+    caption: "Paseo largo junto al río con luz de atardecer",
+    durationSeconds: 3.0,
+    role: "clip",
+    placeName: "Mirador",
+  },
+]);
+assert.ok(fittedOk[0].caption && fittedOk[0].caption.length > 10, "readable hold keeps caption");
 
 const coalesced = coalesceMapPoints([
   { lat: 38.7, lng: -9.1, kind: "photo", label: null, at: "a" },

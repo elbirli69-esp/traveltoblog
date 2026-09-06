@@ -135,8 +135,10 @@ function drawStoryCaption(
   t: number,
   meta?: string | null
 ) {
-  // Hold timeline is 0→1; fade in once over ~12% then stay opaque (no mid-clip blink).
-  const appear = Math.min(1, easeInOut(Math.max(0, t / 0.12)));
+  // Hold timeline 0→1: fade in quickly, stay readable most of the hold, soft out at end.
+  let appear = 1;
+  if (t < 0.08) appear = easeInOut(Math.max(0, t / 0.08));
+  else if (t > 0.88) appear = easeInOut(Math.max(0, (1 - t) / 0.12));
   if (appear <= 0.01 || !text.trim()) return;
 
   ctx.save();
@@ -543,8 +545,13 @@ function paintChapterCard(
     frameMeta.dayIndex != null
       ? `Día ${frameMeta.dayIndex}`
       : frameMeta.dayLabel || "Nuevo día";
-  // Quick fade-in then hold (t is 0→1 over the chapter hold).
-  const appear = easeInOut(Math.min(1, t / 0.18));
+  // Readable for almost the whole chapter card.
+  const appear =
+    t < 0.1
+      ? easeInOut(t / 0.1)
+      : t > 0.9
+        ? easeInOut((1 - t) / 0.1)
+        : 1;
   ctx.save();
   ctx.globalAlpha = appear;
   drawSafeText(
@@ -1143,7 +1150,13 @@ export async function encodeInstagramReelMp4(
     const nextImg = nextIdx != null ? images[nextIdx] : undefined;
     const nextMeta = nextIdx != null ? manifest.frames[nextIdx] : undefined;
     // Floor so a scaled-down clip still shows before the ~0.4 s transition.
-    const hold = Math.max(0.5, meta.durationSeconds - (nextImg ? crossfade : 0));
+    const needsRead = Boolean(
+      meta.caption || meta.dayNote || meta.role === "chapter"
+    );
+    const hold = Math.max(
+      needsRead ? 2.0 : 0.7,
+      meta.durationSeconds - (nextImg ? crossfade : 0)
+    );
 
     // Hold uses full 0→1 motion; captions fade in once at the start of the hold.
     await addSegment(
