@@ -2,14 +2,23 @@ import { MAPBOX_STYLE_LIGHT, MAPBOX_TOKEN } from "@/lib/mapbox";
 import { sanitizeGpsPair } from "@/lib/exif";
 import type { GpsTrailPolyline } from "@/lib/gps-track-map";
 
+export type ReelMapPointKind = "photo" | "place" | "flight";
+
 export interface ReelMapPoint {
   lat: number;
   lng: number;
-  kind: "photo" | "place";
+  kind: ReelMapPointKind;
   label: string | null;
   /** Sort key for route animation (ISO or sortable string) */
   at: string | null;
 }
+
+/** Straight flight/transport segment in [lat, lng] order (same as Lugares trayecto). */
+export interface ReelMapFlightLeg {
+  coords: Array<[number, number]>;
+}
+
+export type ReelMapOverview = "route" | "flights";
 
 export interface ReelMapPlan {
   points: ReelMapPoint[];
@@ -22,6 +31,10 @@ export interface ReelMapPlan {
   imageHeight: number;
   /** Animated GPS trails drawn client-side over the basemap */
   gpsTrails: GpsTrailPolyline[];
+  /** "flights" matches Lugares trayecto (ida/vuelta); "route" is destination trail */
+  overview: ReelMapOverview;
+  /** Dashed arcs for transport legs (empty on local route overview) */
+  flightLegs: ReelMapFlightLeg[];
 }
 
 function mapboxStylePath(styleUrl: string): string {
@@ -45,7 +58,12 @@ export function coalesceMapPoints(points: ReelMapPoint[], precision = 4): ReelMa
       continue;
     }
     const label = existing.label || p.label;
-    const kind = existing.kind === "place" || p.kind === "place" ? "place" : "photo";
+    const kind =
+      existing.kind === "flight" || p.kind === "flight"
+        ? "flight"
+        : existing.kind === "place" || p.kind === "place"
+          ? "place"
+          : "photo";
     const at =
       existing.at && p.at
         ? existing.at <= p.at
@@ -111,8 +129,56 @@ export function buildReelMapStaticUrl(
 
 export function buildReelMapPlan(
   rawPoints: ReelMapPoint[],
-  gpsTrails: GpsTrailPolyline[] = []
+  gpsTrails: GpsTrailPolyline[] = [],
+  options?: {
+    overview?: ReelMapOverview;
+    flightLegs?: Array<Array<{ lat: number; lng: number }>>;
+  }
 ): ReelMapPlan | null {
+  const overview = options?.overview ?? "route";
+  const flightLegs: ReelMapFlightLeg[] = (options?.flightLegs ?? [])
+    .map((leg) => ({
+      coords: leg
+        .map((p) => {
+          const gps = sanitizeGpsPair(p.lat, p.lng);
+          if (gps.latitude == null || gps.longitude == null) return null;
+          return [gps.latitude, gps.longitude] as [number, number];
+        })
+        .filter((c): c is [number, number] => c != null),
+    }))
+    .filter((leg) => leg.coords.length >= 2);
+
+  // Flight overview (same idea as Lugares → Trayecto): fit only ida/vuelta legs,
+  // never destination GPS trails that can pull the frame to a layover country.
+  if (overview === "flights" && flightLegs.length > 0) {
+    const fromLegs: ReelMapPoint[] = flightLegs.flatMap((leg) =>
+      leg.coords.map(([lat, lng]) => ({
+        lat,
+        lng,
+        kind: "flight" as const,
+        label: null,
+        at: null,
+      }))
+    );
+    const points = coalesceMapPoints(rawPoints.length > 0 ? rawPoints : fromLegs);
+    const viewSource = points.length >= 2 ? points : fromLegs;
+    if (viewSource.length < 2) return null;
+    const view = computeMapView(viewSource);
+    // Slightly pull back so airport pins sit inside the 9:16 crop.
+    const zoom = Math.max(2, view.zoom - 1);
+    return {
+      points: points.length >= 1 ? points : coalesceMapPoints(fromLegs),
+      staticUrl: buildReelMapStaticUrl(view.center, zoom),
+      center: view.center,
+      zoom,
+      imageWidth: STATIC_CSS_W,
+      imageHeight: STATIC_CSS_H,
+      gpsTrails: [],
+      overview: "flights",
+      flightLegs,
+    };
+  }
+
   const points = coalesceMapPoints(rawPoints);
   if (points.length < 2 && gpsTrails.every((t) => t.coords.length < 2)) {
     return null;
@@ -141,8 +207,11 @@ export function buildReelMapPlan(
     imageWidth: STATIC_CSS_W,
     imageHeight: STATIC_CSS_H,
     gpsTrails,
+    overview: "route",
+    flightLegs: [],
   };
 }
+
 
 /**
  * Project lon/lat onto a canvas that cover-fits a Mapbox static image

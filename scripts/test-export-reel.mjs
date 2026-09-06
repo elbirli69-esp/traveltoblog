@@ -184,8 +184,146 @@ const clipDurations = manifest.frames
 assert.ok(clipDurations.length <= 6, `clip count 15s ${clipDurations.length}`);
 assert.ok(manifest.map);
 assert.ok(manifest.map.points.length >= 2);
-assert.ok((manifest.map.gpsTrails?.length ?? 0) >= 1, "gps trails on map plan");
+assert.equal(manifest.map.overview, "flights", "ida/vuelta pins prefer flight trayecto");
+assert.ok(manifest.map.flightLegs.length >= 1);
+assert.equal(manifest.map.gpsTrails.length, 0, "flight overview omits destination GPS trails");
 assert.ok(manifest.mapIntroSeconds > 0);
+
+// Local route overview (no ida/vuelta) still shows GPS trails.
+const localPhotos = photos.map((p) => ({
+  ...p,
+  isTransportStart: false,
+  isTransportEnd: false,
+}));
+const localManifest = buildReelManifest({
+  title: "Lisboa local",
+  participants: ["Ada"],
+  startDate: "2024-06-01",
+  endDate: "2024-06-05",
+  photos: localPhotos,
+  places: [
+    {
+      name: "Belém",
+      type: "CAFE",
+      latitude: 38.697,
+      longitude: -9.206,
+      comment: "Pasteles",
+      visitedAt: "2024-06-02T15:00:00.000Z",
+    },
+  ],
+  durationSeconds: 15,
+  gpsTracks: [
+    {
+      id: "trk-local",
+      includeInExport: true,
+      alias: "Ada",
+      points: [
+        { lat: 38.7, lng: -9.14 },
+        { lat: 38.71, lng: -9.15 },
+        { lat: 38.72, lng: -9.13 },
+      ],
+    },
+  ],
+});
+assert.equal(localManifest.map?.overview, "route");
+assert.ok((localManifest.map?.gpsTrails?.length ?? 0) >= 1, "gps trails on local route map");
+
+// Flight overview matches Lugares trayecto: Spain↔Poland with airplanes,
+// ignoring a France layover photo that would otherwise expand the frame.
+const flightPhotos = [
+  {
+    id: "out-mad",
+    mediaType: "IMAGE",
+    posterFilename: null,
+    exifDateTime: "2024-06-01T08:00:00.000Z",
+    isTransportStart: true,
+    isTransportEnd: false,
+    selected: true,
+    placeName: "MAD",
+    comments: [],
+    highlightScore: 5,
+    latitude: 40.49,
+    longitude: -3.57,
+  },
+  {
+    id: "layover-cdg",
+    mediaType: "IMAGE",
+    posterFilename: null,
+    exifDateTime: "2024-06-01T12:00:00.000Z",
+    isTransportStart: false,
+    isTransportEnd: false,
+    selected: true,
+    placeName: "CDG",
+    comments: [],
+    highlightScore: 5,
+    latitude: 49.01,
+    longitude: 2.55,
+  },
+  {
+    id: "krakow",
+    mediaType: "IMAGE",
+    posterFilename: null,
+    exifDateTime: "2024-06-02T10:00:00.000Z",
+    isTransportStart: false,
+    isTransportEnd: false,
+    selected: true,
+    placeName: "Kraków",
+    comments: ["Plaza"],
+    highlightScore: 8,
+    latitude: 50.06,
+    longitude: 19.94,
+  },
+  {
+    id: "in-mad",
+    mediaType: "IMAGE",
+    posterFilename: null,
+    exifDateTime: "2024-06-08T18:00:00.000Z",
+    isTransportStart: false,
+    isTransportEnd: true,
+    selected: true,
+    placeName: "MAD vuelta",
+    comments: [],
+    highlightScore: 5,
+    latitude: 40.49,
+    longitude: -3.57,
+  },
+];
+const flightManifest = buildReelManifest({
+  title: "Polonia",
+  participants: ["Ada"],
+  startDate: "2024-06-01",
+  endDate: "2024-06-08",
+  photos: flightPhotos,
+  durationSeconds: 15,
+  gpsTracks: [
+    {
+      id: "fr-noise",
+      includeInExport: true,
+      alias: "Ada",
+      points: [
+        { lat: 48.8, lng: 2.3 },
+        { lat: 48.9, lng: 2.4 },
+      ],
+    },
+  ],
+});
+assert.ok(flightManifest.map);
+assert.equal(flightManifest.map.overview, "flights");
+assert.ok(flightManifest.map.flightLegs.length >= 1, "flight legs on trayecto map");
+assert.equal(flightManifest.map.gpsTrails.length, 0, "no GPS trails on flight overview");
+assert.ok(
+  flightManifest.map.points.every((p) => p.kind === "flight"),
+  "flight overview pins are airports only"
+);
+assert.ok(
+  !flightManifest.map.points.some((p) => Math.abs(p.lat - 49.01) < 0.5),
+  "France layover must not pin the flight overview"
+);
+assert.ok(
+  flightManifest.map.center.lng < 10 && flightManifest.map.center.lng > -5,
+  `flight center should sit between Spain and Poland, got lng=${flightManifest.map.center.lng}`
+);
+assert.ok(flightManifest.map.points.some((p) => p.kind === "flight"));
 assert.ok(
   manifest.crossfadeSeconds >= 0.35 && manifest.crossfadeSeconds <= 0.55,
   `crossfade ~0.4s, got ${manifest.crossfadeSeconds}`

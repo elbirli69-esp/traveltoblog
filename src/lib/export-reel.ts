@@ -11,6 +11,13 @@ import {
   buildGpsTrailPolylines,
   type GpsTrackForMap,
 } from "@/lib/gps-track-map";
+import { FLIGHT_IN_EMOJI, FLIGHT_OUT_EMOJI, resolveFlightLegs } from "@/lib/flights";
+import {
+  buildDirectRouteGeometry,
+  buildRouteNodesFromPhotosAndPlaces,
+  coalesceRouteNodes,
+  hasFlightOverview,
+} from "@/lib/mapbox-route";
 import { placeEmoji } from "@/lib/places";
 import type { PlaceType } from "@prisma/client";
 import {
@@ -763,6 +770,99 @@ function collectMapPoints(
   return points;
 }
 
+/** Airport pins for the flights overview (same markers as Lugares → Trayecto). */
+function collectFlightMapPoints(photos: ReelPhotoInput[]): ReelMapPoint[] {
+  const { outbound, inbound } = resolveFlightLegs(
+    photos.map((p) => ({
+      id: p.id,
+      url: "",
+      latitude: p.latitude ?? null,
+      longitude: p.longitude ?? null,
+      isTransportStart: p.isTransportStart,
+      isTransportEnd: p.isTransportEnd,
+      exifDateTime: toIso(p.exifDateTime),
+      user: { alias: "" },
+    }))
+  );
+  const points: ReelMapPoint[] = [];
+  if (
+    outbound?.hasGps &&
+    outbound.photo.latitude != null &&
+    outbound.photo.longitude != null
+  ) {
+    points.push({
+      lat: outbound.photo.latitude,
+      lng: outbound.photo.longitude,
+      kind: "flight",
+      label: `${FLIGHT_OUT_EMOJI} ${outbound.label}`,
+      at: outbound.photo.exifDateTime,
+    });
+  }
+  if (
+    inbound?.hasGps &&
+    inbound.photo.latitude != null &&
+    inbound.photo.longitude != null
+  ) {
+    points.push({
+      lat: inbound.photo.latitude,
+      lng: inbound.photo.longitude,
+      kind: "flight",
+      label: `${FLIGHT_IN_EMOJI} ${inbound.label}`,
+      at: inbound.photo.exifDateTime,
+    });
+  }
+  return points;
+}
+
+function buildReelMapFromTravel(input: {
+  photos: ReelPhotoInput[];
+  places?: ReelPlaceInput[];
+  gpsTrails: ReturnType<typeof buildGpsTrailPolylines>;
+}): ReelMapPlan | null {
+  const places = input.places ?? [];
+  const nodes = coalesceRouteNodes(
+    buildRouteNodesFromPhotosAndPlaces(
+      input.photos.map((p) => ({
+        latitude: p.latitude ?? null,
+        longitude: p.longitude ?? null,
+        exifDateTime: p.exifDateTime,
+        isTransportStart: p.isTransportStart,
+        isTransportEnd: p.isTransportEnd,
+      })),
+      places
+        .filter(
+          (p): p is ReelPlaceInput & { latitude: number; longitude: number } =>
+            p.latitude != null && p.longitude != null
+        )
+        .map((p) => ({
+          latitude: p.latitude,
+          longitude: p.longitude,
+          visitedAt: p.visitedAt ?? null,
+        }))
+    )
+  );
+  const geometry = buildDirectRouteGeometry(nodes);
+
+  // Match Lugares dual-map "Trayecto": frame airport pins (e.g. Spain↔Poland),
+  // not layover photos / GPS trails that pull the map to France.
+  if (hasFlightOverview(geometry)) {
+    const airports = collectFlightMapPoints(input.photos);
+    const flightLegs =
+      airports.length >= 2
+        ? [airports.slice(0, 2).map((p) => ({ lat: p.lat, lng: p.lng }))]
+        : geometry!.flightLegs.map((leg) =>
+            leg.map((p) => ({ lat: p.lat, lng: p.lng }))
+          );
+    const flightPlan = buildReelMapPlan(airports, [], {
+      overview: "flights",
+      flightLegs,
+    });
+    if (flightPlan) return flightPlan;
+  }
+
+  return buildReelMapPlan(collectMapPoints(input.photos, places), input.gpsTrails);
+}
+
 function fitClipDurations(
   frames: ReelFramePlan[],
   durationSeconds: ReelDurationPreset,
@@ -1048,10 +1148,11 @@ export function buildReelManifest(input: {
     exportMarked.length > 0 ? exportMarked : input.gpsTracks ?? [];
   const gpsTrails = buildGpsTrailPolylines(trailSource);
 
-  const map = buildReelMapPlan(
-    collectMapPoints(input.photos, input.places ?? []),
-    gpsTrails
-  );
+  const map = buildReelMapFromTravel({
+    photos: input.photos,
+    places: input.places,
+    gpsTrails,
+  });
   const mapIntroSeconds = map ? REEL_MAP_INTRO_SECONDS : 0;
   const outroSeconds = REEL_OUTRO_SECONDS;
 
@@ -1142,9 +1243,11 @@ export function buildReelManifest(input: {
 
 export function reelReadmeText(manifest: ReelManifest): string {
   const mapLine = manifest.map
-    ? `- Incluye intro con mapa (${manifest.map.points.length} puntos GPS/lugares)${
-        (manifest.map.gpsTrails?.length ?? 0) > 0 ? " + trail GPS animado" : ""
-      }.\n`
+    ? manifest.map.overview === "flights"
+      ? `- Incluye intro con mapa de trayecto (${manifest.map.flightLegs.length} tramos de vuelo + aviones).\n`
+      : `- Incluye intro con mapa (${manifest.map.points.length} puntos GPS/lugares)${
+          (manifest.map.gpsTrails?.length ?? 0) > 0 ? " + trail GPS animado" : ""
+        }.\n`
     : "";
   const treatments = [...new Set(manifest.frames.map((f) => f.treatment))].join(", ");
   return `Reel listo para Instagram

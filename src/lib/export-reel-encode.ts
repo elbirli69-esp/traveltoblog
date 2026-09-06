@@ -361,8 +361,8 @@ function paintMapOverlays(
     return { x: pt.x, y: pt.y * scaleY + offsetY };
   };
 
-  // Animated GPS trails (point 9) — drawn under place/photo pins.
-  const trails = map.gpsTrails ?? [];
+  // Animated GPS trails (destination only — skipped on flight overview).
+  const trails = map.overview === "flights" ? [] : map.gpsTrails ?? [];
   if (trails.length > 0) {
     ctx.save();
     ctx.strokeStyle = gpsTrailMapColor();
@@ -407,7 +407,39 @@ function paintMapOverlays(
     };
   });
 
-  if (projected.length >= 2) {
+  // Flight arcs (Lugares trayecto) — dashed indigo, animated by progress.
+  const flightLegs = map.flightLegs ?? [];
+  if (flightLegs.length > 0) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(129, 140, 248, 0.95)";
+    ctx.lineWidth = 5;
+    ctx.setLineDash([14, 10]);
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.globalAlpha = 0.95;
+    for (const leg of flightLegs) {
+      if (leg.coords.length < 2) continue;
+      const totalSeg = leg.coords.length - 1;
+      const drawSeg = Math.max(1, Math.floor(totalSeg * routeT));
+      ctx.beginPath();
+      for (let i = 0; i <= drawSeg; i++) {
+        const c = leg.coords[i]!;
+        const p = project(c[0], c[1]);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      if (drawSeg < totalSeg && routeT < 1) {
+        const segT = routeT * totalSeg - drawSeg;
+        const a = leg.coords[drawSeg]!;
+        const b = leg.coords[drawSeg + 1]!;
+        const pa = project(a[0], a[1]);
+        const pb = project(b[0], b[1]);
+        ctx.lineTo(pa.x + (pb.x - pa.x) * segT, pa.y + (pb.y - pa.y) * segT);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  } else if (projected.length >= 2) {
     const routeCount = Math.max(
       2,
       Math.floor(1 + (projected.length - 1) * routeT)
@@ -457,23 +489,40 @@ function paintMapOverlays(
     const isHi = i === highlightIdx;
     ctx.save();
     ctx.globalAlpha = appear;
-    ctx.fillStyle = isHi ? "#f97316" : p.kind === "place" ? "#f97316" : "#06b6d4";
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, isHi ? 18 : p.kind === "place" ? 14 : 11, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = isHi ? 4 : 3;
-    ctx.stroke();
-    if (isHi && (highlight?.label || p.label)) {
-      const label = highlight?.label || p.label || "";
-      ctx.font = `700 22px "Segoe UI", system-ui, sans-serif`;
-      const tw = Math.min(ctx.measureText(label).width + 28, width * 0.7);
-      ctx.fillStyle = "rgba(0,0,0,0.6)";
-      ctx.fillRect(p.x - tw / 2, p.y + 22, tw, 36);
-      ctx.fillStyle = "#fff";
+    if (p.kind === "flight") {
+      const emoji = p.label?.includes("🛬") ? "🛬" : "✈️";
+      ctx.font = `700 ${isHi ? 44 : 36}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(label, p.x, p.y + 40, tw - 12);
+      ctx.fillText(emoji, p.x, p.y);
+      if (isHi && p.label) {
+        const label = p.label.replace(/^[✈️🛬]\s*/, "");
+        ctx.font = `700 22px "Segoe UI", system-ui, sans-serif`;
+        const tw = Math.min(ctx.measureText(label).width + 28, width * 0.7);
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(p.x - tw / 2, p.y + 22, tw, 36);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(label, p.x, p.y + 40, tw - 12);
+      }
+    } else {
+      ctx.fillStyle = isHi ? "#f97316" : p.kind === "place" ? "#f97316" : "#06b6d4";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, isHi ? 18 : p.kind === "place" ? 14 : 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = isHi ? 4 : 3;
+      ctx.stroke();
+      if (isHi && (highlight?.label || p.label)) {
+        const label = highlight?.label || p.label || "";
+        ctx.font = `700 22px "Segoe UI", system-ui, sans-serif`;
+        const tw = Math.min(ctx.measureText(label).width + 28, width * 0.7);
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(p.x - tw / 2, p.y + 22, tw, 36);
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, p.x, p.y + 40, tw - 12);
+      }
     }
     ctx.restore();
   }
@@ -502,6 +551,7 @@ function paintMapOverlays(
     }
   }
 }
+
 
 function drawPlaceSticker(
   ctx: CanvasRenderingContext2D,
@@ -835,7 +885,12 @@ function paintMapIntro(
       { text: title, size: 56, weight: "700" },
       ...(dateRangeLabel ? [{ text: dateRangeLabel, size: 28, weight: "500" }] : []),
       {
-        text: `${map.points.length} puntos en el recorrido`,
+        text:
+          map.overview === "flights"
+            ? map.flightLegs.length > 1
+              ? "Ida y vuelta en el mapa"
+              : "Trayecto de vuelo"
+            : `${map.points.length} puntos en el recorrido`,
         size: 24,
         weight: "500",
       },
