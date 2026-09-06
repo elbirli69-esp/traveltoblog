@@ -727,7 +727,7 @@ export function mapExportStyles(): string {
   overflow: hidden;
   background: #292524;
 }
-#map.map-canvas--hidden { display: none; }
+.map-canvas--hidden { display: none !important; }
 .route-pin-wrap { background: none; border: none; }
 .route-pin {
   width: 28px; height: 28px;
@@ -1260,7 +1260,7 @@ function buildMapStaticFallbackHtml(
 ): string {
   if (!staticPath) return "";
   return `
-<img class="map-static-fallback" data-export-src="${escapeHtml(staticPath)}" alt="${escapeHtml(alt)}" width="1280" height="720">
+<img class="map-static-fallback" src="${escapeHtml(staticPath)}" data-export-src="${escapeHtml(staticPath)}" alt="${escapeHtml(alt)}" width="1280" height="720">
 <p class="map-offline-note">Sin conexión a tiles: mostrando mapa estático incluido en el export.</p>`;
 }
 
@@ -1420,7 +1420,9 @@ function buildMapScript(
   }
 
   function preferStaticOffline(mapEl) {
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    var isFile = typeof location !== "undefined" && location.protocol === "file:";
+    var offline = typeof navigator !== "undefined" && navigator.onLine === false;
+    if (isFile || offline) {
       return showStaticFallback(mapEl);
     }
     return false;
@@ -1996,7 +1998,7 @@ export function buildExportHtml(ctx: ExportContext): string {
 ${buildTocHtml(timelineEvents)}
 ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
     : isVisual
-      ? `<header class="hero"${heroPhotoPath ? ` data-export-hero="${escapeHtml(heroPhotoPath)}" data-export-hero-gradient="${escapeHtml(heroGradient)}"` : ""}>
+      ? `<header class="hero"${heroPhotoPath ? ` data-export-hero="${escapeHtml(heroPhotoPath)}" data-export-hero-gradient="${escapeHtml(heroGradient)}" style="background-image:${heroGradient}, url('${escapeHtml(heroPhotoPath).replace(/'/g, "%27")}');background-size:cover;background-position:center"` : ""}>
       <div class="hero-content reveal">
         <span class="hero-badge">${escapeHtml(profile.label)} · ${escapeHtml(getTemplateLabel(template))}</span>
         <h1>${escapeHtml(travel.title)}</h1>
@@ -2248,6 +2250,7 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
   </div>
   ${lightboxBlock}
   ${timelineScript}
+  ${exportBootScript}
   ${hasMap ? `<script src="assets/leaflet.js"></script><script>${buildMapScript(mapPoints, mapDayGroups, routeSegments, "assets/images", template, gpsTrails, {
     dualMaps,
     flightPoints,
@@ -2256,7 +2259,6 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
   })}</script>` : ""}
   ${playScript}
   ${interactiveScript}
-  ${exportBootScript}
 </body>
 </html>`;
 }

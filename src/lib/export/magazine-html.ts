@@ -152,7 +152,7 @@ export function buildPlaceCalloutsHtml(places: MagazinePlace[]): string {
             .slice(0, 4)
             .map(
               (src) =>
-                `<img class="mag-callout-thumb" data-export-src="${escapeHtml(src)}" alt="" loading="lazy">`
+                `<img class="mag-callout-thumb" src="${escapeHtml(src)}" data-export-src="${escapeHtml(src)}" alt="" loading="eager">`
             )
             .join("");
           return `<article class="mag-callout-card${tierClass ? ` ${tierClass}` : ""}">
@@ -240,7 +240,14 @@ export function buildMagazineHero(input: {
           : ""
       }`
     : "";
-  return `<header class="mag-hero"${heroAttrs}>
+  const heroStyle = input.coverPhotoPath
+    ? ` style="background-image:${
+        input.heroGradient
+          ? `${input.heroGradient}, url('${escapeHtml(input.coverPhotoPath).replace(/'/g, "%27")}')`
+          : `url('${escapeHtml(input.coverPhotoPath).replace(/'/g, "%27")}')`
+      };background-size:cover;background-position:center"`
+    : "";
+  return `<header class="mag-hero"${heroAttrs}${heroStyle}>
   <div class="mag-hero-inner reveal">
     <p class="mag-eyebrow">${escapeHtml(input.typologyLabel)} · ${escapeHtml(input.dateRange)}</p>
     <h1>${escapeHtml(input.title)}</h1>

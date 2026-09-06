@@ -210,6 +210,39 @@ assert.ok(unified.includes("stepLightbox") || unified.includes("ArrowLeft") || u
 assert.ok(!unified.includes('id="historia"'), "no historia article id");
 assert.ok(!unified.includes("Crónica del viaje"), "no separate journal heading");
 
+
+// ZIP-friendly relative src: photos/maps must render on file:// without boot JS
+assert.ok(
+  /<img[^>]+src="photos\/\d+-thumb\.webp"/.test(unified) ||
+    /<img[^>]+src="photos\/\d+\.webp"/.test(unified) ||
+    /src="photos\//.test(unified),
+  "exported HTML img tags include relative photo src for ZIP/file://"
+);
+const exportSrcImgs = [...unified.matchAll(/<img\b[^>]*>/g)].map((m) => m[0]);
+const dataExportImgs = exportSrcImgs.filter((tag) => tag.includes("data-export-src"));
+assert.ok(dataExportImgs.length > 0, "has data-export-src images");
+assert.ok(
+  dataExportImgs.every((tag) => /\ssrc="/.test(tag)),
+  "every data-export-src img also has src= for file:// ZIP"
+);
+assert.ok(
+  international.includes('location.protocol === "file:"') ||
+    international.includes("location.protocol === \"file:\""),
+  "map prefers static fallback on file:// protocol"
+);
+assert.ok(
+  international.includes(".map-canvas--hidden") &&
+    !international.includes("#map.map-canvas--hidden"),
+  "map hide class applies to all map canvases"
+);
+if (international.includes("map-static-fallback")) {
+  assert.ok(
+    /map-static-fallback"[^>]*\ssrc="/.test(international) ||
+      /class="map-static-fallback"[^>]*src="/.test(international),
+    "static map fallback includes src for ZIP"
+  );
+}
+
 console.log("export-html ok", {
   internationalDualStatic: true,
   video: true,

@@ -111,7 +111,7 @@ function buildGalleryTile(photo: GalleryPhotoInput): string {
     : "";
 
   if (isVideo && photo.videoPath) {
-    return `<figure class="gallery-tile gallery-tile--video${tierClass ? ` ${tierClass}` : ""}">${badge}${videoBadge}<video class="gallery-tile-video" controls playsinline preload="metadata" data-export-src="${escapeHtml(photo.videoPath)}" data-export-poster="${escapeHtml(photo.thumbPath)}" poster=""></video><figcaption>${escapeHtml(caption)}</figcaption></figure>`;
+    return `<figure class="gallery-tile gallery-tile--video${tierClass ? ` ${tierClass}` : ""}">${badge}${videoBadge}<video class="gallery-tile-video" controls playsinline preload="metadata" src="${escapeHtml(photo.videoPath)}" data-export-src="${escapeHtml(photo.videoPath)}" data-export-poster="${escapeHtml(photo.thumbPath)}" poster="${escapeHtml(photo.thumbPath)}"></video><figcaption>${escapeHtml(caption)}</figcaption></figure>`;
   }
 
   return `<figure class="gallery-tile${isVideo ? " gallery-tile--video" : ""}${tierClass ? ` ${tierClass}` : ""}">${badge}${videoBadge}${exportThumbImgTag(photo, isVideo ? `Vídeo de ${photo.alias}` : `Foto de ${photo.alias}`, "gallery-tile-img")}<figcaption>${escapeHtml(caption)}</figcaption></figure>`;
