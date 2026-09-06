@@ -68,6 +68,7 @@ import type { ExportHtmlDirectives } from "@/lib/export-directives";
 import {
   defaultThemePackForTemplate,
   themePackCss,
+  themePackHeroOverlayGradient,
   type ThemePackId,
 } from "@/lib/export/theme-packs";
 import {
@@ -1960,10 +1961,11 @@ export function buildExportHtml(ctx: ExportContext): string {
   const distanceKm = estimateRouteKm(photos);
   const travelers = users.map((u) => u.alias).join(", ");
 
+  const resolvedThemePackEarly =
+    ctx.themePack ?? defaultThemePackForTemplate(template);
+  // Scrim tracks the theme pack (was hard-coded cream on magazine).
   const heroGradient = coverPhoto
-    ? isMagazine
-      ? "linear-gradient(to top, rgba(250,249,247,.92), rgba(250,249,247,.4))"
-      : "linear-gradient(to top, rgba(12,10,9,.88), rgba(12,10,9,.25))"
+    ? themePackHeroOverlayGradient(resolvedThemePackEarly)
     : "";
   const heroPhotoPath = coverPhoto?.localPath ?? null;
 
@@ -2180,8 +2182,7 @@ ${buildMagazineNav(hasMap, hasGuide, dualMaps, photos.length > 0)}`
     : "";
 
   const timelineJson = JSON.stringify(timelineEvents).replace(/</g, "\\u003c");
-  const resolvedThemePack =
-    ctx.themePack ?? defaultThemePackForTemplate(template);
+  const resolvedThemePack = resolvedThemePackEarly;
   const resolvedTypePack =
     ctx.typePack ?? defaultTypePackForTemplate(template);
   const packStyles =

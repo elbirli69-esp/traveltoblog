@@ -146,4 +146,19 @@ assert.equal(
   "dark-cinema"
 );
 
+
+// Chrome (hero + section nav) must follow dark pack — no hard-coded cream.
+const darkCss = themePackCss("dark-cinema");
+assert.ok(darkCss.includes(".mag-hero"), "dark pack styles mag-hero");
+assert.ok(darkCss.includes(".mag-section-nav"), "dark pack styles mag-section-nav");
+assert.ok(
+  /rgba\(\s*11\s*,\s*17\s*,\s*32/.test(darkCss),
+  "dark pack chrome uses dark-cinema bg"
+);
+assert.equal(
+  /rgba\(\s*250\s*,\s*249\s*,\s*247/.test(darkCss),
+  false,
+  "dark pack chrome must not keep cream overlays"
+);
+
 console.log("test-theme-type-packs: ok");
