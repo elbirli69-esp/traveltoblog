@@ -193,12 +193,22 @@ function narrativePlainLength(html: string | undefined): number {
     .trim().length;
 }
 
-/** Wider column when the day summary needs more room to stay on one page. */
+/**
+ * Day-text layout by length (photobook style — not font-stretching to fill):
+ * short → chapter card; medium → wide single column; long → two columns.
+ */
 function dividerIntroClass(narrative: string | undefined): string {
   const len = narrativePlainLength(narrative);
-  if (len >= 650) return "divider-intro divider-intro--xl";
-  if (len >= 280) return "divider-intro divider-intro--wide";
-  return "divider-intro";
+  if (len >= 480) return "divider-intro divider-intro--columns";
+  if (len >= 220) return "divider-intro divider-intro--wide";
+  return "divider-intro divider-intro--short";
+}
+
+/** Top-align prose so long day text uses the page instead of floating in empty space. */
+function dividerPageClass(narrative: string | undefined): string {
+  const len = narrativePlainLength(narrative);
+  if (len >= 220) return "page page-divider page-divider--prose";
+  return "page page-divider";
 }
 
 /** Mosaic grid columns: 4 for 8 photos (2×4), 3 for 6 photos (2×3). */
@@ -420,7 +430,7 @@ function renderDayDivider(
 ): string {
   const { width, height } = pageDimensions(format);
   return `
-  <section class="page page-divider" style="width:${width};height:${height}">
+  <section class="${dividerPageClass(page.narrative)}" style="width:${width};height:${height}">
     <div class="divider-inner">
       <p class="divider-eyebrow">Capítulo</p>
       <h2 class="divider-title">${escapeHtml(page.dayTitle ?? "")}</h2>

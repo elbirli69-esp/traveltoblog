@@ -300,6 +300,13 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       width: 100%;
     }
 
+    /* Substantial crónica: start from the top so the page reads full, not a floating island. */
+    .page-divider--prose .divider-inner {
+      vertical-align: top;
+      padding-top: ${bleed + 12}mm;
+      padding-bottom: ${bleed + 10}mm;
+    }
+
     .divider-eyebrow {
       font-size: 8pt;
       letter-spacing: 0.35em;
@@ -317,6 +324,11 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       margin-bottom: 5mm;
     }
 
+    .page-divider--prose .divider-title {
+      font-size: 20pt;
+      margin-bottom: 4mm;
+    }
+
     .divider-rule {
       width: 18mm;
       height: 0.4mm;
@@ -324,38 +336,57 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       margin: 0 auto;
     }
 
-    /* Default column; widens with text length so the day summary stays on one page. */
+    /* Day prose: size/columns by length — never inflate type to "fill" empty paper. */
     .divider-intro {
-      max-width: 200mm;
-      max-height: 130mm;
-      margin: 0 auto;
+      margin: 5mm auto 0;
       text-align: left;
       font-family: ${t.serif};
-      font-size: 10.5pt;
-      line-height: 1.55;
       color: ${t.textMuted};
       overflow: hidden;
     }
 
-    .divider-intro--wide {
-      max-width: 240mm;
-      max-height: 140mm;
-      font-size: 10pt;
-      line-height: 1.5;
+    /* Short: chapter-card voice (empty margin is intentional). */
+    .divider-intro--short {
+      max-width: 170mm;
+      max-height: 90mm;
+      font-size: 12pt;
+      line-height: 1.6;
+      text-align: center;
     }
 
-    .divider-intro--xl {
-      max-width: 265mm;
-      max-height: 148mm;
-      font-size: 9.5pt;
-      line-height: 1.45;
+    /* Medium: one wide column that uses the page. */
+    .divider-intro--wide {
+      max-width: 250mm;
+      max-height: 155mm;
+      font-size: 11pt;
+      line-height: 1.55;
+    }
+
+    /* Long: two columns fill landscape without tiny type or a blank half-page. */
+    .divider-intro--columns {
+      max-width: 272mm;
+      max-height: 158mm;
+      font-size: 10pt;
+      line-height: 1.5;
+      column-count: 2;
+      column-gap: 9mm;
+      column-rule: 0.15mm solid ${t.accent};
+      column-fill: balance;
     }
 
     .divider-intro img {
       display: none !important;
     }
 
-    .divider-intro h2 { font-size: 13pt; margin-bottom: 3mm; color: ${t.text}; }
+    .divider-intro h2 {
+      font-size: 12.5pt;
+      margin-bottom: 2.5mm;
+      color: ${t.text};
+      column-span: all;
+    }
+
+    .divider-intro p { margin: 0 0 2.5mm; }
+    .divider-intro p:last-child { margin-bottom: 0; }
 
     /* —— Full bleed —— */
     /* Fallback only; photo is absolute+cover so this should not show as bars. */

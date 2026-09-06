@@ -503,8 +503,13 @@ const wideHtml = buildPrintHtml({
   template: "classic",
 });
 assert.ok(
-  wideHtml.includes("divider-intro--wide") || wideHtml.includes("divider-intro--xl"),
-  "long day summary widens the text column"
+  /class="[^"]*divider-intro--(wide|columns|xl)/.test(wideHtml),
+  "long day summary uses a wider or two-column text layout"
+);
+assert.ok(
+  /class="[^"]*page-divider--prose/.test(wideHtml) ||
+    /class="[^"]*divider-intro--(wide|columns)/.test(wideHtml),
+  "substantial day prose top-aligns / fills the page"
 );
 assert.ok(wideHtml.includes("page-bleed") || wideHtml.includes("bleed-photo"), "single leftover photos are full-bleed");
 
@@ -577,6 +582,66 @@ const threePhotoCounts = threePages
 assert.ok(
   threePhotoCounts.every((n) => n === 1 || n === 2),
   `leftover photos use bleed/pair only (got ${threePhotoCounts.join(",")})`
+);
+
+
+// Day divider fill: short stays chapter-card; long uses two columns (not font-stretch)
+const shortDayText = "Mañana tranquila en el puerto.";
+const shortDayHtml = buildPrintHtml({
+  travel: {
+    id: "t-short-day",
+    title: "Día corto",
+    startDate: null,
+    endDate: null,
+    journalMarkdown: `## Día 1\n\n${shortDayText}`,
+  },
+  users: [{ alias: "Ana" }],
+  photos: [lowScorePhoto("sd1", 1), lowScorePhoto("sd2", 1), lowScorePhoto("sd3", 1)],
+  notes: [],
+  format: "a4-landscape",
+  template: "classic",
+});
+assert.ok(
+  shortDayHtml.includes('class="divider-intro divider-intro--short"') ||
+    shortDayHtml.includes("divider-intro--short"),
+  "short day text uses chapter-card layout"
+);
+assert.ok(
+  !/class="[^"]*divider-intro--columns/.test(shortDayHtml),
+  "short day text is not two-column"
+);
+assert.ok(
+  !/class="[^"]*page-divider--prose/.test(shortDayHtml),
+  "short chapter card stays vertically centered"
+);
+
+const longColumnsText = ("Paseamos sin prisa por el casco antiguo y paramos en cada plaza. ").repeat(16);
+assert.ok(longColumnsText.length >= 480, "fixture is long enough for columns");
+const longDayHtml = buildPrintHtml({
+  travel: {
+    id: "t-long-day",
+    title: "Día largo",
+    startDate: null,
+    endDate: null,
+    journalMarkdown: `## Día 1\n\n${longColumnsText}`,
+  },
+  users: [{ alias: "Ana" }],
+  photos: [lowScorePhoto("ld1", 1), lowScorePhoto("ld2", 1), lowScorePhoto("ld3", 1)],
+  notes: [],
+  format: "a4-landscape",
+  template: "classic",
+});
+assert.ok(
+  /class="[^"]*divider-intro--columns/.test(longDayHtml),
+  "long day text uses two columns"
+);
+assert.ok(
+  /class="[^"]*page-divider--prose/.test(longDayHtml),
+  "long day prose page is top-aligned"
+);
+assert.ok(
+  longDayHtml.includes("column-count: 2") || longDayHtml.includes("column-count:2"),
+  "CSS declares two columns for long day text"
 );
 
 console.log("export-pdf ok");
