@@ -1433,12 +1433,11 @@ function buildMapScript(
     var fallback = wrap.querySelector(".map-static-fallback");
     var note = wrap.querySelector(".map-offline-note");
     if (!fallback) return false;
-    if (window.__resolveExportAsset) {
-      var key = fallback.getAttribute("data-export-src");
-      if (key && !fallback.getAttribute("src")) fallback.src = window.__resolveExportAsset(key);
-    } else if (!fallback.getAttribute("src")) {
-      var raw = fallback.getAttribute("data-export-src");
-      if (raw) fallback.src = raw;
+    var key = fallback.getAttribute("data-export-src");
+    if (key && window.__resolveExportAsset) {
+      fallback.src = window.__resolveExportAsset(key);
+    } else if (key && !fallback.getAttribute("src")) {
+      fallback.src = key;
     }
     fallback.classList.add("is-visible");
     if (note) note.classList.add("is-visible");
@@ -2490,10 +2489,25 @@ async function prepareExportPhotoBuffers(
 
   await runWithConcurrency(photos, EXPORT_PHOTO_CONCURRENCY, async (photo) => {
     const sourceUrl = photo.exportSourceUrl ?? photo.url;
-    const set = await getOrCreateExportImageSet(travelId, photo.id, sourceUrl);
+    let set = await getOrCreateExportImageSet(travelId, photo.id, sourceUrl);
+    if (!set) {
+      // Cache path can miss (stat/cwd); still try a one-shot derivative from disk.
+      const original = await readPhotoBuffer(sourceUrl);
+      if (original) {
+        try {
+          const { createExportImageSet } = await import("@/lib/export-images");
+          const ext = path.extname(sourceUrl) || ".jpg";
+          set = await createExportImageSet(original, ext);
+        } catch (error) {
+          console.warn("Export image derive failed", photo.id, error);
+        }
+      }
+    }
     if (set) {
       files.set(photo.localPath, set.display);
       files.set(photo.thumbPath, set.thumb);
+    } else {
+      console.warn("Export photo missing on disk", photo.id, sourceUrl);
     }
 
     if (
@@ -2540,22 +2554,22 @@ function addCommonZipFiles(zip: JSZip, ctx: ExportContext, html: string): void {
 CÓMO ABRIRLO
 1) Descomprime TODO el ZIP en cualquier carpeta (Escritorio, Descargas, USB…).
    No hace falta una ruta concreta.
-2) Entra en la carpeta descomprimida. Debe verse juntos:
-   index.html  photos/  assets/  map/  (y videos/ si hay)
-3) Abre index.html con el navegador (doble clic o arrastrar a Chrome/Edge/Firefox).
+2) Entra en la carpeta descomprimida y abre index.html con el navegador
+   (doble clic o arrastrar a Chrome/Edge/Firefox/Safari).
 
 IMPORTANTE
 - No abras el index.html “desde dentro” del ZIP sin extraer (el explorador
-  de archivos comprimidos no sirve: fotos y mapa saldrán en negro/vacíos).
-- No muevas solo el index.html: tiene que quedarse junto a photos/, assets/ y map/.
-- En file:// el mapa interactivo no puede cargar tiles de internet; se muestra
-  el mapa estático incluido. Con un servidor local (o subido a la web) sí
-  verás el mapa interactivo.
+  de archivos comprimidos no ejecuta el diario).
+- Fotos y mapas offline van incrustados en index.html (funcionan aunque el
+  navegador bloquee rutas file:// a carpetas hermanas, típico en móvil).
+- La carpeta photos/ y map/ también van en el ZIP por si quieres copiarlas.
+- En file:// el mapa interactivo no puede cargar tiles; se muestra el PNG
+  estático. Con red (o subido a la web) verás el mapa interactivo.
 
 Tipología: ${explicitType}
 Plantilla: ${ctx.template}
 Generado: ${new Date().toISOString()}${staticNote}
-Vídeos: carpeta videos/ (Recorrido y Galería).
+Vídeos: carpeta videos/ (Recorrido y Galería); los vídeos no van incrustados.
 `
   );
 
@@ -2694,25 +2708,6 @@ export async function buildExportZip(
     emit({ step: "map", status: "done" });
   }
 
-  let html = buildExportHtml(preparedCtx);
-
-  if (exportHasMap(ctx)) {
-    emit({ step: "map", status: "running", message: "Preparando mapa interactivo…" });
-    html = await inlineMapAssetsInHtml(html, preparedCtx);
-    emit({ step: "map", status: "done" });
-  }
-
-  addCommonZipFiles(zip, preparedCtx, html);
-  emit({ step: "html", status: "done" });
-
-  if (exportHasMap(ctx)) {
-    await addLeafletToZip(zip);
-  }
-
-  for (const [filePath, buffer] of staticMapFiles) {
-    zip.file(filePath, buffer, { compression: "STORE" });
-  }
-
   const total = ctx.photos.length;
   emit({
     step: "pack",
@@ -2732,6 +2727,34 @@ export async function buildExportZip(
     },
     { includeVideoOriginals: true }
   );
+
+  // Embed photos + static maps in index.html so file:// works on mobile browsers
+  // that block sibling folder loads (Safari/Chrome). Loose files stay in the ZIP too.
+  const registryFiles = new Map<string, Buffer>(photoFiles);
+  for (const [filePath, buffer] of staticMapFiles) {
+    registryFiles.set(filePath, buffer);
+  }
+  const registry = buildPhotoRegistry(registryFiles);
+
+  let html = buildExportHtml(preparedCtx);
+  emit({ step: "html", status: "done" });
+
+  if (exportHasMap(ctx)) {
+    emit({ step: "map", status: "running", message: "Preparando mapa interactivo…" });
+    html = await inlineMapAssetsInHtml(html, preparedCtx, registry);
+    emit({ step: "map", status: "done" });
+  }
+  html = injectPhotoRegistry(html, registry);
+
+  addCommonZipFiles(zip, preparedCtx, html);
+
+  if (exportHasMap(ctx)) {
+    await addLeafletToZip(zip);
+  }
+
+  for (const [filePath, buffer] of staticMapFiles) {
+    zip.file(filePath, buffer, { compression: "STORE" });
+  }
 
   for (const [filePath, buffer] of photoFiles) {
     zip.file(filePath, buffer, { compression: "STORE" });

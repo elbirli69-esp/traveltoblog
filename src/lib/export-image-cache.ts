@@ -54,24 +54,24 @@ export async function getOrCreateExportImageSet(
   photoUrl: string
 ): Promise<ExportImageSet | null> {
   const sourceStat = await getSourceStat(photoUrl);
-  if (!sourceStat) return null;
-
   const dir = cacheDir(travelId, photoId);
   const metaPath = path.join(dir, "meta.json");
   const displayPath = path.join(dir, "display.webp");
   const thumbPath = path.join(dir, "thumb.webp");
 
-  try {
-    const meta = JSON.parse(await readFile(metaPath, "utf-8")) as CacheMeta;
-    if (meta.version === EXPORT_CACHE_VERSION && sourceMatches(meta, sourceStat)) {
-      const [display, thumb] = await Promise.all([
-        readFile(displayPath),
-        readFile(thumbPath),
-      ]);
-      return { display, thumb };
+  if (sourceStat) {
+    try {
+      const meta = JSON.parse(await readFile(metaPath, "utf-8")) as CacheMeta;
+      if (meta.version === EXPORT_CACHE_VERSION && sourceMatches(meta, sourceStat)) {
+        const [display, thumb] = await Promise.all([
+          readFile(displayPath),
+          readFile(thumbPath),
+        ]);
+        return { display, thumb };
+      }
+    } catch {
+      // cache miss
     }
-  } catch {
-    // cache miss
   }
 
   const original = await readStoredPhotoBuffer(photoUrl);
@@ -80,29 +80,32 @@ export async function getOrCreateExportImageSet(
   const ext = path.extname(photoUrl) || ".jpg";
   const set = await createExportImageSet(original, ext);
 
-  await mkdir(dir, { recursive: true });
+  // Persist cache when we know the source mtime/size; otherwise return in-memory only.
+  if (sourceStat) {
+    await mkdir(dir, { recursive: true });
 
-  let pdfVersion: number | undefined;
-  try {
-    const existing = JSON.parse(await readFile(metaPath, "utf-8")) as CacheMeta;
-    if (existing.pdfVersion === PDF_CACHE_VERSION && sourceMatches(existing, sourceStat)) {
-      pdfVersion = existing.pdfVersion;
+    let pdfVersion: number | undefined;
+    try {
+      const existing = JSON.parse(await readFile(metaPath, "utf-8")) as CacheMeta;
+      if (existing.pdfVersion === PDF_CACHE_VERSION && sourceMatches(existing, sourceStat)) {
+        pdfVersion = existing.pdfVersion;
+      }
+    } catch {
+      // no prior pdf meta
     }
-  } catch {
-    // no prior pdf meta
-  }
 
-  const meta: CacheMeta = {
-    version: EXPORT_CACHE_VERSION,
-    ...(pdfVersion != null ? { pdfVersion } : {}),
-    mtimeMs: sourceStat.mtimeMs,
-    size: sourceStat.size,
-  };
-  await Promise.all([
-    writeFile(displayPath, set.display),
-    writeFile(thumbPath, set.thumb),
-    writeFile(metaPath, JSON.stringify(meta)),
-  ]);
+    const meta: CacheMeta = {
+      version: EXPORT_CACHE_VERSION,
+      ...(pdfVersion != null ? { pdfVersion } : {}),
+      mtimeMs: sourceStat.mtimeMs,
+      size: sourceStat.size,
+    };
+    await Promise.all([
+      writeFile(displayPath, set.display),
+      writeFile(thumbPath, set.thumb),
+      writeFile(metaPath, JSON.stringify(meta)),
+    ]);
+  }
 
   return set;
 }
