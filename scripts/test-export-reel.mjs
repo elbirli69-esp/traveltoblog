@@ -3,6 +3,7 @@ import {
   selectReelFrames,
   buildReelManifest,
   clipOverlayText,
+  truncateAtWordBoundary,
   resolveFrameCaption,
   resolveReadableCaption,
   fitCaptionsToClipHolds,
@@ -43,6 +44,16 @@ const photos = Array.from({ length: 28 }, (_, i) => ({
 
 assert.ok(clipOverlayText("a".repeat(100)).endsWith("…"));
 assert.ok(clipOverlayText("a".repeat(100)).length <= REEL_CAPTION_MAX_CHARS + 1);
+// Word-boundary truncate: never split a word when a shorter complete phrase fits.
+assert.equal(
+  truncateAtWordBoundary("plaza mayor de Madrid centro", 18),
+  "plaza mayor de…"
+);
+{
+  const clipped = truncateAtWordBoundary("amanecer sobre el Duero", 16);
+  assert.equal(clipped, "amanecer sobre…");
+  assert.ok(clipped.endsWith("…"));
+}
 assert.equal(resolveReadableCaption({ comments: ["Sol en Belém"] }, 1.6), "Sol en Belém");
 assert.equal(
   resolveReadableCaption(
@@ -66,6 +77,20 @@ assert.ok(frames.some((f) => f.hero));
 assert.ok(frames.every((f) => f.role === "clip"));
 assert.ok(frames.every((f) => f.treatment && f.transitionOut && f.captionStyle));
 assert.ok(frames.some((f) => f.sticker), "expected place-type sticker");
+{
+  const outs = frames.map((f) => f.transitionOut);
+  assert.ok(
+    new Set(outs).size >= 3,
+    `mixed style should vary transitions, got ${[...new Set(outs)].join(",")}`
+  );
+  for (let i = 1; i < outs.length; i++) {
+    assert.notEqual(
+      outs[i],
+      outs[i - 1],
+      `consecutive transitions should differ at ${i}: ${outs[i - 1]} → ${outs[i]}`
+    );
+  }
+}
 const treatmentSet = new Set(frames.map((f) => f.treatment));
 assert.ok(
   treatmentSet.size >= 2,
@@ -410,6 +435,75 @@ const tightView = computeMapView([
 assert.ok(tightView.zoom >= 14, `nearby places zoom too low: ${tightView.zoom}`);
 assert.equal(REEL_PLACE_FOCUS_ZOOM, 16);
 assert.ok(buildReelPlaceBasemapPath(38.71, -9.14).includes("zoom=16"));
+
+// Memories look: cinematic map intro, no captions/chapters, soft fades.
+const memoriesManifest = buildReelManifest({
+  title: "Lisboa",
+  participants: ["Ada"],
+  startDate: new Date("2024-06-01"),
+  endDate: new Date("2024-06-05"),
+  durationSeconds: 30,
+  reelDirectives: {
+    pacing: "calm",
+    captionMode: "none",
+    captionPlacement: "bottom",
+    transitionStyle: "softFade",
+    transitionSeconds: 0.75,
+    heroBias: "high",
+    mapBias: "high",
+    look: "memories",
+    targetPhotoCount: 8,
+  },
+  photos,
+  places: [
+    {
+      id: "pl1",
+      name: "Belém",
+      type: "VIEWPOINT",
+      latitude: 38.697,
+      longitude: -9.206,
+      comment: null,
+      visitedAt: new Date("2024-06-02"),
+      highlightScore: 8,
+    },
+  ],
+});
+assert.equal(memoriesManifest.look, "memories");
+assert.ok(
+  memoriesManifest.mapIntroSeconds >= 3,
+  `memories map intro too short: ${memoriesManifest.mapIntroSeconds}`
+);
+assert.ok(
+  memoriesManifest.crossfadeSeconds >= 0.7,
+  `memories crossfade too short: ${memoriesManifest.crossfadeSeconds}`
+);
+assert.equal(
+  memoriesManifest.frames.filter((f) => f.role === "chapter").length,
+  0,
+  "memories should skip day chapters"
+);
+assert.ok(
+  memoriesManifest.frames.every((f) => !f.caption),
+  "memories clips should be captionless"
+);
+{
+  const outs = memoriesManifest.frames.map((f) => f.transitionOut);
+  const soft = new Set(["fade", "fadeBlack", "zoomSoft"]);
+  assert.ok(
+    outs.every((t) => soft.has(t)),
+    `memories should stay on soft transitions, got ${[...new Set(outs)].join(",")}`
+  );
+  assert.ok(
+    new Set(outs).size >= 2,
+    `memories should vary soft transitions, got ${outs.join(",")}`
+  );
+}
+assert.ok(
+  memoriesManifest.frames
+    .filter((f) => f.role === "clip")
+    .every((f) => f.treatment === "clean"),
+  "memories body should stay photo-clean (map is intro)"
+);
 
 console.log("export-reel ok", {
   frames30: frames.length,

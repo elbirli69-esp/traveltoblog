@@ -22,6 +22,7 @@ import { placeEmoji } from "@/lib/places";
 import type { PlaceType } from "@prisma/client";
 import {
   defaultExportDirectives,
+  type Emphasis,
   type ExportReelDirectives,
   type ReelCaptionMode,
   type ReelCaptionPlacement,
@@ -43,8 +44,12 @@ export const REEL_BITRATE = 2_800_000;
 export const REEL_CROSSFADE_SECONDS = 0.4;
 /** Shorter map beat after the hook. */
 export const REEL_MAP_INTRO_SECONDS = 2.15;
+/** Longer cinematic map open for iPhone-style Recuerdos. */
+export const REEL_MEMORIES_MAP_INTRO_SECONDS = 3.2;
 export const REEL_TITLE_INTRO_SECONDS = 0.65;
+export const REEL_MEMORIES_TITLE_INTRO_SECONDS = 1.8;
 export const REEL_OUTRO_SECONDS = 1.9;
+export const REEL_MEMORIES_OUTRO_SECONDS = 2.4;
 export const REEL_HOOK_SECONDS = 1.05;
 /** Day chapter card — long enough to read the label. */
 export const REEL_CHAPTER_SECONDS = 1.4;
@@ -129,7 +134,14 @@ export type ReelTreatment =
   | "mapInset"
   | "mapFocus";
 
-export type ReelTransition = "fade" | "slideLeft" | "slideUp" | "zoomSoft";
+export type ReelTransition =
+  | "fade"
+  | "fadeBlack"
+  | "slideLeft"
+  | "slideRight"
+  | "slideUp"
+  | "zoomSoft"
+  | "zoomPunch";
 
 /** How story captions are painted (not subtitle bars). */
 export type ReelCaptionStyle = "pullQuote" | "glassCard" | "sideAccent";
@@ -189,6 +201,8 @@ export interface ReelManifest {
   briefInterpretation?: string | null;
   /** Reel knobs that were applied after UI duration. */
   appliedReelDirectives?: ExportReelDirectives | null;
+  /** Montage look (drives Ken Burns amplitude, map intro styling, etc.). */
+  look?: import("@/lib/export-directives").ReelLook;
 }
 
 /** Resolved knobs used while building a reel from optional brief directives. */
@@ -200,6 +214,8 @@ export interface ReelBuildOptions {
   transitionStyle: ReelTransitionStyle;
   transitionSeconds: number;
   heroBias: ExportReelDirectives["heroBias"];
+  mapBias: Emphasis;
+  look: import("@/lib/export-directives").ReelLook;
 }
 
 export function resolveReelBuildOptions(
@@ -207,6 +223,8 @@ export function resolveReelBuildOptions(
 ): ReelBuildOptions {
   const d = defaultExportDirectives().reel!;
   const src = reel ?? d;
+  const look = src.look === "memories" ? "memories" : "default";
+  const maxFade = look === "memories" ? 0.9 : 0.55;
   return {
     targetPhotoCount: src.targetPhotoCount,
     pacing: src.pacing ?? d.pacing,
@@ -215,9 +233,13 @@ export function resolveReelBuildOptions(
     transitionStyle: src.transitionStyle ?? d.transitionStyle,
     transitionSeconds:
       typeof src.transitionSeconds === "number"
-        ? Math.max(0.15, Math.min(0.55, src.transitionSeconds))
-        : (d.transitionSeconds ?? REEL_CROSSFADE_SECONDS),
+        ? Math.max(0.15, Math.min(maxFade, src.transitionSeconds))
+        : look === "memories"
+          ? 0.75
+          : (d.transitionSeconds ?? REEL_CROSSFADE_SECONDS),
     heroBias: src.heroBias ?? d.heroBias,
+    mapBias: src.mapBias ?? d.mapBias ?? "medium",
+    look,
   };
 }
 
@@ -282,13 +304,29 @@ function resolveSticker(type: string | null | undefined): string | null {
   return placeEmoji(type as PlaceType);
 }
 
-export function clipOverlayText(text: string, max = REEL_CAPTION_MAX_CHARS): string {
+/**
+ * Truncate for on-screen overlays at a word boundary (never mid-word when
+ * there is at least one complete word that fits). Ellipsis is included in `max`.
+ */
+export function truncateAtWordBoundary(text: string, max: number): string {
   const t = text.replace(/\s+/g, " ").trim();
   if (!t) return "";
   if (t.length <= max) return t;
-  const sliced = t.slice(0, max - 1);
-  const neat = sliced.replace(/\s+\S*$/, "").trim();
-  return `${neat || sliced.trim()}…`;
+  const budget = Math.max(1, max - 1); // room for …
+  let cut = t.slice(0, budget);
+  const next = t[budget];
+  // Mid-word cut → drop the partial token.
+  if (next && !/\s/.test(next) && cut.length > 0 && !/\s/.test(cut[cut.length - 1]!)) {
+    const sp = cut.lastIndexOf(" ");
+    if (sp >= 1) cut = cut.slice(0, sp);
+  }
+  cut = cut.trimEnd();
+  if (!cut) cut = t.slice(0, budget).trimEnd();
+  return `${cut}…`;
+}
+
+export function clipOverlayText(text: string, max = REEL_CAPTION_MAX_CHARS): string {
+  return truncateAtWordBoundary(text, max);
 }
 
 /** How many caption characters fit a clip hold at reel overlay size. */
@@ -337,32 +375,54 @@ export function fitCaptionsToClipHolds(frames: ReelFramePlan[]): ReelFramePlan[]
   });
 }
 
-const TRANSITIONS: ReelTransition[] = ["fade", "slideLeft", "slideUp", "zoomSoft"];
+/** Full travel-reel palette (mixed style). */
+const TRANSITIONS: ReelTransition[] = [
+  "fade",
+  "fadeBlack",
+  "slideLeft",
+  "slideRight",
+  "slideUp",
+  "zoomSoft",
+  "zoomPunch",
+];
 
 function transitionsForStyle(style: ReelTransitionStyle): ReelTransition[] {
-  if (style === "softFade") return ["fade"];
-  if (style === "fastCut") return ["fade", "slideLeft", "slideUp"];
+  // Soft / Recuerdos: gentle dissolves only (still vary between clips).
+  if (style === "softFade") return ["fade", "fadeBlack", "zoomSoft"];
+  if (style === "fastCut") {
+    return ["fade", "slideLeft", "slideRight", "slideUp", "zoomPunch"];
+  }
   return TRANSITIONS;
 }
 
-function pickTransition(
+/**
+ * Pick a transition that fits the treatment and avoid immediate repeats
+ * so consecutive photo beats don't all feel identical.
+ */
+export function pickTransition(
   index: number,
   treatment: ReelTreatment,
-  style: ReelTransitionStyle = "mixed"
+  style: ReelTransitionStyle = "mixed",
+  previous: ReelTransition | null = null
 ): ReelTransition {
-  const pool = transitionsForStyle(style);
-  if (style === "softFade") return "fade";
+  let pool = transitionsForStyle(style);
+  // Map beats stay soft — whip-slides fight the map→photo reveal.
   if (treatment === "mapFocus" || treatment === "mapInset") {
-    return index % 2 === 0 ? (pool.includes("slideUp") ? "slideUp" : pool[0]!) : "fade";
+    pool = pool.filter((t) => t === "fade" || t === "fadeBlack" || t === "zoomSoft");
+    if (pool.length === 0) pool = ["fade"];
+  } else if (treatment === "story") {
+    // Story cards read better with dissolves / soft zoom than hard slides.
+    const storyPool = pool.filter(
+      (t) => t === "fade" || t === "fadeBlack" || t === "zoomSoft"
+    );
+    if (storyPool.length > 0) pool = storyPool;
   }
-  if (treatment === "story") {
-    return index % 2 === 0
-      ? "fade"
-      : pool.includes("zoomSoft")
-        ? "zoomSoft"
-        : pool[pool.length - 1]!;
-  }
-  return pool[index % pool.length]!;
+
+  const candidates =
+    previous && pool.length > 1 ? pool.filter((t) => t !== previous) : pool;
+  const use = candidates.length > 0 ? candidates : pool;
+  // Rotate with a prime stride so short clips don't always land on the same two cuts.
+  return use[(index * 3) % use.length]!;
 }
 
 function pickCaptionStyle(
@@ -375,29 +435,57 @@ function pickCaptionStyle(
 /**
  * Assign varied treatments so consecutive clips don't look the same.
  * Prefers story when caption exists, map/pin when place+GPS, clean otherwise.
+ * Memories look: photo-first, no body map treatments (map lives in the intro).
  */
 export function assignReelTreatments(
   frames: ReelFramePlan[],
   hasMap: boolean,
-  opts?: Pick<ReelBuildOptions, "captionMode" | "captionPlacement" | "transitionStyle">
+  opts?: Pick<
+    ReelBuildOptions,
+    "captionMode" | "captionPlacement" | "transitionStyle" | "mapBias" | "look"
+  >
 ): ReelFramePlan[] {
   const recent: ReelTreatment[] = [];
   let mapFocusUsed = 0;
+  let previousTransition: ReelTransition | null = null;
   const captionMode = opts?.captionMode ?? "short";
   const captionPlacement = opts?.captionPlacement ?? "bottom";
-  const transitionStyle = opts?.transitionStyle ?? "mixed";
+  // Memories uses the soft palette but still rotates fade / fadeBlack / zoomSoft.
+  const transitionStyle: ReelTransitionStyle =
+    opts?.look === "memories"
+      ? "softFade"
+      : (opts?.transitionStyle ?? "mixed");
+  const mapBias = opts?.mapBias ?? "medium";
+  const memories = opts?.look === "memories";
+  const allowMapTreatments = !memories && mapBias !== "low";
+  const maxMapFocus =
+    mapBias === "high" ? Math.ceil(frames.length / 4) + 1 : Math.ceil(frames.length / 5) + 1;
 
-  return frames.map((frame, i) => {
+  const out: ReelFramePlan[] = [];
+  for (let i = 0; i < frames.length; i++) {
+    const frame = frames[i]!;
     if (frame.role === "hook" || frame.role === "chapter") {
-      return {
+      const transitionOut = pickTransition(
+        i,
+        "clean",
+        transitionStyle,
+        previousTransition
+      );
+      previousTransition = transitionOut;
+      out.push({
         ...frame,
         treatment: "clean" as ReelTreatment,
         layout: "full" as ReelLayout,
-        transitionOut: "fade" as ReelTransition,
+        transitionOut,
         captionStyle: "glassCard" as ReelCaptionStyle,
         durationSeconds:
-          frame.role === "hook" ? REEL_HOOK_SECONDS : REEL_CHAPTER_SECONDS,
-      };
+          frame.role === "hook"
+            ? memories
+              ? 1.4
+              : REEL_HOOK_SECONDS
+            : REEL_CHAPTER_SECONDS,
+      });
+      continue;
     }
 
     const allowCaptions =
@@ -405,7 +493,33 @@ export function assignReelTreatments(
     const hasCaption = Boolean(frame.caption) && allowCaptions;
     const hasPlace = Boolean(frame.placeName);
     const hasGps = frame.latitude != null && frame.longitude != null;
-    const canMap = hasMap && hasGps;
+    const canMap = hasMap && hasGps && allowMapTreatments;
+
+    // Memories: almost all clean photo holds — map is the dedicated intro beat.
+    if (memories) {
+      recent.push("clean");
+      if (recent.length > 2) recent.shift();
+      const transitionOut = pickTransition(
+        i,
+        "clean",
+        transitionStyle,
+        previousTransition
+      );
+      previousTransition = transitionOut;
+      out.push({
+        ...frame,
+        treatment: "clean" as ReelTreatment,
+        layout: "full" as ReelLayout,
+        transitionOut,
+        captionStyle: "glassCard" as ReelCaptionStyle,
+        sticker: null,
+        durationSeconds: Math.max(
+          frame.durationSeconds,
+          frame.hero ? 3.8 : 2.8
+        ),
+      });
+      continue;
+    }
 
     const candidates: ReelTreatment[] = [];
     if (hasCaption && captionMode === "story") candidates.push("story", "story");
@@ -413,7 +527,7 @@ export function assignReelTreatments(
     if (hasPlace) candidates.push("placePin");
     if (canMap && hasPlace) {
       candidates.push("mapInset");
-      if (mapFocusUsed < Math.ceil(frames.length / 5) + 1) {
+      if (mapFocusUsed < maxMapFocus) {
         candidates.push("mapFocus");
       }
     }
@@ -445,11 +559,19 @@ export function assignReelTreatments(
     recent.push(treatment);
     if (recent.length > 2) recent.shift();
 
-    return {
+    const transitionOut = pickTransition(
+      i,
+      treatment,
+      transitionStyle,
+      previousTransition
+    );
+    previousTransition = transitionOut;
+
+    out.push({
       ...frame,
       treatment,
       layout: treatment === "mapInset" ? "mapInset" : "full",
-      transitionOut: pickTransition(i, treatment, transitionStyle),
+      transitionOut,
       captionStyle: pickCaptionStyle(
         i + (treatment === "story" ? 1 : 0),
         captionPlacement
@@ -457,17 +579,18 @@ export function assignReelTreatments(
       sticker: frame.sticker,
       durationSeconds:
         treatment === "mapFocus"
-          ? Math.max(frame.durationSeconds, frame.hero ? 2.1 : 1.45)
-          : treatment === "story"
-            ? Math.max(frame.durationSeconds, frame.hero ? 2.0 : 1.25)
-            : frame.durationSeconds,
-    };
-  });
+          ? // Map→photo reveal needs a real two-beat hold (was ~1.5s and felt cut).
+            Math.max(frame.durationSeconds, frame.hero ? 3.4 : 3.0)
+          : treatment === "mapInset"
+            ? Math.max(frame.durationSeconds, frame.hero ? 3.0 : 2.6)
+            : treatment === "story"
+              ? Math.max(frame.durationSeconds, frame.hero ? 2.0 : 1.25)
+              : frame.durationSeconds,
+    });
+  }
+  return out;
 }
 
-/**
- * Prefers non-transport photos with places/captions, spreads across days.
- */
 export function selectReelFrames(
   photos: ReelPhotoInput[],
   durationSeconds: ReelDurationPreset,
@@ -485,6 +608,8 @@ export function selectReelFrames(
           transitionSeconds: buildOpts.transitionSeconds ?? REEL_CROSSFADE_SECONDS,
           heroBias: buildOpts.heroBias ?? "medium",
           targetPhotoCount: buildOpts.targetPhotoCount,
+          mapBias: buildOpts.mapBias ?? "medium",
+          look: buildOpts.look ?? "default",
         }
       : null
   );
@@ -1029,12 +1154,12 @@ function fitClipDurations(
     const pattern = patternList[beat % patternList.length]!;
     beat += 1;
     const base = f.hero ? Math.max(pattern, pacing === "punchy" ? 1.5 : 1.85) : pattern;
-    const boosted =
-      f.treatment === "mapFocus"
-        ? Math.max(base, f.hero ? 2.0 : 1.45)
-        : f.treatment === "story"
-          ? Math.max(base, f.hero ? 1.85 : 1.15)
-          : base;
+    const isMap = f.treatment === "mapFocus" || f.treatment === "mapInset";
+    const boosted = isMap
+      ? Math.max(base, f.treatment === "mapFocus" ? (f.hero ? 3.4 : 3.0) : f.hero ? 3.0 : 2.6)
+      : f.treatment === "story"
+        ? Math.max(base, f.hero ? 1.85 : 1.15)
+        : base;
     return { ...f, durationSeconds: boosted };
   });
 
@@ -1047,17 +1172,23 @@ function fitClipDurations(
     if (f.role === "hook" || f.role === "chapter") return f;
     // Keep holds usable after subtracting crossfade in the encoder.
     const hasText = Boolean(f.caption || f.dayNote);
+    const isMap = f.treatment === "mapFocus" || f.treatment === "mapInset";
     // durationSeconds includes outgoing crossfade; keep readable on-screen hold.
-    const minHold = hasText
-      ? REEL_CAPTION_MIN_HOLD_SECONDS
-      : pacing === "punchy"
-        ? 1.0
-        : pacing === "calm"
-          ? 1.5
-          : 1.25;
+    const minHold = isMap
+      ? f.treatment === "mapFocus"
+        ? 2.8
+        : 2.4
+      : hasText
+        ? REEL_CAPTION_MIN_HOLD_SECONDS
+        : pacing === "punchy"
+          ? 1.0
+          : pacing === "calm"
+            ? 1.5
+            : 1.25;
     const min = minHold + REEL_CROSSFADE_SECONDS * 0.85;
-    const max =
-      pacing === "punchy"
+    const max = isMap
+      ? 5.0
+      : pacing === "punchy"
         ? hasText || f.hero
           ? 3.4
           : 2.4
@@ -1296,8 +1427,15 @@ export function buildReelManifest(input: {
     places: input.places,
     gpsTrails,
   });
-  const mapIntroSeconds = map ? REEL_MAP_INTRO_SECONDS : 0;
-  const outroSeconds = REEL_OUTRO_SECONDS;
+  const memories = buildOpts.look === "memories";
+  const mapIntroSeconds = map
+    ? memories
+      ? REEL_MEMORIES_MAP_INTRO_SECONDS
+      : REEL_MAP_INTRO_SECONDS
+    : 0;
+  const outroSeconds = memories
+    ? REEL_MEMORIES_OUTRO_SECONDS
+    : REEL_OUTRO_SECONDS;
 
   let frames = selectReelFrames(
     input.photos,
@@ -1311,20 +1449,31 @@ export function buildReelManifest(input: {
   const coverPhotoId = best?.photoId ?? frames[0]?.photoId ?? null;
   // Hook already punches with the best still; map intro also paints the title.
   // A third "title" beat on the same cover looked like a broken loop (cover→map→cover).
+  // Memories: give a soft title card when there is no map to carry the name.
   const titleIntroSeconds =
-    best || map ? 0 : REEL_TITLE_INTRO_SECONDS;
+    best || map
+      ? memories && !map
+        ? REEL_MEMORIES_TITLE_INTRO_SECONDS
+        : 0
+      : memories
+        ? REEL_MEMORIES_TITLE_INTRO_SECONDS
+        : REEL_TITLE_INTRO_SECONDS;
   if (best) {
     // Drop the cover still from the body so Día 1 does not re-open on the same photo.
     const body = frames.filter((f) => f.photoId !== best.photoId);
     frames = [
       buildHookFrame(best),
-      ...insertDayChapters(body.length > 0 ? body : frames, {
-        // If the hook still is from day 1, skip that day's chapter card.
-        skipDayKey: best.dayKey,
-      }),
+      ...(memories
+        ? body.length > 0
+          ? body
+          : frames.filter((f) => f.role === "clip")
+        : insertDayChapters(body.length > 0 ? body : frames, {
+            // If the hook still is from day 1, skip that day's chapter card.
+            skipDayKey: best.dayKey,
+          })),
     ];
   } else {
-    frames = insertDayChapters(frames);
+    frames = memories ? frames : insertDayChapters(frames);
   }
 
   frames = fitClipDurations(
@@ -1337,6 +1486,15 @@ export function buildReelManifest(input: {
   );
   frames = fitCaptionsToClipHolds(frames);
   frames = applyReelCaptionMode(frames, buildOpts.captionMode);
+  if (memories) {
+    // Keep soft transition variety from assignReelTreatments; only strip text chrome.
+    frames = frames.map((f) => ({
+      ...f,
+      caption: null,
+      dayNote: null,
+      sticker: null,
+    }));
+  }
 
   const avgClip =
     frames.length > 0
@@ -1381,6 +1539,7 @@ export function buildReelManifest(input: {
             : {}),
         }
       : null,
+    look: buildOpts.look,
   };
 }
 
@@ -1399,8 +1558,12 @@ export function reelReadmeText(manifest: ReelManifest): string {
 Archivo: instagram-reel.mp4
 Formato: MP4 H.264, ${manifest.width}×${manifest.height} (9:16), ${manifest.fps} fps
 Duración objetivo: ~${manifest.durationSeconds} s
-Audio: sin pista (añade música trending en Instagram → más alcance)
-Estructura: gancho → mapa → título → capítulos/clips → CTA
+Audio: sin pista (añade música en Instagram; el preset Recuerdos aún no lleva audio)
+Estructura: ${
+    manifest.look === "memories"
+      ? "gancho → mapa cinematográfico → fotos con fundidos → cierre suave"
+      : "gancho → mapa → título → capítulos/clips → CTA"
+  }
 Tratamientos visuales: ${treatments || "variados"}
 Portada: cover.jpg (mejor still del viaje)
 CTA: ${manifest.ctaLine}

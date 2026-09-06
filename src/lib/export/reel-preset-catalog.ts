@@ -18,7 +18,8 @@ export type ReelPresetId =
   | "punchy-highlights"
   | "textless-photos"
   | "place-labels"
-  | "map-pulse";
+  | "map-pulse"
+  | "memories";
 
 export type ReelPresetEnergy = "calm" | "balanced" | "punchy";
 
@@ -214,6 +215,46 @@ export const REEL_PRESET_CATALOG: ReelPresetCatalogEntry[] = [
     featuredInUi: true,
     uiOrder: 6,
   },
+  {
+    id: "memories",
+    version: 1,
+    label: "Recuerdos",
+    tagline: "Estilo iPhone: mapa suave, sin texto",
+    description:
+      "Montaje tipo Recuerdos de iPhone: pocas fotos, fundidos largos, sin captions, un mapa cinematográfico al inicio. Sin audio todavía.",
+    criteria: {
+      pacing: "calm",
+      captionMode: "none",
+      transitionStyle: "softFade",
+      heroBias: "high",
+      photoDensity: "low",
+      energy: "calm",
+      mapBias: "high",
+    },
+    defaultDirectives: {
+      pacing: "calm",
+      captionMode: "none",
+      captionPlacement: "bottom",
+      transitionStyle: "softFade",
+      transitionSeconds: 0.75,
+      heroBias: "high",
+      mapBias: "high",
+      look: "memories",
+      targetPhotoCount: 8,
+    },
+    tags: [
+      "recuerdos",
+      "iphone",
+      "memories",
+      "nostalgico",
+      "suave",
+      "mapa",
+      "sin texto",
+      "fundidos",
+    ],
+    featuredInUi: true,
+    uiOrder: 0,
+  },
 ];
 
 const BY_ID = new Map(REEL_PRESET_CATALOG.map((e) => [e.id, e]));
@@ -246,6 +287,8 @@ export function mergeReelDirectives(
     captionPlacement: overlay.captionPlacement ?? base.captionPlacement,
     transitionStyle: overlay.transitionStyle ?? base.transitionStyle,
     heroBias: overlay.heroBias ?? base.heroBias,
+    mapBias: overlay.mapBias ?? base.mapBias,
+    look: overlay.look ?? base.look,
     ...(overlay.durationSeconds != null
       ? { durationSeconds: overlay.durationSeconds }
       : base.durationSeconds != null

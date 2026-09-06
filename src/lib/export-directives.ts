@@ -10,6 +10,8 @@ export type ReelCaptionMode = "none" | "placeOnly" | "short" | "story";
 export type ReelCaptionPlacement = "bottom" | "center" | "side";
 export type ReelTransitionStyle = "softFade" | "mixed" | "fastCut";
 export type ReelDurationPreset = 15 | 30 | 60;
+/** Montage look — "memories" mirrors iPhone Recuerdos (no audio yet). */
+export type ReelLook = "default" | "memories";
 
 export type HtmlTheme = "light" | "dark";
 
@@ -40,6 +42,10 @@ export interface ExportReelDirectives {
   transitionStyle: ReelTransitionStyle;
   transitionSeconds?: number;
   heroBias: Emphasis;
+  /** How often map moments appear in the montage. */
+  mapBias?: Emphasis;
+  /** Special montage grammar (iPhone-style Recuerdos, etc.). */
+  look?: ReelLook;
 }
 
 export interface ExportPdfDirectives {
@@ -109,6 +115,8 @@ export function defaultExportDirectives(): ExportDirectives {
       transitionStyle: "mixed",
       transitionSeconds: 0.4,
       heroBias: "medium",
+      mapBias: "medium",
+      look: "default",
     },
     pdf: {
       imageEmphasis: "medium",
@@ -158,8 +166,11 @@ function clampReel(
   const target = clampNumber(raw.targetPhotoCount, 3, 24);
   const transitionSec =
     typeof raw.transitionSeconds === "number" && Number.isFinite(raw.transitionSeconds)
-      ? Math.max(0.15, Math.min(0.55, raw.transitionSeconds))
+      ? Math.max(0.15, Math.min(0.9, raw.transitionSeconds))
       : d.transitionSeconds;
+  const look: ReelLook | undefined =
+    raw.look === "memories" || raw.look === "default" ? raw.look : d.look;
+  const mapBias = isEmphasis(raw.mapBias) ? raw.mapBias : d.mapBias;
 
   const bandMax =
     (durationHint ?? durationSeconds ?? 30) <= 15
@@ -200,6 +211,8 @@ function clampReel(
         : d.transitionStyle,
     transitionSeconds: transitionSec,
     heroBias: isEmphasis(raw.heroBias) ? raw.heroBias : d.heroBias,
+    ...(mapBias ? { mapBias } : {}),
+    ...(look ? { look } : {}),
   };
 }
 
@@ -287,6 +300,9 @@ export function summarizeReelDirectives(reel: ExportReelDirectives): string {
   );
   if (reel.heroBias === "high") bits.push("prioriza highlights");
   if (reel.heroBias === "low") bits.push("mezcla abierta");
+  if (reel.look === "memories") bits.push("estilo Recuerdos");
+  if (reel.mapBias === "high") bits.push("mapa destacado");
+  if (reel.mapBias === "low") bits.push("poco mapa");
   return bits.join(" · ");
 }
 
