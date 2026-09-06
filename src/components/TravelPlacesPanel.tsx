@@ -143,6 +143,8 @@ export default function TravelPlacesPanel({
   const [error, setError] = useState<string | null>(null);
   const [placesPage, setPlacesPage] = useState(1);
   const panelRef = useRef<HTMLDivElement>(null);
+  const formComposeRef = useRef<HTMLDivElement>(null);
+  const fromPhoto = Boolean(draft?.linkPhotoId);
 
   useEffect(() => {
     if (!startAddSignal) return;
@@ -179,9 +181,10 @@ export default function TravelPlacesPanel({
       visitedAtTime: when.time || "12:00",
       linkPhotoId: seedFromPhoto.photoId,
     });
+    // Jump to map + form (skip header / «Ubicación» / vuelos chrome).
     const t = window.setTimeout(() => {
-      panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 80);
+      formComposeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
     return () => window.clearTimeout(t);
   }, [seedFromPhoto, travelStartDate]);
 
@@ -505,9 +508,9 @@ export default function TravelPlacesPanel({
         </button>
       </div>
 
-      <SecureLocationHint />
+      {!fromPhoto && <SecureLocationHint />}
 
-      {addMode && (
+      {addMode && !fromPhoto && (
         <div className="form-panel space-y-2">
           <p className="form-panel-kicker">Ubicación</p>
           <div className="flex gap-2">
@@ -547,65 +550,99 @@ export default function TravelPlacesPanel({
         </div>
       )}
 
-      <section className="form-panel">
-        <h3 className="text-sm font-semibold text-accent-blue">Vuelos ida / vuelta</h3>
-        <p className="mt-1 text-xs text-fg-secondary">
-          Derivado de fotos marcadas como Ida o Vuelta en la pestaña Fotos (no se crean aquí).
-          Si tienen GPS de aeropuerto, el trayecto se muestra en un mapa aparte del recorrido en destino.
-        </p>
-        {onOpenFotosTab && (
-          <button
-            type="button"
-            onClick={onOpenFotosTab}
-            className="mt-2 text-link-subtle"
-          >
-            Ir a Fotos para marcar Ida/Vuelta →
-          </button>
-        )}
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <FlightLegCard leg={outbound} emptyLabel="Sin foto de ida marcada" />
-          <FlightLegCard leg={inbound} emptyLabel="Sin foto de vuelta marcada" />
-        </div>
-      </section>
+      {!fromPhoto && (
+        <section className="form-panel">
+          <h3 className="text-sm font-semibold text-accent-blue">Vuelos ida / vuelta</h3>
+          <p className="mt-1 text-xs text-fg-secondary">
+            Derivado de fotos marcadas como Ida o Vuelta en la pestaña Fotos (no se crean aquí).
+            Si tienen GPS de aeropuerto, el trayecto se muestra en un mapa aparte del recorrido en destino.
+          </p>
+          {onOpenFotosTab && (
+            <button
+              type="button"
+              onClick={onOpenFotosTab}
+              className="mt-2 text-link-subtle"
+            >
+              Ir a Fotos para marcar Ida/Vuelta →
+            </button>
+          )}
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <FlightLegCard leg={outbound} emptyLabel="Sin foto de ida marcada" />
+            <FlightLegCard leg={inbound} emptyLabel="Sin foto de vuelta marcada" />
+          </div>
+        </section>
+      )}
 
-      {showDualMaps ? (
-        <div className="space-y-4">
+      <div ref={formComposeRef} className="scroll-mt-4 space-y-4">
+        {showDualMaps && !fromPhoto ? (
+          <div className="space-y-4">
+            <TravelPlacesMap
+              scope="flights"
+              compact
+              title="Trayecto / llegada"
+              subtitle="Vuelos de ida y vuelta — contexto del destino"
+              places={places}
+              photos={photos}
+              selectedPlaceId={selectedPlaceId}
+              selectedPhotoId={selectedPhotoId}
+              addMode={false}
+              clickToPlace={false}
+              locateSignal={0}
+              draftPin={null}
+              onMapClick={handleMapClick}
+              onPlaceClick={(id) => {
+                setSelectedPlaceId(id);
+                setSelectedPhotoId(null);
+                setEditForm(null);
+              }}
+              onPhotoClick={(id) => {
+                setSelectedPhotoId(id);
+                onOpenPhoto?.(id);
+              }}
+            />
+            <TravelPlacesMap
+              scope="local"
+              title="En destino"
+              subtitle="Recorrido del viaje — sin el zoom de los vuelos"
+              places={places}
+              photos={photos}
+              selectedPlaceId={selectedPlaceId}
+              selectedPhotoId={selectedPhotoId}
+              addMode={addMode}
+              clickToPlace={addMode && pickOnMap}
+              locateSignal={locateSignal}
+              draftPin={draft ? { lat: draft.lat, lng: draft.lng } : null}
+              onMapClick={handleMapClick}
+              onPlaceClick={(id) => {
+                setSelectedPlaceId(id);
+                setSelectedPhotoId(null);
+                setEditForm(null);
+              }}
+              onPhotoClick={(id) => {
+                setSelectedPhotoId(id);
+                onOpenPhoto?.(id);
+              }}
+            />
+          </div>
+        ) : (
           <TravelPlacesMap
-            scope="flights"
-            compact
-            title="Trayecto / llegada"
-            subtitle="Vuelos de ida y vuelta — contexto del destino"
-            places={places}
-            photos={photos}
-            selectedPlaceId={selectedPlaceId}
-            selectedPhotoId={selectedPhotoId}
-            addMode={false}
-            clickToPlace={false}
-            locateSignal={0}
-            draftPin={null}
-            onMapClick={handleMapClick}
-            onPlaceClick={(id) => {
-              setSelectedPlaceId(id);
-              setSelectedPhotoId(null);
-              setEditForm(null);
-            }}
-            onPhotoClick={(id) => {
-              setSelectedPhotoId(id);
-              onOpenPhoto?.(id);
-            }}
-          />
-          <TravelPlacesMap
-            scope="local"
-            title="En destino"
-            subtitle="Recorrido del viaje — sin el zoom de los vuelos"
+            scope={showDualMaps || fromPhoto ? "local" : "all"}
+            title={fromPhoto ? "Confirma el pin de la foto" : undefined}
+            subtitle={
+              fromPhoto
+                ? "Mapa ampliado en el GPS de la foto — comprueba que es el lugar correcto"
+                : undefined
+            }
             places={places}
             photos={photos}
             selectedPlaceId={selectedPlaceId}
             selectedPhotoId={selectedPhotoId}
             addMode={addMode}
-            clickToPlace={addMode && pickOnMap}
-            locateSignal={locateSignal}
+            clickToPlace={addMode && pickOnMap && !fromPhoto}
+            locateSignal={fromPhoto ? 0 : locateSignal}
             draftPin={draft ? { lat: draft.lat, lng: draft.lng } : null}
+            expanded={fromPhoto}
+            focusDraftPin={fromPhoto}
             onMapClick={handleMapClick}
             onPlaceClick={(id) => {
               setSelectedPlaceId(id);
@@ -617,116 +654,96 @@ export default function TravelPlacesPanel({
               onOpenPhoto?.(id);
             }}
           />
-        </div>
-      ) : (
-        <TravelPlacesMap
-          places={places}
-          photos={photos}
-          selectedPlaceId={selectedPlaceId}
-          selectedPhotoId={selectedPhotoId}
-          addMode={addMode}
-          clickToPlace={addMode && pickOnMap}
-          locateSignal={locateSignal}
-          draftPin={draft ? { lat: draft.lat, lng: draft.lng } : null}
-          onMapClick={handleMapClick}
-          onPlaceClick={(id) => {
-            setSelectedPlaceId(id);
-            setSelectedPhotoId(null);
-            setEditForm(null);
-          }}
-          onPhotoClick={(id) => {
-            setSelectedPhotoId(id);
-            onOpenPhoto?.(id);
-          }}
-        />
-      )}
+        )}
 
-      {draft && (
-        <div className="form-panel space-y-3">
-          <p className="form-panel-title">
-            {draft.linkPhotoId ? "Nuevo lugar desde la foto" : "Nuevo lugar"}
-          </p>
-          {draft.linkPhotoId && (
-            <p className="text-xs text-fg-secondary">
-              El pin ya está en el GPS de la foto. Escribe el nombre (p. ej. Cytat Café),
-              elige el tipo y guárdalo — se asociará a la foto y saldrá en el mapa.
+        {draft && (
+          <div className="form-panel space-y-3">
+            <p className="form-panel-title">
+              {draft.linkPhotoId ? "Nuevo lugar desde la foto" : "Nuevo lugar"}
             </p>
-          )}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-fg-secondary">Nombre</span>
-              <input
-                value={draft.name}
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                placeholder="Ej. Cytat Café"
-                autoFocus={Boolean(draft.linkPhotoId)}
+            {draft.linkPhotoId && (
+              <p className="text-xs text-fg-secondary">
+                El pin ya está en el GPS de la foto (mapa ampliado arriba). Escribe el nombre
+                (p. ej. Cytat Café), elige el tipo y guárdalo — se asociará a la foto.
+              </p>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-fg-secondary">Nombre</span>
+                <input
+                  value={draft.name}
+                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                  placeholder="Ej. Cytat Café"
+                  autoFocus={Boolean(draft.linkPhotoId)}
+                  className="form-input input-focus"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-fg-secondary">Tipo</span>
+                <select
+                  value={draft.type}
+                  onChange={(e) =>
+                    setDraft({ ...draft, type: e.target.value as PlaceType })
+                  }
+                  className="form-input input-focus"
+                >
+                  {PLACE_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {placeEmoji(t)} {PLACE_TYPE_LABELS[t]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <MemoryDateTimeField
+              label="¿Cuándo estuviste aquí?"
+              date={draft.visitedAtDate}
+              time={draft.visitedAtTime}
+              onDateChange={(d) => setDraft({ ...draft, visitedAtDate: d })}
+              onTimeChange={(t) => setDraft({ ...draft, visitedAtTime: t })}
+              hint="Importante para viajes pasados: ordena el recorrido en la crónica y el blog."
+            />
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-fg-secondary">
+                Nota del lugar (opcional)
+              </label>
+              <textarea
+                value={draft.comment}
+                onChange={(e) => setDraft({ ...draft, comment: e.target.value })}
+                rows={3}
+                placeholder="Escribe tu anécdota, impresión o detalle…"
                 className="form-input input-focus"
               />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-fg-secondary">Tipo</span>
-              <select
-                value={draft.type}
-                onChange={(e) =>
-                  setDraft({ ...draft, type: e.target.value as PlaceType })
-                }
-                className="form-input input-focus"
+            </div>
+            <p className="text-xs text-fg-secondary">
+              Coordenadas: {draft.lat.toFixed(5)}, {draft.lng.toFixed(5)}
+            </p>
+            {error && <p className="text-sm text-danger">{error}</p>}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={savePlace}
+                disabled={saving}
+                className="btn-primary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
               >
-                {PLACE_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {placeEmoji(t)} {PLACE_TYPE_LABELS[t]}
-                  </option>
-                ))}
-              </select>
-            </label>
+                {saving ? "Guardando…" : "Guardar lugar"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraft(null);
+                  setAddMode(false);
+                  setError(null);
+                }}
+                disabled={saving}
+                className="btn-secondary rounded-lg px-4 py-2 text-sm"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
-          <MemoryDateTimeField
-            label="¿Cuándo estuviste aquí?"
-            date={draft.visitedAtDate}
-            time={draft.visitedAtTime}
-            onDateChange={(d) => setDraft({ ...draft, visitedAtDate: d })}
-            onTimeChange={(t) => setDraft({ ...draft, visitedAtTime: t })}
-            hint="Importante para viajes pasados: ordena el recorrido en la crónica y el blog."
-          />
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-fg-secondary">
-              Nota del lugar (opcional)
-            </label>
-            <textarea
-              value={draft.comment}
-              onChange={(e) => setDraft({ ...draft, comment: e.target.value })}
-              rows={3}
-              placeholder="Escribe tu anécdota, impresión o detalle…"
-              className="form-input input-focus"
-            />
-          </div>
-          <p className="text-xs text-fg-secondary">
-            Coordenadas: {draft.lat.toFixed(5)}, {draft.lng.toFixed(5)}
-          </p>
-          {error && <p className="text-sm text-danger">{error}</p>}
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={savePlace}
-              disabled={saving}
-              className="btn-primary rounded-lg px-4 py-2 text-sm disabled:opacity-50"
-            >
-              {saving ? "Guardando…" : "Guardar lugar"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setDraft(null);
-                setError(null);
-              }}
-              disabled={saving}
-              className="btn-secondary rounded-lg px-4 py-2 text-sm"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {editForm && !draft && (
         <div className="form-panel space-y-3">
