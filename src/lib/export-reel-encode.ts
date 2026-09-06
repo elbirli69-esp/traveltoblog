@@ -1156,6 +1156,11 @@ function blendTransition(
     ctx.drawImage(layerB, (1 - e) * width, 0);
     return;
   }
+  if (type === "slideRight") {
+    ctx.drawImage(layerA, e * width, 0);
+    ctx.drawImage(layerB, (e - 1) * width, 0);
+    return;
+  }
   if (type === "slideUp") {
     ctx.drawImage(layerA, 0, -e * height);
     ctx.drawImage(layerB, 0, (1 - e) * height);
@@ -1177,6 +1182,40 @@ function blendTransition(
     ctx.drawImage(layerB, -width / 2, -height / 2);
     ctx.restore();
     ctx.globalAlpha = 1;
+    return;
+  }
+  if (type === "zoomPunch") {
+    // Stronger push-in — good for punchy travel cuts.
+    ctx.save();
+    ctx.globalAlpha = 1 - e;
+    const sA = 1 + e * 0.18;
+    ctx.translate(width / 2, height / 2);
+    ctx.scale(sA, sA);
+    ctx.drawImage(layerA, -width / 2, -height / 2);
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = e;
+    const sB = 1.14 - e * 0.14;
+    ctx.translate(width / 2, height / 2);
+    ctx.scale(sB, sB);
+    ctx.drawImage(layerB, -width / 2, -height / 2);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (type === "fadeBlack") {
+    // Dissolves through black — classic Memories / photo-album feel.
+    if (e < 0.5) {
+      const a = 1 - e * 2;
+      ctx.globalAlpha = a;
+      ctx.drawImage(layerA, 0, 0);
+      ctx.globalAlpha = 1;
+    } else {
+      const a = (e - 0.5) * 2;
+      ctx.globalAlpha = a;
+      ctx.drawImage(layerB, 0, 0);
+      ctx.globalAlpha = 1;
+    }
     return;
   }
 

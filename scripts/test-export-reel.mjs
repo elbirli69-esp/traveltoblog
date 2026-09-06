@@ -77,6 +77,20 @@ assert.ok(frames.some((f) => f.hero));
 assert.ok(frames.every((f) => f.role === "clip"));
 assert.ok(frames.every((f) => f.treatment && f.transitionOut && f.captionStyle));
 assert.ok(frames.some((f) => f.sticker), "expected place-type sticker");
+{
+  const outs = frames.map((f) => f.transitionOut);
+  assert.ok(
+    new Set(outs).size >= 3,
+    `mixed style should vary transitions, got ${[...new Set(outs)].join(",")}`
+  );
+  for (let i = 1; i < outs.length; i++) {
+    assert.notEqual(
+      outs[i],
+      outs[i - 1],
+      `consecutive transitions should differ at ${i}: ${outs[i - 1]} → ${outs[i]}`
+    );
+  }
+}
 const treatmentSet = new Set(frames.map((f) => f.treatment));
 assert.ok(
   treatmentSet.size >= 2,
@@ -469,9 +483,21 @@ assert.equal(
   "memories should skip day chapters"
 );
 assert.ok(
-  memoriesManifest.frames.every((f) => !f.caption && f.transitionOut === "fade"),
-  "memories clips should be captionless fades"
+  memoriesManifest.frames.every((f) => !f.caption),
+  "memories clips should be captionless"
 );
+{
+  const outs = memoriesManifest.frames.map((f) => f.transitionOut);
+  const soft = new Set(["fade", "fadeBlack", "zoomSoft"]);
+  assert.ok(
+    outs.every((t) => soft.has(t)),
+    `memories should stay on soft transitions, got ${[...new Set(outs)].join(",")}`
+  );
+  assert.ok(
+    new Set(outs).size >= 2,
+    `memories should vary soft transitions, got ${outs.join(",")}`
+  );
+}
 assert.ok(
   memoriesManifest.frames
     .filter((f) => f.role === "clip")
