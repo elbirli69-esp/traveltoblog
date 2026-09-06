@@ -174,12 +174,46 @@ const pages = planPdfPages({
       highlightScore: 1,
       notes: [],
     },
+    {
+      id: "p6",
+      url: "/c",
+      filename: "006.jpg",
+      imagePath: "photos/006.jpg",
+      bleedImagePath: "photos/006-bleed.jpg",
+      latitude: 40.4,
+      longitude: -3.7,
+      exifDateTime: new Date("2024-06-02"),
+      alias: "Ana",
+      highlightScore: 2,
+      notes: [],
+    },
+    {
+      id: "p7",
+      url: "/d",
+      filename: "007.jpg",
+      imagePath: "photos/007.jpg",
+      bleedImagePath: "photos/007-bleed.jpg",
+      latitude: 40.4,
+      longitude: -3.7,
+      exifDateTime: new Date("2024-06-02"),
+      alias: "Ana",
+      highlightScore: 3,
+      notes: [],
+    },
   ],
   notes: [],
   format: "a4-landscape",
   template: "classic",
 });
 assert.ok(pages.some((p) => p.kind === "mosaic"), "busy day uses mosaic");
+assert.ok(
+  pages.filter((p) => p.kind === "mosaic").every((p) => [6, 8].includes(p.photos?.length ?? 0)),
+  "mosaic pages are full sheets (6 or 8 photos), never a single half-empty row"
+);
+assert.ok(
+  !pages.some((p) => p.kind === "featured"),
+  "single photos become full-bleed, not featured with empty margins"
+);
 assert.ok(
   pages.filter((p) => p.kind === "featured").every((p) => !p.narrative && !p.quote),
   "featured pages carry no journal narrative"
@@ -472,6 +506,35 @@ assert.ok(
   wideHtml.includes("divider-intro--wide") || wideHtml.includes("divider-intro--xl"),
   "long day summary widens the text column"
 );
-assert.ok(wideHtml.includes("mosaic-table") || wideHtml.includes("mosaic-row"), "mosaic uses WeasyPrint-safe table rows");
+assert.ok(wideHtml.includes("page-bleed") || wideHtml.includes("bleed-photo"), "single leftover photos are full-bleed");
+
+// Four low-score photos must NOT become a half-empty one-row mosaic
+const fourPages = planPdfPages({
+  travel: { id: "t4", title: "Cuatro", startDate: null, endDate: null, journalMarkdown: null },
+  users: [{ alias: "Ana" }],
+  photos: Array.from({ length: 4 }, (_, i) => lowScorePhoto(`f${i + 1}`, 1)),
+  notes: [],
+  format: "a4-landscape",
+  template: "classic",
+  pdfDirectives: { mosaicBias: "high", preferFullBleed: "low", imageEmphasis: "low" },
+});
+assert.ok(
+  !fourPages.some((p) => p.kind === "mosaic"),
+  "four small photos do not create a single-row mosaic"
+);
+
+// Six low-score photos → one 2×3 mosaic
+const sixPages = planPdfPages({
+  travel: { id: "t6", title: "Seis", startDate: null, endDate: null, journalMarkdown: null },
+  users: [{ alias: "Ana" }],
+  photos: Array.from({ length: 6 }, (_, i) => lowScorePhoto(`s${i + 1}`, 1)),
+  notes: [],
+  format: "a4-landscape",
+  template: "classic",
+  pdfDirectives: { mosaicBias: "high", preferFullBleed: "low", imageEmphasis: "low" },
+});
+const sixMosaics = sixPages.filter((p) => p.kind === "mosaic");
+assert.ok(sixMosaics.some((p) => (p.photos?.length ?? 0) === 6), "six small photos pack as 2×3 mosaic");
+
 
 console.log("export-pdf ok");
