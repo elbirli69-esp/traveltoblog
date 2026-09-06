@@ -323,9 +323,10 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       margin: 0 auto;
     }
 
+    /* Default column; widens with text length so the day summary stays on one page. */
     .divider-intro {
-      max-width: 120mm;
-      max-height: 95mm;
+      max-width: 160mm;
+      max-height: 120mm;
       margin: 0 auto;
       text-align: left;
       font-family: ${t.serif};
@@ -333,6 +334,20 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       line-height: 1.6;
       color: ${t.textMuted};
       overflow: hidden;
+    }
+
+    .divider-intro--wide {
+      max-width: 220mm;
+      max-height: 130mm;
+      font-size: 10pt;
+      line-height: 1.55;
+    }
+
+    .divider-intro--xl {
+      max-width: 255mm;
+      max-height: 140mm;
+      font-size: 9.5pt;
+      line-height: 1.48;
     }
 
     .divider-intro img {
@@ -376,35 +391,49 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       max-width: 160mm;
     }
 
-    /* —— Mosaic —— */
+    /* —— Mosaic (1 row of 3–4, or dense 2×3 / 2×4 for small photos) —— */
     .page-mosaic {
-      display: table;
-      table-layout: fixed;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       width: 100%;
       background: ${t.mosaicBg};
+      box-sizing: border-box;
+      padding: ${bleed + 4}mm ${bleed + 5}mm;
     }
 
-    .mosaic-row {
-      display: table-row;
+    .mosaic-grid {
+      display: grid;
+      grid-template-columns: repeat(var(--mosaic-cols, 4), 1fr);
+      gap: 4mm 5mm;
+      width: 100%;
+      align-content: center;
     }
 
     .mosaic-cell {
-      display: table-cell;
-      vertical-align: top;
-      padding: ${bleed + 6}mm ${bleed + 4}mm;
       text-align: center;
+      min-width: 0;
     }
 
     .mosaic-mat img {
       max-height: ${format === "square" ? "75mm" : "85mm"};
+      width: 100%;
+      object-fit: cover;
+    }
+
+    .mosaic-grid--dense .mosaic-mat img {
+      max-height: ${format === "square" ? "58mm" : "68mm"};
     }
 
     .mosaic-caption {
-      margin-top: 3mm;
-      font-size: 7pt;
+      margin-top: 2mm;
+      font-size: 6.5pt;
       letter-spacing: 0.06em;
       text-transform: uppercase;
       color: ${t.textMuted};
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     /* —— Featured (photo-led; crónica lives on day-divider) —— */
