@@ -713,11 +713,6 @@ export default function PhotoGallery({
                       authorAlias={
                         getSessionFromStorage()?.alias ?? photo.user.alias
                       }
-                      sparseHint={
-                        !photo.place &&
-                        photoNotes.length === 0 &&
-                        !photo.exifDateTime
-                      }
                       onApplyDraft={(text) => {
                         setNotePrefill((prev) => ({
                           photoId: photo.id,

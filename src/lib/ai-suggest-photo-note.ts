@@ -1,6 +1,7 @@
 /**
  * On-demand photo note suggestions (Phase 1).
  * Manual trigger only — no auto calls. Text context, no vision.
+ * The user must provide a brief seed; the model only complements it.
  */
 
 import { createAiClient, getAiConfig } from "@/lib/ai";
@@ -24,6 +25,8 @@ export function parsePhotoNoteTone(raw: unknown): PhotoNoteTone {
 export type PhotoNoteSuggestContext = {
   travelTitle: string;
   authorAlias: string;
+  /** Brief description written by the user — required to call the model. */
+  userSeed: string;
   exifLocal: string | null;
   place: { name: string; type: string } | null;
   existingNotes: string[];
@@ -35,6 +38,9 @@ const MAX_NOTE_CHARS = 120;
 const MAX_NOTES = 4;
 const MAX_NEARBY = 3;
 const NEARBY_RADIUS_M = 500;
+/** Minimum seed length before Completar con IA is allowed. */
+export const PHOTO_NOTE_SEED_MIN_CHARS = 8;
+const MAX_SEED_CHARS = 280;
 /** ~80 tokens output */
 export const PHOTO_NOTE_MAX_TOKENS = 80;
 
@@ -42,6 +48,15 @@ export function clampNoteText(text: string, max = MAX_NOTE_CHARS): string {
   const t = text.replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
   return `${t.slice(0, max - 1).trimEnd()}…`;
+}
+
+export function normalizePhotoNoteSeed(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  return raw.replace(/\s+/g, " ").trim().slice(0, MAX_SEED_CHARS);
+}
+
+export function hasUsablePhotoNoteSeed(seed: string): boolean {
+  return normalizePhotoNoteSeed(seed).length >= PHOTO_NOTE_SEED_MIN_CHARS;
 }
 
 export function formatExifLocal(iso: string | null | undefined): string | null {
@@ -55,20 +70,6 @@ export function formatExifLocal(iso: string | null | undefined): string | null {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-export function isPhotoNoteContextSparse(
-  ctx: Pick<
-    PhotoNoteSuggestContext,
-    "place" | "existingNotes" | "exifLocal" | "nearbyPlaceNames"
-  >
-): boolean {
-  return (
-    !ctx.place &&
-    ctx.existingNotes.length === 0 &&
-    !ctx.exifLocal &&
-    ctx.nearbyPlaceNames.length === 0
-  );
 }
 
 export function pickNearbyPlaceNames(input: {
@@ -99,6 +100,7 @@ export function pickNearbyPlaceNames(input: {
 export function buildPhotoNoteSuggestContext(input: {
   travelTitle: string;
   authorAlias: string;
+  userSeed: string;
   exifDateTime: string | null;
   place: { name: string; type: string } | null;
   existingNotes: string[];
@@ -108,6 +110,7 @@ export function buildPhotoNoteSuggestContext(input: {
   return {
     travelTitle: input.travelTitle.trim().slice(0, 80) || "Viaje",
     authorAlias: input.authorAlias.trim().slice(0, 40) || "Viajero",
+    userSeed: normalizePhotoNoteSeed(input.userSeed),
     exifLocal: formatExifLocal(input.exifDateTime),
     place: input.place
       ? {
@@ -133,6 +136,7 @@ export function photoNoteContextCacheKey(
 ): string {
   return JSON.stringify({
     photoId,
+    seed: ctx.userSeed,
     title: ctx.travelTitle,
     alias: ctx.authorAlias,
     exif: ctx.exifLocal,
@@ -143,63 +147,75 @@ export function photoNoteContextCacheKey(
   });
 }
 
+function placeBit(ctx: PhotoNoteSuggestContext): string | null {
+  if (ctx.place) {
+    return `${ctx.place.name}${
+      ctx.place.type
+        ? ` (${placeLabel(ctx.place.type as PlaceType) || ctx.place.type})`
+        : ""
+    }`;
+  }
+  if (ctx.nearbyPlaceNames[0]) return `cerca de ${ctx.nearbyPlaceNames[0]}`;
+  return null;
+}
+
+/**
+ * Local fallback: lightly polish the user seed with optional place/date.
+ * Never invents scene details beyond the seed.
+ */
 export function heuristicPhotoNote(ctx: PhotoNoteSuggestContext): string {
-  const placeBit = ctx.place
-    ? `${ctx.place.name}${
-        ctx.place.type
-          ? ` (${placeLabel(ctx.place.type as PlaceType) || ctx.place.type})`
-          : ""
-      }`
-    : ctx.nearbyPlaceNames[0]
-      ? `cerca de ${ctx.nearbyPlaceNames[0]}`
-      : null;
+  const seed = ctx.userSeed;
+  const place = placeBit(ctx);
+  const when = ctx.exifLocal;
+
+  if (!seed) {
+    if (place && when) return `En ${place}, ${when}.`;
+    if (place) return `Foto en ${place}.`;
+    if (when) return `Tomada el ${when}.`;
+    return "Escribe una breve descripción de la foto.";
+  }
+
+  // Already a full sentence — keep seed as core.
+  const endsWell = /[.!?…]$/.test(seed);
+  let core = endsWell ? seed : `${seed}.`;
 
   if (ctx.tone === "divertido") {
-    if (placeBit && ctx.exifLocal) {
-      return `Parada en ${placeBit} (${ctx.exifLocal}): de esas fotos que luego miras y sonríes.`;
+    if (!/[!?]/.test(core)) {
+      core = core.replace(/\.$/, "") + " — de esas que luego miras y sonríes.";
     }
-    if (placeBit) return `Momento en ${placeBit} — sin filtro, con buena onda.`;
-    if (ctx.exifLocal) return `Capturado el ${ctx.exifLocal}. Historia corta, recuerdo largo.`;
-    return "Una foto del viaje que pide una línea… ¡y aquí está!";
+  } else if (ctx.tone === "poetico") {
+    if (place && !core.toLowerCase().includes(ctx.place?.name.toLowerCase() ?? "___")) {
+      core = `${core.replace(/\.$/, "")}; luz y calma en ${place}.`;
+    }
+  } else if (place && !core.toLowerCase().includes((ctx.place?.name ?? "").toLowerCase())) {
+    const withPlace = when
+      ? `${core.replace(/\.$/, "")} En ${place}, ${when}.`
+      : `${core.replace(/\.$/, "")} En ${place}.`;
+    // Prefer keeping seed dominant if already long
+    if (seed.length < 100) core = withPlace;
   }
 
-  if (ctx.tone === "poetico") {
-    if (placeBit) {
-      return `Luz y calma en ${placeBit}${ctx.exifLocal ? `, ${ctx.exifLocal}` : ""}.`;
-    }
-    if (ctx.exifLocal) return `Un instante detenido (${ctx.exifLocal}).`;
-    return "Un fragmento del camino, guardado en silencio.";
-  }
-
-  // neutro
-  if (placeBit && ctx.exifLocal) {
-    return `En ${placeBit}, ${ctx.exifLocal}.`;
-  }
-  if (placeBit) return `Foto en ${placeBit}.`;
-  if (ctx.exifLocal) return `Tomada el ${ctx.exifLocal}.`;
-  if (ctx.existingNotes[0]) {
-    return `Detalle: ${clampNoteText(ctx.existingNotes[0], 90)}`;
-  }
-  return "Nota breve para esta foto del viaje.";
+  return clampNoteText(core, 220);
 }
 
 const TONE_INSTRUCTION: Record<PhotoNoteTone, string> = {
   neutro: "Tono natural y cercano, como una nota de diario.",
   divertido: "Tono ligero y con humor suave, sin forzar chistes ni inventar la escena.",
   poetico:
-    "Tono evocador breve usando SOLO el lugar/fecha/notas dados; sin inventar elementos visuales.",
+    "Tono evocador breve usando SOLO lo que diga el usuario y el lugar/fecha; sin inventar elementos visuales.",
 };
 
 export function buildPhotoNoteSystemPrompt(): string {
   return [
     "Eres un asistente de diario de viaje.",
-    "Escribe UNA nota corta (1–2 frases, máximo ~180 caracteres) en español para una foto.",
-    "IMPORTANTE: NO ves la imagen. Solo tienes el JSON de metadatos.",
-    "Usa ÚNICAMENTE hechos del JSON (viaje, autor, cuando, lugar.name, cerca, notas_existentes).",
-    "PROHIBIDO inventar: puentes, calles, edificios, personas, ropa, clima, comida, sonidos u objetos que no estén nombrados en el JSON.",
-    "PROHIBIDO rellenar con conocimiento genérico del destino (p. ej. «gueto de Cracovia», leyendas, películas) si no aparece en el JSON.",
-    "Si solo hay un nombre de lugar, una nota sobria tipo «En {lugar}, {cuando}.» basta. No dramatices la escena.",
-    "Si ya hay notas_existentes, complementa sin repetir ni ampliar con detalles visuales nuevos.",
+    "El usuario te da una descripción breve (campo «semilla») de lo que hay en la foto.",
+    "Tu trabajo es COMPLEMENTAR y COMPLETAR esa semilla en UNA nota corta (1–2 frases, máximo ~180 caracteres) en español.",
+    "IMPORTANTE: NO ves la imagen. La semilla es la única fuente de lo que aparece en la foto.",
+    "Conserva el sentido y los hechos de la semilla; puedes pulir estilo, unir frases y añadir como mucho lugar/fecha del JSON si encajan.",
+    "PROHIBIDO inventar: puentes, calles, edificios, personas, ropa, clima, comida, sonidos u objetos que no estén en la semilla ni nombrados en el JSON.",
+    "PROHIBIDO rellenar con conocimiento genérico del destino (leyendas, películas, barrios famosos) si no aparece en la semilla o el JSON.",
+    "Si la semilla ya es buena, mejórala con suavidad; no la sustituyas por otra historia.",
+    "Si hay notas_existentes, no las copies; complementa sin repetir.",
     "No uses comillas ni prefijos como «Nota:». Solo el texto de la nota.",
   ].join(" ");
 }
@@ -207,6 +223,7 @@ export function buildPhotoNoteSystemPrompt(): string {
 export function buildPhotoNoteUserPrompt(ctx: PhotoNoteSuggestContext): string {
   return JSON.stringify(
     {
+      semilla: ctx.userSeed,
       viaje: ctx.travelTitle,
       autor: ctx.authorAlias,
       cuando: ctx.exifLocal,
@@ -253,8 +270,8 @@ export type SuggestPhotoNoteResult = {
 };
 
 /**
- * Suggest a photo note. Heuristic when sparse unless forceAi.
- * Single completion when calling the model.
+ * Complement a user seed into a photo note.
+ * Without a usable seed, returns a local message (no model call).
  */
 export async function suggestPhotoNote(options: {
   photoId: string;
@@ -262,11 +279,8 @@ export async function suggestPhotoNote(options: {
   forceAi?: boolean;
 }): Promise<SuggestPhotoNoteResult> {
   const { photoId, context, forceAi = false } = options;
-  const sparse = isPhotoNoteContextSparse(context);
-  const cacheKey = photoNoteContextCacheKey(photoId, {
-    ...context,
-    // forceAi path shares cache once we have a result
-  });
+  const sparse = !hasUsablePhotoNoteSeed(context.userSeed);
+  const cacheKey = photoNoteContextCacheKey(photoId, context);
 
   const cached = suggestionCache.get(cacheKey);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
@@ -278,20 +292,13 @@ export async function suggestPhotoNote(options: {
     };
   }
 
-  if (sparse && !forceAi) {
-    const suggestion = heuristicPhotoNote(context);
-    suggestionCache.set(cacheKey, {
-      suggestion,
-      fromAi: false,
-      at: Date.now(),
-    });
+  if (sparse) {
     return {
-      suggestion,
+      suggestion: heuristicPhotoNote(context),
       fromAi: false,
       cached: false,
       sparse: true,
-      interpretation:
-        "Poca información (sin lugar, notas ni fecha). Sugerencia local; pulsa «Mejorar con IA» si quieres.",
+      interpretation: `Escribe al menos ${PHOTO_NOTE_SEED_MIN_CHARS} caracteres describiendo la foto; la IA solo complementa lo que digas.`,
     };
   }
 
@@ -302,10 +309,13 @@ export async function suggestPhotoNote(options: {
       suggestion,
       fromAi: false,
       cached: false,
-      sparse,
-      interpretation: "Sin API key; se usó una sugerencia local.",
+      sparse: false,
+      interpretation: "Sin API key; se pulió la descripción en local.",
     };
   }
+
+  // forceAi unused for gating now (seed is the gate); kept for API compat
+  void forceAi;
 
   try {
     const ai = createAiClient();
@@ -315,7 +325,7 @@ export async function suggestPhotoNote(options: {
         { role: "system", content: buildPhotoNoteSystemPrompt() },
         { role: "user", content: buildPhotoNoteUserPrompt(context) },
       ],
-      temperature: 0.2,
+      temperature: 0.25,
       max_tokens: PHOTO_NOTE_MAX_TOKENS,
     });
     const raw = completion.choices[0]?.message?.content?.trim() ?? "";
@@ -326,10 +336,10 @@ export async function suggestPhotoNote(options: {
       suggestion,
       fromAi,
       cached: false,
-      sparse,
+      sparse: false,
       interpretation: fromAi
-        ? "Sugerencia generada. Edítala antes de guardar."
-        : "La IA no devolvió texto; se usó plantilla local.",
+        ? "Nota completada a partir de tu descripción. Edítala antes de guardar."
+        : "La IA no devolvió texto; se usó una versión local de tu descripción.",
     };
   } catch {
     const suggestion = heuristicPhotoNote(context);
@@ -337,9 +347,9 @@ export async function suggestPhotoNote(options: {
       suggestion,
       fromAi: false,
       cached: false,
-      sparse,
+      sparse: false,
       interpretation:
-        "No hay conexión con la IA. Prueba más tarde o escribe a mano.",
+        "No hay conexión con la IA. Se usó una versión local de tu descripción.",
     };
   }
 }
