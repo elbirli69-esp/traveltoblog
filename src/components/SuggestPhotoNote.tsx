@@ -92,7 +92,9 @@ export default function SuggestPhotoNote({
         <p className="text-xs font-medium text-fg-secondary">
           Sugerir nota con IA
         </p>
-        <p className="text-[11px] text-fg-tertiary">Solo al pulsar · editable</p>
+        <p className="text-[11px] text-fg-tertiary">
+          Solo al pulsar · no ve la foto · editable
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Tono">

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildPhotoNoteSuggestContext,
+  buildPhotoNoteSystemPrompt,
   heuristicPhotoNote,
   isPhotoNoteContextSparse,
   parsePhotoNoteTone,
@@ -67,6 +68,12 @@ test("pickNearbyPlaceNames respects radius and linked place", () => {
 test("sanitizeSuggestionText strips wrappers", () => {
   assert.equal(sanitizeSuggestionText('"Hola mundo"'), "Hola mundo");
   assert.equal(sanitizeSuggestionText("Nota: algo"), "algo");
+});
+
+test("photo note system prompt forbids inventing visuals", () => {
+  const prompt = buildPhotoNoteSystemPrompt();
+  assert.match(prompt, /NO ves la imagen/i);
+  assert.match(prompt, /PROHIBIDO inventar/i);
 });
 
 test("aiSuggestionsEnabled respects AI_SUGGESTIONS=0", () => {

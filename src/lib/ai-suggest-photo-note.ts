@@ -185,16 +185,21 @@ export function heuristicPhotoNote(ctx: PhotoNoteSuggestContext): string {
 
 const TONE_INSTRUCTION: Record<PhotoNoteTone, string> = {
   neutro: "Tono natural y cercano, como una nota de diario.",
-  divertido: "Tono ligero y con humor suave, sin forzar chistes.",
-  poetico: "Tono evocador y breve, sin cursilería excesiva.",
+  divertido: "Tono ligero y con humor suave, sin forzar chistes ni inventar la escena.",
+  poetico:
+    "Tono evocador breve usando SOLO el lugar/fecha/notas dados; sin inventar elementos visuales.",
 };
 
 export function buildPhotoNoteSystemPrompt(): string {
   return [
     "Eres un asistente de diario de viaje.",
     "Escribe UNA nota corta (1–2 frases, máximo ~180 caracteres) en español para una foto.",
-    "Usa solo los datos del JSON. No inventes lugares, personas ni hechos que no aparezcan.",
-    "Si ya hay notas, complementa sin repetir.",
+    "IMPORTANTE: NO ves la imagen. Solo tienes el JSON de metadatos.",
+    "Usa ÚNICAMENTE hechos del JSON (viaje, autor, cuando, lugar.name, cerca, notas_existentes).",
+    "PROHIBIDO inventar: puentes, calles, edificios, personas, ropa, clima, comida, sonidos u objetos que no estén nombrados en el JSON.",
+    "PROHIBIDO rellenar con conocimiento genérico del destino (p. ej. «gueto de Cracovia», leyendas, películas) si no aparece en el JSON.",
+    "Si solo hay un nombre de lugar, una nota sobria tipo «En {lugar}, {cuando}.» basta. No dramatices la escena.",
+    "Si ya hay notas_existentes, complementa sin repetir ni ampliar con detalles visuales nuevos.",
     "No uses comillas ni prefijos como «Nota:». Solo el texto de la nota.",
   ].join(" ");
 }
@@ -310,7 +315,7 @@ export async function suggestPhotoNote(options: {
         { role: "system", content: buildPhotoNoteSystemPrompt() },
         { role: "user", content: buildPhotoNoteUserPrompt(context) },
       ],
-      temperature: 0.4,
+      temperature: 0.2,
       max_tokens: PHOTO_NOTE_MAX_TOKENS,
     });
     const raw = completion.choices[0]?.message?.content?.trim() ?? "";

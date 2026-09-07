@@ -147,9 +147,11 @@ REGLAS ESTRICTAS:
 Responde SOLO JSON: [{"url":"...","caption":"leyenda max 120 chars"}].
 ${VOICE_RULES}
 REGLAS ESTRICTAS:
+- NO ves las imágenes; solo metadatos y comentarios.
 - Basa cada caption en comentarios del usuario; reescribe sin cambiar el significado.
-- Si no hay comentarios, leyenda neutra breve ("Foto de {autor}" o el nombre del lugar si viene en los datos) sin inventar la escena.`,
-        temperature: 0.25,
+- Si no hay comentarios, leyenda neutra breve ("Foto de {autor}" o el nombre del lugar si viene en los datos).
+- PROHIBIDO inventar la escena (puentes, clima, gestos, objetos no mencionados).`,
+        temperature: 0.2,
       },
       conclusion: {
         system: `Eres un editor de diarios de viaje. Escribe SOLO la conclusión (1-2 párrafos Markdown).
@@ -185,8 +187,9 @@ Respeta indicaciones_usuario. No incluyas imágenes ni URLs.`,
       system: `Escribes pies de foto para un blog de viaje, tono cercano.
 Responde SOLO JSON: [{"url":"...","caption":"leyenda max 120 chars"}].
 ${VOICE_RULES}
-Basa cada caption en comentarios; si no hay, una línea sobria con autor o lugar conocido, sin inventar la escena.`,
-      temperature: 0.55,
+NO ves las imágenes. Basa cada caption en comentarios; si no hay, una línea sobria con autor o lugar conocido.
+PROHIBIDO inventar la escena (puentes, clima, gestos, objetos no mencionados en los datos).`,
+      temperature: 0.35,
     },
     conclusion: {
       system: `Eres un cronista de blogs de viaje. Escribe SOLO la conclusión (1-3 párrafos Markdown).
