@@ -5,7 +5,9 @@ import EditableNote from "@/components/EditableNote";
 import EmptyMemoryState from "@/components/EmptyMemoryState";
 import NoteForm from "@/components/NoteForm";
 import PhotoImage from "@/components/PhotoImage";
+import SuggestPhotoNote from "@/components/SuggestPhotoNote";
 import { DAY_PHOTOS_PREVIEW } from "@/lib/pagination";
+import { getSessionFromStorage } from "@/lib/utils";
 import {
   addDaysToKey,
   clampDateKey,
@@ -75,6 +77,11 @@ export default function TravelDayCalendar({
   const initialDate = clampDateKey(todayKey(), range.startKey, range.endKey);
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [photoNoteId, setPhotoNoteId] = useState<string | null>(null);
+  const [notePrefill, setNotePrefill] = useState<{
+    photoId: string;
+    text: string;
+    nonce: number;
+  } | null>(null);
   const noteFormRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -286,11 +293,38 @@ export default function TravelDayCalendar({
                         ))}
                       </ul>
                     )}
+                    <SuggestPhotoNote
+                      travelId={travelId}
+                      photoId={photo.id}
+                      authorAlias={
+                        getSessionFromStorage()?.alias ?? photo.user.alias
+                      }
+                      sparseHint={
+                        photoNotes.length === 0 && !photo.exifDateTime
+                      }
+                      onApplyDraft={(text) => {
+                        setNotePrefill((prev) => ({
+                          photoId: photo.id,
+                          text,
+                          nonce: (prev?.photoId === photo.id ? prev.nonce : 0) + 1,
+                        }));
+                      }}
+                    />
                     <NoteForm
                       travelId={travelId}
                       userId={userId}
                       photoId={photo.id}
                       type="PHOTO"
+                      prefillText={
+                        notePrefill?.photoId === photo.id
+                          ? notePrefill.text
+                          : undefined
+                      }
+                      prefillNonce={
+                        notePrefill?.photoId === photo.id
+                          ? notePrefill.nonce
+                          : 0
+                      }
                       onCreated={() => onNoteCreated?.()}
                     />
                   </div>
