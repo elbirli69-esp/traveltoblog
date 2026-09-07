@@ -6,6 +6,7 @@ import EmptyMemoryState from "@/components/EmptyMemoryState";
 import NoteForm from "@/components/NoteForm";
 import PhotoImage from "@/components/PhotoImage";
 import SuggestPhotoNote from "@/components/SuggestPhotoNote";
+import SuggestDaySummary from "@/components/SuggestDaySummary";
 import { DAY_PHOTOS_PREVIEW } from "@/lib/pagination";
 import { getSessionFromStorage } from "@/lib/utils";
 import {
@@ -82,6 +83,10 @@ export default function TravelDayCalendar({
     text: string;
     nonce: number;
   } | null>(null);
+  const [dayNotePrefill, setDayNotePrefill] = useState<{
+    text: string;
+    nonce: number;
+  } | null>(null);
   const noteFormRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -113,6 +118,13 @@ export default function TravelDayCalendar({
       ),
     [photos, activeDate]
   );
+
+  const sessionAlias = getSessionFromStorage()?.alias;
+  const ownDayNote = useMemo(() => {
+    if (!sessionAlias) return null;
+    const mine = notesForDay.find((n) => n.user.alias === sessionAlias);
+    return mine ? { id: mine.id, text: mine.text } : null;
+  }, [notesForDay, sessionAlias]);
 
   const daysWithContent = useMemo(() => {
     const set = new Set<string>();
@@ -359,13 +371,32 @@ export default function TravelDayCalendar({
         <div
           ref={noteFormRef}
           id="day-note-form"
-          className="border-t border-divider pt-4"
+          className="border-t border-divider pt-4 space-y-3"
         >
+          <SuggestDaySummary
+            travelId={travelId}
+            dayKey={activeDate}
+            authorAlias={sessionAlias ?? undefined}
+            ownDayNote={ownDayNote}
+            onApplyDraft={(text) => {
+              setDayNotePrefill((prev) => ({
+                text,
+                nonce: (prev?.nonce ?? 0) + 1,
+              }));
+              noteFormRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+              });
+            }}
+            onAppended={() => onNoteCreated?.()}
+          />
           <NoteForm
             travelId={travelId}
             userId={userId}
             type="DAY"
             dayDate={activeDate}
+            prefillText={dayNotePrefill?.text}
+            prefillNonce={dayNotePrefill?.nonce ?? 0}
             onCreated={() => onNoteCreated?.()}
           />
         </div>
