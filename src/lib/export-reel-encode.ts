@@ -1,8 +1,11 @@
 import {
+  AudioBufferSource,
   BufferTarget,
   CanvasSource,
   Mp4OutputFormat,
   Output,
+  QUALITY_MEDIUM,
+  canEncodeAudio,
   canEncodeVideo,
 } from "mediabunny";
 import type {
@@ -18,6 +21,10 @@ import { projectMapPoint, type ReelMapPlan,
   REEL_PLACE_FOCUS_ZOOM,
 } from "@/lib/export-reel-map";
 import { gpsTrailMapColor } from "@/lib/gps-track-map";
+import {
+  getReelAudioPreset,
+  synthesizeReelAudioBuffer,
+} from "@/lib/export/reel-audio";
 
 export type ReelEncodeProgress = {
   phase: "frames" | "encode" | "cover" | "zip";
@@ -1247,7 +1254,8 @@ export async function canEncodeInstagramReel(): Promise<boolean> {
 }
 
 /**
- * Encode an Instagram Reels-ready mute MP4 (H.264 / AVC, 9:16) in the browser.
+ * Encode an Instagram Reels-ready MP4 (H.264 / AVC, 9:16) in the browser.
+ * Audio is optional via typed presets (synthesized bed); default is mute.
  */
 export async function encodeInstagramReelMp4(
   manifest: ReelManifest,
@@ -1354,21 +1362,6 @@ export async function encodeInstagramReelMp4(
     });
   }
 
-  const target = new BufferTarget();
-  const output = new Output({
-    format: new Mp4OutputFormat({ fastStart: "in-memory" }),
-    target,
-  });
-
-  const videoSource = new CanvasSource(canvas, {
-    codec: "avc",
-    bitrate: REEL_BITRATE,
-    keyFrameInterval: 2,
-    bitrateMode: "variable",
-  });
-  output.addVideoTrack(videoSource, { frameRate: fps });
-  await output.start();
-
   const mapIntroSeconds = mapImg && mapPlan ? manifest.mapIntroSeconds : 0;
   const titleIntroSeconds = manifest.titleIntroSeconds;
   const outroSeconds = manifest.outroSeconds;
@@ -1388,6 +1381,44 @@ export async function encodeInstagramReelMp4(
   const totalSeconds =
     mapIntroSeconds + titleIntroSeconds + clipsDuration + outroSeconds;
   const totalFramesEstimate = Math.max(1, Math.round(totalSeconds * fps));
+
+  const target = new BufferTarget();
+  const output = new Output({
+    format: new Mp4OutputFormat({ fastStart: "in-memory" }),
+    target,
+  });
+
+  const videoSource = new CanvasSource(canvas, {
+    codec: "avc",
+    bitrate: REEL_BITRATE,
+    keyFrameInterval: 2,
+    bitrateMode: "variable",
+  });
+  output.addVideoTrack(videoSource, { frameRate: fps });
+
+  const audioPreset = getReelAudioPreset(manifest.audioPreset ?? "none");
+  let audioSource: AudioBufferSource | null = null;
+  if (audioPreset.id !== "none") {
+    try {
+      const canAac = await canEncodeAudio("aac");
+      if (canAac) {
+        const bed = synthesizeReelAudioBuffer(audioPreset.id, totalSeconds + 0.5);
+        if (bed) {
+          audioSource = new AudioBufferSource({
+            codec: "aac",
+            bitrate: QUALITY_MEDIUM,
+          });
+          output.addAudioTrack(audioSource);
+          await audioSource.add(bed);
+        }
+      }
+    } catch {
+      audioSource = null;
+    }
+  }
+
+  await output.start();
+
   let frameIndex = 0;
 
   const reportEncode = (message: string) => {
@@ -1605,6 +1636,7 @@ export async function encodeInstagramReelMp4(
   // 5) Strong CTA outro
   await addSegment(outroSeconds, paintOutro, "Cierre…");
 
+  audioSource?.close();
   await output.finalize();
   const buffer = target.buffer;
   if (!buffer) throw new Error("No se generó el MP4");

@@ -687,6 +687,8 @@ export function buildMagazineInteractiveScript(): string {
   var tocLinks = document.querySelectorAll(".mag-toc-link[data-day]");
   if (tocLinks.length && "IntersectionObserver" in window) {
     var days = document.querySelectorAll(".story-day");
+    var lastDayId = null;
+    var mapTimer = null;
     var obs = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
         if (!entry.isIntersecting) return;
@@ -694,6 +696,17 @@ export function buildMagazineInteractiveScript(): string {
         tocLinks.forEach(function (a) {
           a.classList.toggle("active", a.getAttribute("data-day") === id);
         });
+        // Scroll-spy → map: activate day button + fly (throttled).
+        if (id && id !== lastDayId) {
+          lastDayId = id;
+          document.querySelectorAll(".map-day-item").forEach(function (el) {
+            el.classList.toggle("active", el.getAttribute("data-day") === id);
+          });
+          if (mapTimer) clearTimeout(mapTimer);
+          mapTimer = setTimeout(function () {
+            if (window.__activateTravelDay) window.__activateTravelDay(id);
+          }, 180);
+        }
       });
     }, { rootMargin: "-30% 0px -55% 0px" });
     days.forEach(function (d) { obs.observe(d); });

@@ -141,5 +141,27 @@ export function buildExportWarnings(input: ExportWarningsInput): ExportWarning[]
     }
   }
 
+  if (input.format === "reel" && photoCount >= 30) {
+    warnings.push({
+      level: "info",
+      message: `Reel con ${photoCount} fotos candidatas: el montaje elige un subconjunto (diversidad por día/lugar). La codificación puede tardar un poco.`,
+    });
+  }
+
+  if (input.format === "pdf" && photoCount >= 35) {
+    warnings.push({
+      level: "info",
+      message: `PDF con ${photoCount} fotos: se priorizan highlights y se omiten casi-duplicados para no hinchar el álbum.`,
+    });
+  }
+
+  if (input.format === "html" && photoCount >= 25) {
+    warnings.push({
+      level: "warning",
+      message:
+        "Antes de exportar HTML único te pediremos confirmación: el archivo puede ser muy pesado para WhatsApp/email.",
+    });
+  }
+
   return warnings;
 }

@@ -46,6 +46,8 @@ export interface ExportReelDirectives {
   mapBias?: Emphasis;
   /** Special montage grammar (iPhone-style Recuerdos, etc.). */
   look?: ReelLook;
+  /** Optional synthesized audio bed (default none / mute). */
+  audioPreset?: import("@/lib/export/reel-audio").ReelAudioPresetId;
 }
 
 export interface ExportPdfDirectives {
@@ -117,6 +119,7 @@ export function defaultExportDirectives(): ExportDirectives {
       heroBias: "medium",
       mapBias: "medium",
       look: "default",
+      audioPreset: "none",
     },
     pdf: {
       imageEmphasis: "medium",
@@ -213,6 +216,11 @@ function clampReel(
     heroBias: isEmphasis(raw.heroBias) ? raw.heroBias : d.heroBias,
     ...(mapBias ? { mapBias } : {}),
     ...(look ? { look } : {}),
+    ...(raw.audioPreset === "soft-pulse" ||
+    raw.audioPreset === "travel-beat" ||
+    raw.audioPreset === "none"
+      ? { audioPreset: raw.audioPreset }
+      : {}),
   };
 }
 

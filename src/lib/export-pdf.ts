@@ -1,3 +1,4 @@
+import { pickDiverseExportPhotos } from "@/lib/export-photo-pick";
 import path from "path";
 import { mkdir, writeFile, rm } from "fs/promises";
 import { tmpdir } from "os";
@@ -125,9 +126,34 @@ export async function preparePdfAssets(
   const photosDir = path.join(workDir, "photos");
   await mkdir(photosDir, { recursive: true });
 
-  const selected = travel.photos.filter(
+  const selectedRaw = travel.photos.filter(
     (p) => p.selected && p.mediaType !== "VIDEO"
   );
+  // Cull near-dupes / place stacks when the trip is dense (keeps highlights).
+  const cullCap =
+    pdfDirectives.imageEmphasis === "high"
+      ? Math.min(selectedRaw.length, 36)
+      : pdfDirectives.imageEmphasis === "low"
+        ? Math.min(selectedRaw.length, 48)
+        : selectedRaw.length > 40
+          ? 40
+          : selectedRaw.length;
+  const selectedIds = new Set(
+    pickDiverseExportPhotos(
+      selectedRaw.map((p) => ({
+        id: p.id,
+        highlightScore: p.highlightScore ?? 5,
+        placeName: p.place?.name ?? null,
+        placeId: p.placeId ?? null,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        exifDateTime: p.exifDateTime,
+        hasCaption: (p.notes?.length ?? 0) > 0,
+      })),
+      { max: cullCap, maxPerPlace: pdfDirectives.imageEmphasis === "high" ? 2 : 3 }
+    ).map((p) => p.id)
+  );
+  const selected = selectedRaw.filter((p) => selectedIds.has(p.id));
   const photos: PdfPhotoAsset[] = [];
   let index = 0;
 

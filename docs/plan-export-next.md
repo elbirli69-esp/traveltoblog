@@ -27,9 +27,11 @@ Más **variedad percibida** y más **confianza** al exportar, sin romper la regl
 
 | Superficie | Catálogo | Brief → knobs | Chip «Aplicar» | Persistencia brief |
 |------------|----------|---------------|----------------|--------------------|
-| HTML | 4 plantillas + structure lock | Sí | Sí | No (sesión) |
-| Reel | 6 presets de montaje | Sí | Sí | No (sesión) |
-| PDF | Temas legacy | Débil / parcial | No | No |
+| HTML | 4 plantillas + theme/type packs | Sí | Sí | Sí (Travel) |
+| Reel | 7 presets + audio tipado opcional | Sí | Sí | Sí |
+| PDF | 5 looks + type pack override | Sí | Sí | Sí |
+
+Ver también calidad 1–6: `plan-export-quality-16.md`.
 
 ---
 

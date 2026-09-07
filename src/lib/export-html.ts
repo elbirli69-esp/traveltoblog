@@ -1701,6 +1701,16 @@ function buildMapScript(
       map.flyToBounds(b, { padding: [52, 52], duration: 1.15, maxZoom: group.id === "all" ? 12 : 15 });
     }
 
+    window.__activateTravelDay = function (dayId) {
+      if (!dayId) return;
+      var group = dayGroups.find(function (g) { return g.id === dayId; });
+      if (!group) return;
+      document.querySelectorAll(".map-day-item").forEach(function (el) {
+        el.classList.toggle("active", el.getAttribute("data-day") === dayId);
+      });
+      flyToGroup(group);
+    };
+
     document.querySelectorAll(".map-day-item").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var dayId = btn.getAttribute("data-day");

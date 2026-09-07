@@ -29,6 +29,18 @@ import {
   type ReelPacing,
   type ReelTransitionStyle,
 } from "@/lib/export-directives";
+import {
+  exportPlaceKey,
+  isNearDuplicateReelCandidate,
+} from "@/lib/export-photo-pick";
+import {
+  getReelAudioPreset,
+  parseReelAudioPresetId,
+  snapDurationToBpm,
+  type ReelAudioPresetId,
+} from "@/lib/export/reel-audio";
+
+export { isNearDuplicateReelCandidate } from "@/lib/export-photo-pick";
 
 /** Instagram Reels recommended master: vertical 9:16 H.264 MP4. */
 export const REEL_WIDTH = 1080;
@@ -205,6 +217,9 @@ export interface ReelManifest {
   look?: import("@/lib/export-directives").ReelLook;
   /** When set, this Reel covers one calendar day (not the whole trip). */
   scopeDayKey?: string | null;
+  /** Typed audio bed; none = mute MP4. */
+  audioPreset?: ReelAudioPresetId;
+  audioBpm?: number | null;
 }
 
 /** Resolved knobs used while building a reel from optional brief directives. */
@@ -218,6 +233,7 @@ export interface ReelBuildOptions {
   heroBias: ExportReelDirectives["heroBias"];
   mapBias: Emphasis;
   look: import("@/lib/export-directives").ReelLook;
+  audioPreset: ReelAudioPresetId;
 }
 
 export function resolveReelBuildOptions(
@@ -227,6 +243,7 @@ export function resolveReelBuildOptions(
   const src = reel ?? d;
   const look = src.look === "memories" ? "memories" : "default";
   const maxFade = look === "memories" ? 0.9 : 0.55;
+  const audioPreset = parseReelAudioPresetId(src.audioPreset);
   return {
     targetPhotoCount: src.targetPhotoCount,
     pacing: src.pacing ?? d.pacing,
@@ -242,6 +259,7 @@ export function resolveReelBuildOptions(
     heroBias: src.heroBias ?? d.heroBias,
     mapBias: src.mapBias ?? d.mapBias ?? "medium",
     look,
+    audioPreset,
   };
 }
 
@@ -662,6 +680,7 @@ export function selectReelFrames(
           targetPhotoCount: buildOpts.targetPhotoCount,
           mapBias: buildOpts.mapBias ?? "medium",
           look: buildOpts.look ?? "default",
+          audioPreset: buildOpts.audioPreset ?? "none",
         }
       : null
   );
@@ -733,6 +752,9 @@ export function selectReelFrames(
     exifDateTime?: Date | string | null;
   }> = [];
   const usedDayNotes = new Set<string>();
+  const placeCounts = new Map<string, number>();
+  // Soft place diversity: avoid stacking many clips from one café/spot.
+  const maxPerPlace = Math.max(2, Math.ceil(maxFrames / Math.max(dayKeys.length, 3)));
   // Higher bar: prefer captioned / placed / high-score shots when the pool is rich.
   const minPriority =
     opts.heroBias === "high"
@@ -770,6 +792,11 @@ export function selectReelFrames(
     ) {
       return false;
     }
+    const pk = exportPlaceKey(candidate.placeName, null);
+    if (pk && !allowWeak) {
+      const used = placeCounts.get(pk) ?? 0;
+      if (used >= maxPerPlace) return false;
+    }
     pickedIds.add(candidate.id);
     pickedMeta.push({
       id: candidate.id,
@@ -779,6 +806,7 @@ export function selectReelFrames(
       longitude: candidate.longitude,
       exifDateTime: candidate.exifDateTime,
     });
+    if (pk) placeCounts.set(pk, (placeCounts.get(pk) ?? 0) + 1);
     const realDay = dayKey === "_sin_fecha" ? null : dayKey;
     let dayNote: string | null = null;
     if (
@@ -1189,7 +1217,8 @@ function fitClipDurations(
   mapIntroSeconds: number,
   titleIntroSeconds: number,
   outroSeconds: number,
-  pacing: ReelPacing = "balanced"
+  pacing: ReelPacing = "balanced",
+  audioBpm: number | null = null
 ): ReelFramePlan[] {
   if (frames.length === 0) return frames;
 
@@ -1198,20 +1227,33 @@ function fitClipDurations(
   let beat = 0;
   const paced = frames.map((f) => {
     if (f.role === "hook") {
-      return { ...f, durationSeconds: REEL_HOOK_SECONDS };
+      return {
+        ...f,
+        durationSeconds: audioBpm
+          ? snapDurationToBpm(REEL_HOOK_SECONDS, audioBpm, 1.2)
+          : REEL_HOOK_SECONDS,
+      };
     }
     if (f.role === "chapter") {
-      return { ...f, durationSeconds: REEL_CHAPTER_SECONDS };
+      return {
+        ...f,
+        durationSeconds: audioBpm
+          ? snapDurationToBpm(REEL_CHAPTER_SECONDS, audioBpm, 1.4)
+          : REEL_CHAPTER_SECONDS,
+      };
     }
     const pattern = patternList[beat % patternList.length]!;
     beat += 1;
     const base = f.hero ? Math.max(pattern, pacing === "punchy" ? 1.5 : 1.85) : pattern;
     const isMap = f.treatment === "mapFocus" || f.treatment === "mapInset";
-    const boosted = isMap
+    let boosted = isMap
       ? Math.max(base, f.treatment === "mapFocus" ? (f.hero ? 3.4 : 3.0) : f.hero ? 3.0 : 2.6)
       : f.treatment === "story"
         ? Math.max(base, f.hero ? 1.85 : 1.15)
         : base;
+    if (audioBpm) {
+      boosted = snapDurationToBpm(boosted, audioBpm, isMap ? 2.4 : 1.1);
+    }
     return { ...f, durationSeconds: boosted };
   });
 
@@ -1283,95 +1325,6 @@ function pickBestCoverFrame(frames: ReelFramePlan[]): ReelFramePlan | null {
       ((b.highlightScore ?? 5) >= 8 ? 2 : 0);
     return scoreB - scoreA;
   })[0]!;
-}
-
-/** Approx haversine distance in meters (good enough for near-dupe filtering). */
-function haversineMeters(
-  aLat: number,
-  aLng: number,
-  bLat: number,
-  bLng: number
-): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const R = 6371000;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const lat1 = toRad(aLat);
-  const lat2 = toRad(bLat);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
-/**
- * True when candidate is too similar to an already-picked frame
- * (close GPS burst, or same place name + close capture time).
- * Identical clock time alone is not enough — multi-day trips often share hours.
- */
-export function isNearDuplicateReelCandidate(
-  candidate: {
-    id: string;
-    placeName?: string | null;
-    latitude?: number | null;
-    longitude?: number | null;
-    exifDateTime?: Date | string | null;
-  },
-  picked: Array<{
-    photoId?: string;
-    placeName?: string | null;
-    latitude?: number | null;
-    longitude?: number | null;
-    /** Some plan shapes store capture time on the source photo only — optional. */
-    exifDateTime?: Date | string | null;
-  }>,
-  opts: { maxMeters?: number; maxSeconds?: number } = {}
-): boolean {
-  const maxMeters = opts.maxMeters ?? 45;
-  const maxSeconds = opts.maxSeconds ?? 90;
-  const candPlace = candidate.placeName?.trim().toLowerCase() || null;
-  const candTime = candidate.exifDateTime
-    ? new Date(candidate.exifDateTime).getTime()
-    : null;
-
-  for (const prev of picked) {
-    if (prev.photoId && prev.photoId === candidate.id) return true;
-    const prevPlace = prev.placeName?.trim().toLowerCase() || null;
-    const samePlace = Boolean(candPlace && prevPlace && candPlace === prevPlace);
-
-    let closeGps = false;
-    if (
-      candidate.latitude != null &&
-      candidate.longitude != null &&
-      prev.latitude != null &&
-      prev.longitude != null
-    ) {
-      const meters = haversineMeters(
-        candidate.latitude,
-        candidate.longitude,
-        prev.latitude,
-        prev.longitude
-      );
-      closeGps = meters <= maxMeters;
-    }
-
-    let closeTime = false;
-    if (candTime != null && prev.exifDateTime) {
-      const prevTime = new Date(prev.exifDateTime).getTime();
-      if (Number.isFinite(prevTime) && Math.abs(candTime - prevTime) <= maxSeconds * 1000) {
-        closeTime = true;
-      }
-    }
-
-    // Near-dupe only for real clusters:
-    // - close GPS (burst / same spot), optionally reinforced by time
-    // - same place name + close capture time
-    // Time alone must NOT skip — fixtures and multi-day trips often share
-    // the same clock hour across different locations.
-    if (closeGps) return true;
-    if (samePlace && closeTime) return true;
-  }
-  return false;
 }
 
 function buildHookFrame(best: ReelFramePlan): ReelFramePlan {
@@ -1551,13 +1504,18 @@ export function buildReelManifest(input: {
     frames = memories ? frames : insertDayChapters(frames);
   }
 
+  const audioPreset = buildOpts.audioPreset;
+  const audioMeta = getReelAudioPreset(audioPreset);
+  const audioBpm = audioMeta.bpm;
+
   frames = fitClipDurations(
     frames,
     durationSeconds,
     mapIntroSeconds,
     titleIntroSeconds,
     outroSeconds,
-    buildOpts.pacing
+    buildOpts.pacing,
+    audioBpm
   );
   frames = fitCaptionsToClipHolds(frames);
   frames = applyReelCaptionMode(frames, buildOpts.captionMode);
@@ -1622,6 +1580,8 @@ export function buildReelManifest(input: {
       : null,
     look: buildOpts.look,
     scopeDayKey,
+    audioPreset,
+    audioBpm,
   };
 }
 
@@ -1643,7 +1603,11 @@ export function reelReadmeText(manifest: ReelManifest): string {
 Archivo: instagram-reel.mp4
 Formato: MP4 H.264, ${manifest.width}×${manifest.height} (9:16), ${manifest.fps} fps
 Duración objetivo: ~${manifest.durationSeconds} s
-${scopeLine}Audio: sin pista (añade música en Instagram; el preset Recuerdos aún no lleva audio)
+${scopeLine}Audio: ${
+    manifest.audioPreset && manifest.audioPreset !== "none"
+      ? `cama tipada «${manifest.audioPreset}»${manifest.audioBpm ? ` (~${manifest.audioBpm} BPM)` : ""} (sintetizada; puedes sustituirla en Instagram)`
+      : "sin pista (añade música en Instagram; presets soft-pulse / travel-beat opcionales)"
+  }
 Estructura: ${
     manifest.look === "memories"
       ? "gancho → mapa cinematográfico → fotos con fundidos → cierre suave"
