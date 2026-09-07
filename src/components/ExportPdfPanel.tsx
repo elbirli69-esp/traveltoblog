@@ -19,6 +19,11 @@ import {
   type PdfPresetId,
 } from "@/lib/export/pdf-preset-catalog";
 import {
+  TYPE_PACK_CATALOG,
+  type TypePackId,
+} from "@/lib/export/type-packs";
+import type { ExportWarning } from "@/lib/export-warnings";
+import {
   fetchTravelExportPrefs,
   saveTravelExportPrefs,
 } from "@/lib/export-prefs";
@@ -74,6 +79,8 @@ export default function ExportPdfPanel({
     differsFromUi: boolean;
   } | null>(null);
   const [coverPhotoId, setCoverPhotoId] = useState<string | null>(null);
+  const [typePackId, setTypePackId] = useState<TypePackId | "">("");
+  const [warnings, setWarnings] = useState<ExportWarning[]>([]);
   const [loading, setLoading] = useState(false);
   const [pdfAvailable, setPdfAvailable] = useState<boolean | null>(null);
   const [currentStep, setCurrentStep] = useState<PdfPipelineStep | null>(null);
@@ -109,7 +116,26 @@ export default function ExportPdfPanel({
         const entry = PDF_PRESETS.find((p) => p.id === id);
         if (entry) setTemplate(entry.theme);
       }
+      if (prefs.htmlTypePackId) {
+        const pack = TYPE_PACK_CATALOG.find((p) => p.id === prefs.htmlTypePackId);
+        if (pack) setTypePackId(pack.id);
+      }
     });
+    return () => {
+      cancelled = true;
+    };
+  }, [travelId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`/api/travels/${travelId}/export-warnings?format=pdf`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) setWarnings(data.warnings ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setWarnings([]);
+      });
     return () => {
       cancelled = true;
     };
@@ -119,6 +145,7 @@ export default function ExportPdfPanel({
     (patch: {
       exportBrief?: string | null;
       pdfPresetId?: string | null;
+      htmlTypePackId?: string | null;
       exportBriefCache?: string | null;
     }) => {
       void saveTravelExportPrefs(travelId, patch);
@@ -200,6 +227,7 @@ const handleInterpret = async () => {
           coverPhotoId,
           presetId,
           brief: brief.trim() || undefined,
+          ...(typePackId ? { typePack: typePackId } : {}),
         }),
       });
 
@@ -284,7 +312,7 @@ const handleInterpret = async () => {
       setCurrentStep(null);
       setStepMessage(null);
     }
-  }, [brief, coverPhotoId, format, presetId, template, travelId]);
+  }, [brief, coverPhotoId, format, presetId, template, travelId, typePackId]);
 
   return (
     <div className="space-y-4">
@@ -344,6 +372,34 @@ const handleInterpret = async () => {
           })}
         </div>
       </div>
+
+      <label className="block text-sm">
+        <span className="mb-1.5 block font-semibold text-fg-secondary">Tipografía</span>
+        <select
+          value={typePackId}
+          onChange={(e) => {
+            const next = e.target.value as TypePackId | "";
+            setTypePackId(next);
+            persistPdfPrefs({
+              htmlTypePackId: next || null,
+              pdfPresetId: presetId,
+              exportBrief: brief.trim() || null,
+            });
+          }}
+          disabled={loading || interpreting}
+          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg focus:border-accent-cyan focus:outline-none"
+        >
+          <option value="">Por defecto del look</option>
+          {TYPE_PACK_CATALOG.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label} — {p.tagline}
+            </option>
+          ))}
+        </select>
+        <span className="mt-1 block text-xs text-fg-secondary">
+          Opcional: sustituye la tipografía tipada del preset elegido.
+        </span>
+      </label>
 
       <div className="space-y-2">
         <label htmlFor="pdf-export-brief" className="block text-sm font-semibold text-fg-secondary">
@@ -521,6 +577,21 @@ const handleInterpret = async () => {
           <code className="text-xs">Dockerfile.bookworm</code> (incluido en docker-compose), vuelve a
           generar el contenedor en el NAS.
         </p>
+      )}
+
+      {warnings.length > 0 && (
+        <ul className="space-y-2">
+          {warnings.map((w, i) => (
+            <li
+              key={i}
+              className={`callout text-sm ${
+                w.level === "warning" ? "callout-warning" : "callout-success"
+              }`}
+            >
+              {w.message}
+            </li>
+          ))}
+        </ul>
       )}
 
       <button
