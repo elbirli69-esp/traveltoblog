@@ -1,6 +1,7 @@
 /**
  * On-demand day summary suggestions (Phase 2).
  * Manual only — one completion, text context, no vision.
+ * The user provides a brief seed; the model complements it with the day's facts.
  */
 
 import { createAiClient, getAiConfig } from "@/lib/ai";
@@ -12,6 +13,9 @@ import type { PlaceType } from "@prisma/client";
 const MAX_BULLETS = 8;
 const MAX_PLACE_NAMES = 5;
 const BRIEF_MAX = 400;
+const MAX_SEED_CHARS = 400;
+/** Minimum seed length before Completar con IA is allowed. */
+export const DAY_SUMMARY_SEED_MIN_CHARS = 12;
 /** ~180 tokens output */
 export const DAY_SUMMARY_MAX_TOKENS = 180;
 
@@ -20,8 +24,10 @@ export type DaySummaryContext = {
   dayKey: string;
   dayLabel: string;
   authorAlias: string;
+  /** Brief outline written by the user — required to call the model. */
+  userSeed: string;
   photoCount: number;
-  places: Array<{ name: string; type: string }>;
+  places: Array<{ name: string; type: string; tipoLabel: string }>;
   bullets: string[];
   journalBrief: string | null;
 };
@@ -32,10 +38,25 @@ export type DaySummarySources = {
   photoCount: number;
 };
 
-export function isDaySummaryEmpty(ctx: DaySummaryContext): boolean {
+export function normalizeDaySummarySeed(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  return raw.replace(/\s+/g, " ").trim().slice(0, MAX_SEED_CHARS);
+}
+
+export function hasUsableDaySummarySeed(seed: string): boolean {
+  return normalizeDaySummarySeed(seed).length >= DAY_SUMMARY_SEED_MIN_CHARS;
+}
+
+/** Day has no places / notes / photos to weave in (seed may still exist). */
+export function isDaySummaryFactsEmpty(ctx: DaySummaryContext): boolean {
   return (
     ctx.photoCount === 0 && ctx.places.length === 0 && ctx.bullets.length === 0
   );
+}
+
+/** @deprecated Prefer isDaySummaryFactsEmpty — kept for older call sites/tests. */
+export function isDaySummaryEmpty(ctx: DaySummaryContext): boolean {
+  return isDaySummaryFactsEmpty(ctx);
 }
 
 export function parseDayKey(raw: unknown): string | null {
@@ -48,6 +69,7 @@ export function buildDaySummaryContext(input: {
   travelTitle: string;
   dayKey: string;
   authorAlias: string;
+  userSeed: string;
   photoCount: number;
   places: Array<{ name: string; type: string }>;
   noteBullets: string[];
@@ -59,11 +81,13 @@ export function buildDaySummaryContext(input: {
     dayKey: input.dayKey,
     dayLabel: formatDateKey(input.dayKey, "long"),
     authorAlias: input.authorAlias.trim().slice(0, 40) || "Viajero",
+    userSeed: normalizeDaySummarySeed(input.userSeed),
     photoCount: Math.max(0, input.photoCount),
     places: input.places
       .map((p) => ({
         name: p.name.trim().slice(0, 60),
         type: p.type,
+        tipoLabel: placeLabel(p.type as PlaceType) || p.type || "Lugar",
       }))
       .filter((p) => p.name)
       .slice(0, MAX_PLACE_NAMES),
@@ -166,6 +190,7 @@ export function daySummaryCacheKey(
   return JSON.stringify({
     travelId,
     day: ctx.dayKey,
+    seed: ctx.userSeed,
     title: ctx.travelTitle,
     alias: ctx.authorAlias,
     photos: ctx.photoCount,
@@ -175,35 +200,58 @@ export function daySummaryCacheKey(
   });
 }
 
+/**
+ * Local fallback: expand the user seed with place names / photo count.
+ * Never invents anecdotes beyond seed + listed facts.
+ */
 export function heuristicDaySummary(ctx: DaySummaryContext): string {
-  if (isDaySummaryEmpty(ctx)) {
-    return `Sin actividad registrada el ${ctx.dayLabel}.`;
+  const seed = ctx.userSeed;
+  if (!seed) {
+    if (isDaySummaryFactsEmpty(ctx)) {
+      return `Sin actividad registrada el ${ctx.dayLabel}. Escribe unas líneas sobre el día.`;
+    }
+    const placeNames = ctx.places.map((p) => p.name);
+    const parts: string[] = [];
+    if (placeNames.length) parts.push(`Pasamos por ${placeNames.join(", ")}`);
+    if (ctx.photoCount > 0) {
+      parts.push(
+        `${ctx.photoCount} foto${ctx.photoCount === 1 ? "" : "s"} este día`
+      );
+    }
+    if (ctx.bullets[0]) parts.push(clampNoteText(ctx.bullets[0], 100));
+    return parts.length
+      ? `${parts.join(". ")}.`
+      : `Día ${ctx.dayLabel} del viaje «${ctx.travelTitle}».`;
   }
+
+  const endsWell = /[.!?…]$/.test(seed);
+  let core = endsWell ? seed : `${seed}.`;
   const placeNames = ctx.places.map((p) => p.name);
-  const parts: string[] = [];
-  if (placeNames.length) {
-    parts.push(`Pasamos por ${placeNames.join(", ")}`);
+  const missingPlaces = placeNames.filter(
+    (n) => !core.toLowerCase().includes(n.toLowerCase())
+  );
+  if (missingPlaces.length && seed.length < 220) {
+    core = `${core.replace(/\.$/, "")} Pasamos por ${missingPlaces.join(", ")}.`;
+  } else if (ctx.photoCount > 0 && seed.length < 180) {
+    core = `${core.replace(/\.$/, "")} (${ctx.photoCount} foto${
+      ctx.photoCount === 1 ? "" : "s"
+    }).`;
   }
-  if (ctx.photoCount > 0) {
-    parts.push(
-      `${ctx.photoCount} foto${ctx.photoCount === 1 ? "" : "s"} este día`
-    );
-  }
-  if (ctx.bullets[0]) {
-    parts.push(clampNoteText(ctx.bullets[0], 100));
-  }
-  if (parts.length === 0) {
-    return `Día ${ctx.dayLabel} del viaje «${ctx.travelTitle}».`;
-  }
-  return `${parts.join(". ")}.`;
+  if (core.length > 500) core = `${core.slice(0, 499).trimEnd()}…`;
+  return core;
 }
 
 export function buildDaySummarySystemPrompt(): string {
   return [
     "Eres un asistente de diario de viaje.",
-    "Escribe un resumen breve del día en español (2–4 frases, máximo ~400 caracteres).",
-    "Usa solo los datos del JSON. No inventes lugares ni anécdotas.",
-    "Si hay bullets/notas, intégralos sin copiarlos literalmente todos.",
+    "El usuario te da una idea breve del día (campo «semilla»).",
+    "COMPLEMENTA y COMPLETA esa semilla en un resumen corto en español (2–4 frases, máximo ~400 caracteres).",
+    "Usa la semilla como hilo conductor. Integra SOLO hechos del JSON: lugares (nombre/tipoLabel), notas, número de fotos, fecha (dia), brief_viaje si aporta contexto del viaje.",
+    "Si hay lugares listados y la semilla no los nombra, menciónalos con naturalidad cuando encajen.",
+    "Si hay notas, intégralas sin copiarlas todas literalmente y sin añadir detalles que no estén ahí.",
+    "PROHIBIDO inventar: anécdotas, clima, comidas, emociones ajenas, monumentos o barrios que no estén en la semilla ni en lugares/notas.",
+    "PROHIBIDO rellenar con conocimiento genérico del destino (leyendas, películas, guías turísticas).",
+    "Si la semilla ya es completa, púlila con suavidad; no la sustituyas por otra historia.",
     "Sin título ni prefijo «Resumen:». Solo el párrafo.",
   ].join(" ");
 }
@@ -211,6 +259,7 @@ export function buildDaySummarySystemPrompt(): string {
 export function buildDaySummaryUserPrompt(ctx: DaySummaryContext): string {
   return JSON.stringify(
     {
+      semilla: ctx.userSeed,
       viaje: ctx.travelTitle,
       dia: ctx.dayLabel,
       dayKey: ctx.dayKey,
@@ -218,7 +267,8 @@ export function buildDaySummaryUserPrompt(ctx: DaySummaryContext): string {
       fotos: ctx.photoCount,
       lugares: ctx.places.map((p) => ({
         nombre: p.name,
-        tipo: placeLabel(p.type as PlaceType) || p.type,
+        tipo: p.type,
+        tipoLabel: p.tipoLabel,
       })),
       notas: ctx.bullets,
       brief_viaje: ctx.journalBrief,
@@ -264,7 +314,8 @@ export async function suggestDaySummary(options: {
   sources: DaySummarySources;
 }): Promise<SuggestDaySummaryResult> {
   const { travelId, context, sources } = options;
-  const empty = isDaySummaryEmpty(context);
+  const factsEmpty = isDaySummaryFactsEmpty(context);
+  const seedMissing = !hasUsableDaySummarySeed(context.userSeed);
   const key = daySummaryCacheKey(travelId, context);
 
   const hit = cache.get(key);
@@ -273,21 +324,19 @@ export async function suggestDaySummary(options: {
       suggestion: hit.suggestion,
       fromAi: hit.fromAi,
       cached: true,
-      empty,
+      empty: factsEmpty,
       sources,
     };
   }
 
-  if (empty) {
-    const suggestion = heuristicDaySummary(context);
-    cache.set(key, { suggestion, fromAi: false, at: Date.now() });
+  if (seedMissing) {
     return {
-      suggestion,
+      suggestion: heuristicDaySummary(context),
       fromAi: false,
       cached: false,
-      empty: true,
+      empty: factsEmpty,
       sources,
-      interpretation: "Día sin fotos, lugares ni notas — sin llamar a la IA.",
+      interpretation: `Escribe al menos ${DAY_SUMMARY_SEED_MIN_CHARS} caracteres sobre el día; la IA solo complementa con lugares, fotos y notas registradas.`,
     };
   }
 
@@ -298,9 +347,9 @@ export async function suggestDaySummary(options: {
       suggestion,
       fromAi: false,
       cached: false,
-      empty: false,
+      empty: factsEmpty,
       sources,
-      interpretation: "Sin API key; se usó un resumen local.",
+      interpretation: "Sin API key; se pulió tu idea con los datos del día en local.",
     };
   }
 
@@ -312,7 +361,7 @@ export async function suggestDaySummary(options: {
         { role: "system", content: buildDaySummarySystemPrompt() },
         { role: "user", content: buildDaySummaryUserPrompt(context) },
       ],
-      temperature: 0.4,
+      temperature: 0.25,
       max_tokens: DAY_SUMMARY_MAX_TOKENS,
     });
     const raw = completion.choices[0]?.message?.content?.trim() ?? "";
@@ -324,11 +373,11 @@ export async function suggestDaySummary(options: {
       suggestion,
       fromAi,
       cached: false,
-      empty: false,
+      empty: factsEmpty,
       sources,
       interpretation: fromAi
-        ? "Resumen generado. Edítalo antes de guardar."
-        : "La IA no devolvió texto; se usó plantilla local.",
+        ? "Resumen completado a partir de tu idea y los datos del día. Edítalo antes de guardar."
+        : "La IA no devolvió texto; se usó una versión local de tu idea.",
     };
   } catch {
     const suggestion = heuristicDaySummary(context);
@@ -336,10 +385,10 @@ export async function suggestDaySummary(options: {
       suggestion,
       fromAi: false,
       cached: false,
-      empty: false,
+      empty: factsEmpty,
       sources,
       interpretation:
-        "No hay conexión con la IA. Prueba más tarde o escribe a mano.",
+        "No hay conexión con la IA. Se usó una versión local de tu idea.",
     };
   }
 }

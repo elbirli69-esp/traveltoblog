@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DAY_SUMMARY_SEED_MIN_CHARS } from "@/lib/ai-suggest-day-summary";
 
 interface SuggestDaySummaryProps {
   travelId: string;
@@ -20,13 +21,23 @@ export default function SuggestDaySummary({
   onApplyDraft,
   onAppended,
 }: SuggestDaySummaryProps) {
+  const [seed, setSeed] = useState("");
   const [loading, setLoading] = useState(false);
   const [appending, setAppending] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const seedReady = seed.trim().length >= DAY_SUMMARY_SEED_MIN_CHARS;
+
   const runSuggest = async () => {
+    if (!seedReady) {
+      setError(
+        `Cuenta el día en al menos ${DAY_SUMMARY_SEED_MIN_CHARS} caracteres; la IA solo complementa con lugares, fotos y notas.`
+      );
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setMeta(null);
@@ -34,7 +45,12 @@ export default function SuggestDaySummary({
       const res = await fetch("/api/ai/suggest-day-summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ travelId, dayKey, authorAlias }),
+        body: JSON.stringify({
+          travelId,
+          dayKey,
+          authorAlias,
+          userSeed: seed.trim(),
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -46,20 +62,20 @@ export default function SuggestDaySummary({
         sources?: { placeCount: number; noteCount: number; photoCount: number };
       };
       if (!res.ok) {
-        throw new Error(data.error ?? "No se pudo resumir el día");
+        throw new Error(data.error ?? "No se pudo completar el resumen");
       }
       setDraft(data.suggestion ?? "");
       const bits: string[] = [];
       if (data.interpretation) bits.push(data.interpretation);
       if (data.sources) {
         bits.push(
-          `Fuentes: ${data.sources.photoCount} fotos, ${data.sources.placeCount} lugares, ${data.sources.noteCount} notas.`
+          `Datos del día: ${data.sources.photoCount} fotos, ${data.sources.placeCount} lugares, ${data.sources.noteCount} notas.`
         );
       }
       if (data.cached) bits.push("Desde caché.");
       setMeta(bits.join(" ") || null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al resumir");
+      setError(err instanceof Error ? err.message : "Error al completar");
       setDraft(null);
     } finally {
       setLoading(false);
@@ -95,18 +111,42 @@ export default function SuggestDaySummary({
     <div className="mb-4 space-y-2 rounded-lg border border-[var(--border)] bg-[var(--surface-inset)] px-3 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-medium text-fg-secondary">
-          Resumir este día con IA
+          Completar resumen del día con IA
         </p>
-        <p className="text-[11px] text-fg-tertiary">Solo al pulsar · editable</p>
+        <p className="text-[11px] text-fg-tertiary">
+          Tú cuentas · lugares/notas del día · editable
+        </p>
+      </div>
+
+      <div>
+        <label
+          className="mb-1 block text-xs font-medium text-fg-secondary"
+          htmlFor={`ai-day-seed-${dayKey}`}
+        >
+          Qué pasó este día (breve)
+        </label>
+        <textarea
+          id={`ai-day-seed-${dayKey}`}
+          value={seed}
+          onChange={(e) => setSeed(e.target.value)}
+          rows={2}
+          placeholder="Ej. Mañana en el casco antiguo, tarde de museo y cena tranquila"
+          className="form-input input-focus text-sm"
+          disabled={loading}
+        />
+        <p className="mt-1 text-[11px] text-fg-tertiary">
+          Mínimo {DAY_SUMMARY_SEED_MIN_CHARS} caracteres. La IA añade lugares,
+          fotos y notas ya registradas — sin inventar el día.
+        </p>
       </div>
 
       <button
         type="button"
         onClick={() => void runSuggest()}
-        disabled={loading}
+        disabled={loading || !seedReady}
         className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
       >
-        {loading ? "Resumiendo…" : "Resumir este día"}
+        {loading ? "Completando…" : "Completar con IA"}
       </button>
 
       {error && <p className="text-xs text-danger">{error}</p>}

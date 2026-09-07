@@ -4,6 +4,9 @@ import { aiSuggestionsEnabled } from "@/lib/ai-suggestions-enabled";
 import {
   buildDaySummaryContext,
   collectDaySummaryInputs,
+  DAY_SUMMARY_SEED_MIN_CHARS,
+  hasUsableDaySummarySeed,
+  normalizeDaySummarySeed,
   parseDayKey,
   suggestDaySummary,
 } from "@/lib/ai-suggest-day-summary";
@@ -21,10 +24,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { travelId, dayKey: dayKeyRaw, authorAlias } = body as {
+    const {
+      travelId,
+      dayKey: dayKeyRaw,
+      authorAlias,
+      userSeed: userSeedRaw,
+    } = body as {
       travelId?: string;
       dayKey?: string;
       authorAlias?: string;
+      userSeed?: string;
       language?: string;
     };
 
@@ -32,6 +41,16 @@ export async function POST(request: NextRequest) {
     if (!travelId?.trim() || !dayKey) {
       return NextResponse.json(
         { error: "travelId y dayKey (YYYY-MM-DD) son obligatorios" },
+        { status: 400 }
+      );
+    }
+
+    const userSeed = normalizeDaySummarySeed(userSeedRaw);
+    if (!hasUsableDaySummarySeed(userSeed)) {
+      return NextResponse.json(
+        {
+          error: `Escribe una idea breve del día (mínimo ${DAY_SUMMARY_SEED_MIN_CHARS} caracteres). La IA solo la complementa con lugares, fotos y notas.`,
+        },
         { status: 400 }
       );
     }
@@ -85,6 +104,7 @@ export async function POST(request: NextRequest) {
       dayKey,
       authorAlias:
         (typeof authorAlias === "string" && authorAlias.trim()) || "Viajero",
+      userSeed,
       photoCount: collected.photoCount,
       places: collected.places,
       noteBullets: collected.noteBullets,
