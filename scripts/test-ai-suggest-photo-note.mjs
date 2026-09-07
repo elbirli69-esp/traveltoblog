@@ -76,25 +76,30 @@ test("sanitizeSuggestionText strips wrappers", () => {
   assert.equal(sanitizeSuggestionText("Nota: algo"), "algo");
 });
 
-test("photo note prompts are seed-first and forbid inventing visuals", () => {
+test("photo note prompts weave place/location and forbid inventing visuals", () => {
   const prompt = buildPhotoNoteSystemPrompt();
   assert.match(prompt, /semilla/i);
   assert.match(prompt, /COMPLEMENTAR/i);
+  assert.match(prompt, /lugar/i);
   assert.match(prompt, /NO ves la imagen/i);
   assert.match(prompt, /PROHIBIDO inventar/i);
 
   const ctx = buildPhotoNoteSuggestContext({
     travelTitle: "Viaje",
     authorAlias: "A",
-    userSeed: "Puente de madera sobre el canal",
+    userSeed: "Café en terraza",
     exifDateTime: null,
-    place: null,
+    place: { name: "Wawel", type: "VIEWPOINT" },
+    hasGps: true,
     existingNotes: [],
-    nearbyPlaceNames: [],
+    nearbyPlaceNames: ["Rynek"],
     tone: "neutro",
   });
   const user = buildPhotoNoteUserPrompt(ctx);
-  assert.match(user, /"semilla":"Puente de madera sobre el canal"/);
+  assert.match(user, /"semilla":"Café en terraza"/);
+  assert.match(user, /"nombre":"Wawel"/);
+  assert.match(user, /"tiene_gps":true/);
+  assert.match(user, /"cerca":\["Rynek"\]/);
 });
 
 test("aiSuggestionsEnabled respects AI_SUGGESTIONS=0", () => {

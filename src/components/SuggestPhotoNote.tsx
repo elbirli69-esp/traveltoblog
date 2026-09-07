@@ -111,7 +111,9 @@ export default function SuggestPhotoNote({
           disabled={loading}
         />
         <p className="mt-1 text-[11px] text-fg-tertiary">
-          Mínimo {PHOTO_NOTE_SEED_MIN_CHARS} caracteres. Sin esto, la IA no inventa la escena.
+          Mínimo {PHOTO_NOTE_SEED_MIN_CHARS} caracteres. Si la foto tiene lugar
+          enlazado, fecha o sitios cercanos, la IA los usa para complementar —
+          sin inventar la escena.
         </p>
       </div>
 

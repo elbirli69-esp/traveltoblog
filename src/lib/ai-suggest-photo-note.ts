@@ -28,7 +28,10 @@ export type PhotoNoteSuggestContext = {
   /** Brief description written by the user — required to call the model. */
   userSeed: string;
   exifLocal: string | null;
-  place: { name: string; type: string } | null;
+  /** Linked place (name + Spanish type label), when the photo has one. */
+  place: { name: string; type: string; tipoLabel: string } | null;
+  /** True when the photo has GPS (coords are not sent; used only as a soft cue). */
+  hasGps: boolean;
   existingNotes: string[];
   nearbyPlaceNames: string[];
   tone: PhotoNoteTone;
@@ -103,10 +106,12 @@ export function buildPhotoNoteSuggestContext(input: {
   userSeed: string;
   exifDateTime: string | null;
   place: { name: string; type: string } | null;
+  hasGps?: boolean;
   existingNotes: string[];
   nearbyPlaceNames: string[];
   tone: PhotoNoteTone;
 }): PhotoNoteSuggestContext {
+  const placeType = input.place?.type ?? "";
   return {
     travelTitle: input.travelTitle.trim().slice(0, 80) || "Viaje",
     authorAlias: input.authorAlias.trim().slice(0, 40) || "Viajero",
@@ -116,8 +121,11 @@ export function buildPhotoNoteSuggestContext(input: {
       ? {
           name: input.place.name.trim().slice(0, 80),
           type: input.place.type,
+          tipoLabel:
+            placeLabel(placeType as PlaceType) || placeType || "Lugar",
         }
       : null,
+    hasGps: Boolean(input.hasGps),
     existingNotes: input.existingNotes
       .map((n) => clampNoteText(n))
       .filter(Boolean)
@@ -141,6 +149,7 @@ export function photoNoteContextCacheKey(
     alias: ctx.authorAlias,
     exif: ctx.exifLocal,
     place: ctx.place,
+    hasGps: ctx.hasGps,
     notes: ctx.existingNotes,
     nearby: ctx.nearbyPlaceNames,
     tone: ctx.tone,
@@ -149,11 +158,8 @@ export function photoNoteContextCacheKey(
 
 function placeBit(ctx: PhotoNoteSuggestContext): string | null {
   if (ctx.place) {
-    return `${ctx.place.name}${
-      ctx.place.type
-        ? ` (${placeLabel(ctx.place.type as PlaceType) || ctx.place.type})`
-        : ""
-    }`;
+    const label = ctx.place.tipoLabel || ctx.place.type;
+    return label ? `${ctx.place.name} (${label})` : ctx.place.name;
   }
   if (ctx.nearbyPlaceNames[0]) return `cerca de ${ctx.nearbyPlaceNames[0]}`;
   return null;
@@ -211,10 +217,15 @@ export function buildPhotoNoteSystemPrompt(): string {
     "El usuario te da una descripción breve (campo «semilla») de lo que hay en la foto.",
     "Tu trabajo es COMPLEMENTAR y COMPLETAR esa semilla en UNA nota corta (1–2 frases, máximo ~180 caracteres) en español.",
     "IMPORTANTE: NO ves la imagen. La semilla es la única fuente de lo que aparece en la foto.",
-    "Conserva el sentido y los hechos de la semilla; puedes pulir estilo, unir frases y añadir como mucho lugar/fecha del JSON si encajan.",
-    "PROHIBIDO inventar: puentes, calles, edificios, personas, ropa, clima, comida, sonidos u objetos que no estén en la semilla ni nombrados en el JSON.",
-    "PROHIBIDO rellenar con conocimiento genérico del destino (leyendas, películas, barrios famosos) si no aparece en la semilla o el JSON.",
-    "Si la semilla ya es buena, mejórala con suavidad; no la sustituyas por otra historia.",
+    "Además del JSON puedes usar datos de LOCALIZACIÓN si vienen rellenados:",
+    "- Si hay «lugar» (sitio enlazado a la foto): intégralo de forma natural (nombre y, si ayuda, tipoLabel). Ejemplo: semilla «café con vistas» + lugar Wawel → nota que mencione el café y Wawel.",
+    "- Si no hay lugar pero sí «cerca»: puedes decir «cerca de {nombre}» con suavidad, sin inventar distancia ni dirección.",
+    "- Si hay «cuando» (fecha/hora EXIF): úsala solo si encaja sin alargar demasiado.",
+    "- «tiene_gps» solo indica que la foto tiene coordenadas; NO inventes ciudad, barrio ni monumento a partir de eso.",
+    "Conserva el sentido y los hechos de la semilla; pule estilo y une semilla + lugar/fecha del JSON.",
+    "PROHIBIDO inventar: puentes, calles, edificios, personas, ropa, clima, comida, sonidos u objetos que no estén en la semilla ni nombrados en lugar/cerca.",
+    "PROHIBIDO rellenar con conocimiento genérico del destino (leyendas, películas, barrios famosos) si no aparece en la semilla o en lugar/cerca.",
+    "Si la semilla ya nombra el mismo lugar, no lo repitas de forma torpe; mejórala con suavidad.",
     "Si hay notas_existentes, no las copies; complementa sin repetir.",
     "No uses comillas ni prefijos como «Nota:». Solo el texto de la nota.",
   ].join(" ");
@@ -227,8 +238,15 @@ export function buildPhotoNoteUserPrompt(ctx: PhotoNoteSuggestContext): string {
       viaje: ctx.travelTitle,
       autor: ctx.authorAlias,
       cuando: ctx.exifLocal,
-      lugar: ctx.place,
+      lugar: ctx.place
+        ? {
+            nombre: ctx.place.name,
+            tipo: ctx.place.type,
+            tipoLabel: ctx.place.tipoLabel,
+          }
+        : null,
       cerca: ctx.nearbyPlaceNames,
+      tiene_gps: ctx.hasGps,
       notas_existentes: ctx.existingNotes,
       tono: ctx.tone,
       instruccion_tono: TONE_INSTRUCTION[ctx.tone],

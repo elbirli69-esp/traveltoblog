@@ -104,6 +104,7 @@ export async function POST(request: NextRequest) {
       place: photo.place
         ? { name: photo.place.name, type: photo.place.type }
         : null,
+      hasGps: photo.latitude != null && photo.longitude != null,
       existingNotes: photo.notes.map((n) => n.text),
       nearbyPlaceNames,
       tone,
