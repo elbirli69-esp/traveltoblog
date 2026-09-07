@@ -16,6 +16,18 @@ import { isoToDateKey } from "@/lib/travel-dates";
 
 export const REEL_STORYBOARD_MAX_TOKENS = 400;
 export const REEL_STORYBOARD_CANDIDATE_CAP = 20;
+/** Minimum narrative seed before Completar storyboard con IA. */
+export const REEL_STORYBOARD_SEED_MIN_CHARS = 12;
+const MAX_SEED_CHARS = 400;
+
+export function normalizeReelStoryboardSeed(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  return raw.replace(/\s+/g, " ").trim().slice(0, MAX_SEED_CHARS);
+}
+
+export function hasUsableReelStoryboardSeed(seed: string): boolean {
+  return normalizeReelStoryboardSeed(seed).length >= REEL_STORYBOARD_SEED_MIN_CHARS;
+}
 
 export type StoryboardRole = "open" | "beat" | "close";
 
@@ -267,15 +279,22 @@ function extractJsonObject(text: string): unknown | null {
 export function buildStoryboardSystemPrompt(): string {
   return [
     "Eres un montador de Reels de viaje.",
+    "El usuario te da una idea narrativa (campo «semilla») de lo que quiere contar.",
     "Devuelve SOLO JSON: {\"version\":1,\"frames\":[{\"photoId\":\"...\",\"caption\":\"...\",\"role\":\"open|beat|close\",\"reason\":\"...\"}],\"interpretation\":\"...\"}.",
     "Usa únicamente photoId de la lista de candidatos. No inventes ids.",
-    "Captions en español, cortos (≤90 caracteres). Si ya hay existingCaption, puedes reutilizarlo o mejorarlo ligeramente.",
-    "Orden narrativo: open → beats → close. Respeta el máximo de frames pedido.",
+    "Ordena open → beats → close según la semilla y los metadatos (lugar, caption existente, salida/regreso, prioridad). Respeta max_frames.",
+    "Captions en español, cortos (≤90 caracteres).",
+    "Si hay caption en el candidato, reutilízalo o mejóralo ligeramente SIN añadir detalles visuales nuevos.",
+    "Si no hay caption, puedes usar solo el lugar del candidato o una frase corta alineada con la semilla y ese lugar — sin inventar lo que se ve en la foto.",
+    "PROHIBIDO inventar: puentes, clima, comida, personas u objetos que no estén en caption/lugar/semilla.",
+    "PROHIBIDO rellenar con conocimiento genérico del destino.",
+    "interpretation: una frase sobre cómo encaja el montaje con la semilla.",
   ].join(" ");
 }
 
 export function buildStoryboardUserPrompt(input: {
   travelTitle: string;
+  userSeed: string;
   durationSeconds: ReelDurationPreset;
   maxFrames: number;
   dayKey: string | null;
@@ -284,11 +303,12 @@ export function buildStoryboardUserPrompt(input: {
 }): string {
   return JSON.stringify(
     {
+      semilla: input.userSeed,
       viaje: input.travelTitle,
       duracion_s: input.durationSeconds,
       max_frames: input.maxFrames,
       dia: input.dayKey,
-      brief: input.brief,
+      brief_viaje: input.brief,
       candidatos: input.candidates.map((c) => ({
         photoId: c.photoId,
         dia: c.dayKey,
@@ -332,9 +352,11 @@ export async function suggestReelStoryboard(options: {
   durationSeconds: ReelDurationPreset;
   dayKey?: string | null;
   brief?: string | null;
+  userSeed: string;
   candidates: StoryboardCandidate[];
 }): Promise<SuggestReelStoryboardResult> {
   const durationSeconds = parseReelDuration(options.durationSeconds);
+  const userSeed = normalizeReelStoryboardSeed(options.userSeed);
   const maxFrames = Math.min(
     slotCountForDuration(durationSeconds),
     options.candidates.length
@@ -343,6 +365,7 @@ export async function suggestReelStoryboard(options: {
     travelId: options.travelId,
     durationSeconds,
     dayKey: options.dayKey ?? null,
+    seed: userSeed,
     brief: options.brief?.trim() ?? "",
     ids: options.candidates.map((c) => c.photoId),
   });
@@ -366,6 +389,16 @@ export async function suggestReelStoryboard(options: {
       cached: false,
       interpretation: "No hay fotos candidatas para este alcance.",
       candidateCount: 0,
+    };
+  }
+
+  if (!hasUsableReelStoryboardSeed(userSeed)) {
+    return {
+      frames: heuristic,
+      fromAi: false,
+      cached: false,
+      interpretation: `Escribe al menos ${REEL_STORYBOARD_SEED_MIN_CHARS} caracteres sobre qué quieres contar; la IA ordena fotos y captions con esa idea.`,
+      candidateCount: options.candidates.length,
     };
   }
 
@@ -398,6 +431,7 @@ export async function suggestReelStoryboard(options: {
           role: "user",
           content: buildStoryboardUserPrompt({
             travelTitle: options.travelTitle,
+            userSeed,
             durationSeconds,
             maxFrames,
             dayKey: options.dayKey ?? null,
@@ -406,7 +440,7 @@ export async function suggestReelStoryboard(options: {
           }),
         },
       ],
-      temperature: 0.35,
+      temperature: 0.25,
       max_tokens: REEL_STORYBOARD_MAX_TOKENS,
     });
     const rawText = completion.choices[0]?.message?.content?.trim() ?? "";
@@ -435,7 +469,7 @@ export async function suggestReelStoryboard(options: {
             (parsed as { interpretation: string }).interpretation,
             160
           )
-        : "Storyboard propuesto. Aplícalo antes de exportar.";
+        : "Storyboard propuesto a partir de tu idea. Aplícalo antes de exportar.";
     cache.set(cacheKey, {
       frames,
       fromAi: true,
