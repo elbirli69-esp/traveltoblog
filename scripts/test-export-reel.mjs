@@ -8,6 +8,9 @@ import {
   resolveReadableCaption,
   fitCaptionsToClipHolds,
   captionCharBudget,
+  filterReelInputsForDayKey,
+  parseReelDayKey,
+  reelReadmeText,
   REEL_BEAT_PATTERN,
   REEL_HOOK_SECONDS,
   REEL_CHAPTER_SECONDS,
@@ -505,6 +508,100 @@ assert.ok(
   "memories body should stay photo-clean (map is intro)"
 );
 
+// Day scope: mid-trip Reel for a single calendar day.
+assert.equal(parseReelDayKey("2024-06-02"), "2024-06-02");
+assert.equal(parseReelDayKey("nope"), null);
+assert.equal(parseReelDayKey("2024-6-2"), null);
+{
+  const scoped = filterReelInputsForDayKey({
+    photos,
+    dayNotes: [
+      { dayKey: "2024-06-02", text: "Paseo por Belém", author: "Ada" },
+      { dayKey: "2024-06-03", text: "Otro día", author: "Ada" },
+    ],
+    places: [
+      {
+        name: "Belém",
+        type: "VIEWPOINT",
+        latitude: 38.697,
+        longitude: -9.206,
+        comment: null,
+        visitedAt: new Date("2024-06-02"),
+        highlightScore: 8,
+      },
+      {
+        name: "Alfama",
+        type: "OTHER",
+        latitude: 38.71,
+        longitude: -9.13,
+        comment: null,
+        visitedAt: new Date("2024-06-04"),
+        highlightScore: 5,
+      },
+    ],
+    dayKey: "2024-06-02",
+  });
+  assert.ok(scoped.photos.length > 0, "day filter keeps that day's photos");
+  assert.ok(
+    scoped.photos.every(
+      (p) =>
+        p.exifDateTime &&
+        new Date(p.exifDateTime).toISOString().startsWith("2024-06-02")
+    ),
+    "all scoped photos share the day"
+  );
+  assert.equal(scoped.dayNotes.length, 1);
+  assert.equal(scoped.dayNotes[0]?.dayKey, "2024-06-02");
+  assert.ok(scoped.places.some((p) => p.name === "Belém"));
+  assert.ok(!scoped.places.some((p) => p.name === "Alfama"));
+}
+
+const dayManifest = buildReelManifest({
+  title: "Lisboa",
+  participants: ["Ada"],
+  startDate: new Date("2024-06-01"),
+  endDate: new Date("2024-06-05"),
+  durationSeconds: 30,
+  dayKey: "2024-06-02",
+  photos,
+  dayNotes: [
+    { dayKey: "2024-06-02", text: "Paseo por Belém", author: "Ada" },
+  ],
+});
+assert.equal(dayManifest.scopeDayKey, "2024-06-02");
+assert.ok(dayManifest.dateRangeLabel, "day reel has a date label");
+assert.ok(
+  dayManifest.frames
+    .filter((f) => f.role === "clip" || f.role === "hook")
+    .every((f) => !f.dayKey || f.dayKey === "2024-06-02"),
+  "day reel frames stay on the chosen day"
+);
+assert.equal(
+  dayManifest.frames.filter((f) => f.role === "chapter").length,
+  0,
+  "single-day reel skips chapter cards"
+);
+assert.ok(
+  dayManifest.ctaLine.includes("Lisboa"),
+  `cta should keep trip title: ${dayManifest.ctaLine}`
+);
+assert.ok(
+  reelReadmeText(dayManifest).includes("Ámbito: un día"),
+  "readme should mark day scope"
+);
+
+const emptyDay = buildReelManifest({
+  title: "Lisboa",
+  participants: ["Ada"],
+  startDate: new Date("2024-06-01"),
+  endDate: new Date("2024-06-05"),
+  durationSeconds: 15,
+  dayKey: "2099-01-01",
+  photos,
+});
+assert.equal(emptyDay.frames.length, 0, "unknown day yields no frames");
+assert.equal(emptyDay.scopeDayKey, "2099-01-01");
+
 console.log("export-reel ok", {
   frames30: frames.length,
   frames60: frames60.length,
@@ -517,4 +614,5 @@ console.log("export-reel ok", {
   beatPattern: [...REEL_BEAT_PATTERN],
   clipDurations: clipDurations.map((d) => d.toFixed(2)),
   avgClip: manifest.secondsPerClip.toFixed(2),
+  dayFrames: dayManifest.frames.length,
 });

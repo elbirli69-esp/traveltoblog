@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   buildReelManifest,
+  parseReelDayKey,
   parseReelDuration,
   type ReelDurationPreset,
 } from "@/lib/export-reel";
@@ -20,6 +21,7 @@ const REEL_PRESETS: ReelPresetId[] = [
   "textless-photos",
   "place-labels",
   "map-pulse",
+  "memories",
 ];
 
 function parseReelPresetId(raw: unknown): ReelPresetId {
@@ -38,6 +40,8 @@ export async function POST(request: NextRequest) {
       brief?: string;
       /** Montage preset from UI catalog (defaults to balanced-story). */
       presetId?: string;
+      /** Optional YYYY-MM-DD — mount only that day's photos/places. */
+      dayKey?: string | null;
     };
 
     if (!body.travelId) {
@@ -48,6 +52,7 @@ export async function POST(request: NextRequest) {
     const durationSeconds = parseReelDuration(body.durationSeconds);
     const brief = typeof body.brief === "string" ? body.brief.trim() : "";
     const presetId = parseReelPresetId(body.presetId);
+    const dayKey = parseReelDayKey(body.dayKey);
 
     const travel = await prisma.travel.findUnique({
       where: { id: body.travelId },
@@ -121,7 +126,13 @@ export async function POST(request: NextRequest) {
       ? await interpretExportBrief(brief, {
           target: "reel",
           durationSeconds,
-          photoCount: travel.photos.length,
+          photoCount: dayKey
+            ? travel.photos.filter(
+                (p) =>
+                  p.exifDateTime &&
+                  isoToDateKey(p.exifDateTime.toISOString()) === dayKey
+              ).length
+            : travel.photos.length,
           hasJournal: Boolean(travel.journalMarkdown?.trim()),
           travelTitle: travel.title,
         })
@@ -141,6 +152,7 @@ export async function POST(request: NextRequest) {
       endDate: travel.endDate,
       durationSeconds,
       reelDirectives,
+      dayKey,
       briefInterpretation: briefResult?.directives.interpretation
         ? `${briefResult.directives.interpretation} · preset ${presetLabel}`
         : `Preset: ${presetLabel}`,
@@ -208,8 +220,9 @@ export async function POST(request: NextRequest) {
     if (manifest.frames.length === 0) {
       return NextResponse.json(
         {
-          error:
-            "No hay fotos seleccionadas con imagen usable. Marca fotos (o posters de vídeo) en el viaje.",
+          error: dayKey
+            ? "Ese día no tiene fotos seleccionadas con imagen usable. Elige otro día o marca fotos."
+            : "No hay fotos seleccionadas con imagen usable. Marca fotos (o posters de vídeo) en el viaje.",
         },
         { status: 400 }
       );

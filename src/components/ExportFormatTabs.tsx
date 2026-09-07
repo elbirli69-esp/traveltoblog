@@ -3,7 +3,9 @@
 import { useState } from "react";
 import ExportHtmlPanel from "@/components/ExportHtmlPanel";
 import ExportPdfPanel from "@/components/ExportPdfPanel";
-import ExportReelPanel from "@/components/ExportReelPanel";
+import ExportReelPanel, {
+  type ReelDayOption,
+} from "@/components/ExportReelPanel";
 
 export type ExportFormatTab = "html" | "pdf" | "video";
 
@@ -20,6 +22,7 @@ interface ExportFormatTabsProps {
   hasGpsPhotos: boolean;
   photoCount: number;
   coverPhotos: PdfCoverPhotoOption[];
+  reelDays?: ReelDayOption[];
   initialTab?: ExportFormatTab;
 }
 
@@ -51,7 +54,7 @@ const TABS: {
     label: "Vídeo",
     title: "Reel para Instagram",
     description:
-      "ZIP independiente con un vídeo resumen vertical listo para publicar como Reel (sin mezclar con el ZIP del HTML).",
+      "ZIP con un vídeo vertical listo para Reels: viaje entero o un solo día (para publicar mientras viajas).",
     titleClass: "text-accent-cyan",
   },
 ];
@@ -63,6 +66,7 @@ export default function ExportFormatTabs({
   hasGpsPhotos,
   photoCount,
   coverPhotos,
+  reelDays = [],
   initialTab = "html",
 }: ExportFormatTabsProps) {
   const [activeTab, setActiveTab] = useState<ExportFormatTab>(initialTab);
@@ -119,6 +123,7 @@ export default function ExportFormatTabs({
             travelId={travelId}
             travelTitle={travelTitle}
             photoCount={photoCount}
+            reelDays={reelDays}
           />
         )}
       </section>

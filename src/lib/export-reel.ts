@@ -203,6 +203,8 @@ export interface ReelManifest {
   appliedReelDirectives?: ExportReelDirectives | null;
   /** Montage look (drives Ken Burns amplitude, map intro styling, etc.). */
   look?: import("@/lib/export-directives").ReelLook;
+  /** When set, this Reel covers one calendar day (not the whole trip). */
+  scopeDayKey?: string | null;
 }
 
 /** Resolved knobs used while building a reel from optional brief directives. */
@@ -263,6 +265,56 @@ function toDayKey(value: Date | string | null | undefined): string | null {
   if (!value) return null;
   const iso = typeof value === "string" ? value : value.toISOString();
   return isoToDateKey(iso);
+}
+
+/** Accept YYYY-MM-DD from the export UI / API; reject anything else. */
+export function parseReelDayKey(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const key = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return null;
+  return key;
+}
+
+/**
+ * Narrow trip inputs to one calendar day so mid-trip Instagram Reels work
+ * before the journey is finished.
+ */
+export function filterReelInputsForDayKey(input: {
+  photos: ReelPhotoInput[];
+  places?: ReelPlaceInput[];
+  dayNotes?: ReelDayNoteInput[];
+  gpsTracks?: GpsTrackForMap[];
+  dayKey: string;
+}): {
+  photos: ReelPhotoInput[];
+  places: ReelPlaceInput[];
+  dayNotes: ReelDayNoteInput[];
+  gpsTracks: GpsTrackForMap[];
+} {
+  const dayKey = input.dayKey;
+  const photos = input.photos.filter(
+    (p) => toDayKey(p.exifDateTime) === dayKey
+  );
+  const placeNames = new Set(
+    photos.map((p) => p.placeName?.trim()).filter((n): n is string => Boolean(n))
+  );
+  const places = (input.places ?? []).filter((place) => {
+    const visited = toDayKey(place.visitedAt) ?? toDayKey(place.createdAt);
+    if (visited === dayKey) return true;
+    return placeNames.has(place.name.trim());
+  });
+  const dayNotes = (input.dayNotes ?? []).filter((n) => n.dayKey === dayKey);
+  const gpsTracks = (input.gpsTracks ?? [])
+    .map((track) => {
+      const started = toDayKey(track.startedAt);
+      const points = (track.points ?? []).filter((pt) => {
+        if (!pt.at) return started === dayKey;
+        return toDayKey(pt.at) === dayKey;
+      });
+      return { ...track, points };
+    })
+    .filter((track) => track.points.length >= 2);
+  return { photos, places, dayNotes, gpsTracks };
 }
 
 function toIso(value: Date | string | null | undefined): string | null {
@@ -1393,11 +1445,16 @@ function insertDayChapters(
   return out;
 }
 
-function buildCtaLine(title: string, participants: string[]): string {
+function buildCtaLine(
+  title: string,
+  participants: string[],
+  dayLabel?: string | null
+): string {
   const who =
     participants.length > 0 ? participants.slice(0, 3).join(" · ") : null;
-  if (who) return `${title} — ¿cuál fue vuestro momento? 👇`;
-  return `Comenta tu parada favorita de ${title} 👇`;
+  const subject = dayLabel ? `${title} · ${dayLabel}` : title;
+  if (who) return `${subject} — ¿cuál fue vuestro momento? 👇`;
+  return `Comenta tu parada favorita de ${subject} 👇`;
 }
 
 export function buildReelManifest(input: {
@@ -1413,18 +1470,36 @@ export function buildReelManifest(input: {
   /** Grounded free-text brief directives (UI duration still wins). */
   reelDirectives?: ExportReelDirectives | null;
   briefInterpretation?: string | null;
+  /** Limit montage to one calendar day (YYYY-MM-DD). */
+  dayKey?: string | null;
 }): ReelManifest {
   const durationSeconds = input.durationSeconds;
   const buildOpts = resolveReelBuildOptions(input.reelDirectives ?? null);
+  const scopeDayKey = parseReelDayKey(input.dayKey) ?? null;
+  const scoped = scopeDayKey
+    ? filterReelInputsForDayKey({
+        photos: input.photos,
+        places: input.places,
+        dayNotes: input.dayNotes,
+        gpsTracks: input.gpsTracks,
+        dayKey: scopeDayKey,
+      })
+    : {
+        photos: input.photos,
+        places: input.places ?? [],
+        dayNotes: input.dayNotes ?? [],
+        gpsTracks: input.gpsTracks ?? [],
+      };
+
   // Prefer tracks marked for export; if none, still show any recorded trails.
-  const exportMarked = (input.gpsTracks ?? []).filter((t) => t.includeInExport);
+  const exportMarked = scoped.gpsTracks.filter((t) => t.includeInExport);
   const trailSource =
-    exportMarked.length > 0 ? exportMarked : input.gpsTracks ?? [];
+    exportMarked.length > 0 ? exportMarked : scoped.gpsTracks;
   const gpsTrails = buildGpsTrailPolylines(trailSource);
 
   const map = buildReelMapFromTravel({
-    photos: input.photos,
-    places: input.places,
+    photos: scoped.photos,
+    places: scoped.places,
     gpsTrails,
   });
   const memories = buildOpts.look === "memories";
@@ -1438,9 +1513,9 @@ export function buildReelManifest(input: {
     : REEL_OUTRO_SECONDS;
 
   let frames = selectReelFrames(
-    input.photos,
+    scoped.photos,
     durationSeconds,
-    input.dayNotes ?? [],
+    scoped.dayNotes,
     Boolean(map),
     buildOpts
   );
@@ -1502,16 +1577,22 @@ export function buildReelManifest(input: {
       : 1.2;
 
   let dateRangeLabel: string | null = null;
-  const startKey = toDayKey(input.startDate);
-  const endKey = toDayKey(input.endDate);
-  if (startKey && endKey) {
-    dateRangeLabel =
-      startKey === endKey
-        ? formatDateKey(startKey, "long")
-        : `${formatDateKey(startKey, "short")} – ${formatDateKey(endKey, "short")}`;
-  } else if (startKey) {
-    dateRangeLabel = formatDateKey(startKey, "long");
+  if (scopeDayKey) {
+    dateRangeLabel = formatDateKey(scopeDayKey, "long");
+  } else {
+    const startKey = toDayKey(input.startDate);
+    const endKey = toDayKey(input.endDate);
+    if (startKey && endKey) {
+      dateRangeLabel =
+        startKey === endKey
+          ? formatDateKey(startKey, "long")
+          : `${formatDateKey(startKey, "short")} – ${formatDateKey(endKey, "short")}`;
+    } else if (startKey) {
+      dateRangeLabel = formatDateKey(startKey, "long");
+    }
   }
+
+  const dayShortLabel = scopeDayKey ? formatDateKey(scopeDayKey, "short") : null;
 
   return {
     title: input.title,
@@ -1529,7 +1610,7 @@ export function buildReelManifest(input: {
     map,
     frames,
     coverPhotoId,
-    ctaLine: buildCtaLine(input.title, input.participants),
+    ctaLine: buildCtaLine(input.title, input.participants, dayShortLabel),
     briefInterpretation: input.briefInterpretation ?? null,
     appliedReelDirectives: input.reelDirectives
       ? {
@@ -1540,6 +1621,7 @@ export function buildReelManifest(input: {
         }
       : null,
     look: buildOpts.look,
+    scopeDayKey,
   };
 }
 
@@ -1552,13 +1634,16 @@ export function reelReadmeText(manifest: ReelManifest): string {
         }.\n`
     : "";
   const treatments = [...new Set(manifest.frames.map((f) => f.treatment))].join(", ");
+  const scopeLine = manifest.scopeDayKey
+    ? `Ámbito: un día (${manifest.dateRangeLabel ?? manifest.scopeDayKey})\n`
+    : "Ámbito: viaje completo\n";
   return `Reel listo para Instagram
 ===========================
 
 Archivo: instagram-reel.mp4
 Formato: MP4 H.264, ${manifest.width}×${manifest.height} (9:16), ${manifest.fps} fps
 Duración objetivo: ~${manifest.durationSeconds} s
-Audio: sin pista (añade música en Instagram; el preset Recuerdos aún no lleva audio)
+${scopeLine}Audio: sin pista (añade música en Instagram; el preset Recuerdos aún no lleva audio)
 Estructura: ${
     manifest.look === "memories"
       ? "gancho → mapa cinematográfico → fotos con fundidos → cierre suave"

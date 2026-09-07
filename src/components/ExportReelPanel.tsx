@@ -29,19 +29,32 @@ import {
 
 const REEL_PRESETS = featuredReelPresetCatalog();
 
+export interface ReelDayOption {
+  dayKey: string;
+  label: string;
+  photoCount: number;
+}
+
+type ReelScope = "trip" | "day";
+
 interface ExportReelPanelProps {
   travelId: string;
   travelTitle: string;
   photoCount?: number;
+  /** Days that already have selected photos — for mid-trip day Reels. */
+  reelDays?: ReelDayOption[];
 }
 
 export default function ExportReelPanel({
   travelId,
   travelTitle,
   photoCount = 0,
+  reelDays = [],
 }: ExportReelPanelProps) {
   const [durationSeconds, setDurationSeconds] = useState<ReelDurationPreset>(30);
   const [presetId, setPresetId] = useState<ReelPresetId>("balanced-story");
+  const [scope, setScope] = useState<ReelScope>("trip");
+  const [dayKey, setDayKey] = useState<string>(reelDays[0]?.dayKey ?? "");
   const [brief, setBrief] = useState("");
   const [presetSuggestion, setPresetSuggestion] = useState<{
     suggestedPresetId: ReelPresetId;
@@ -60,6 +73,14 @@ export default function ExportReelPanel({
   const [success, setSuccess] = useState<string | null>(null);
   const [progress, setProgress] = useState<ReelEncodeProgress | null>(null);
 
+  const selectedDay = useMemo(
+    () => reelDays.find((d) => d.dayKey === dayKey) ?? null,
+    [reelDays, dayKey]
+  );
+  const scopedPhotoCount =
+    scope === "day" ? (selectedDay?.photoCount ?? 0) : photoCount;
+  const canExport = scopedPhotoCount > 0;
+
   const progressLabel = useMemo(() => {
     if (!progress) return null;
     if (progress.phase === "frames") return progress.message;
@@ -70,7 +91,17 @@ export default function ExportReelPanel({
     return progress.message;
   }, [progress]);
 
-  
+  useEffect(() => {
+    if (reelDays.length === 0) {
+      setScope("trip");
+      setDayKey("");
+      return;
+    }
+    if (!reelDays.some((d) => d.dayKey === dayKey)) {
+      setDayKey(reelDays[0]!.dayKey);
+    }
+  }, [reelDays, dayKey]);
+
   useEffect(() => {
     let cancelled = false;
     void fetchTravelExportPrefs(travelId).then((prefs) => {
@@ -96,7 +127,7 @@ export default function ExportReelPanel({
     [travelId]
   );
 
-const handleInterpret = async () => {
+  const handleInterpret = async () => {
     setInterpreting(true);
     setError(null);
     try {
@@ -107,7 +138,7 @@ const handleInterpret = async () => {
           brief,
           target: "reel",
           durationSeconds,
-          photoCount,
+          photoCount: scopedPhotoCount,
           travelTitle,
           uiReelPreset: presetId,
         }),
@@ -166,6 +197,10 @@ const handleInterpret = async () => {
         );
       }
 
+      if (scope === "day" && !dayKey) {
+        throw new Error("Elige un día con fotos para generar el Reel.");
+      }
+
       const res = await fetch("/api/export-reel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -174,6 +209,7 @@ const handleInterpret = async () => {
           durationSeconds,
           brief: brief.trim() || undefined,
           presetId,
+          ...(scope === "day" && dayKey ? { dayKey } : {}),
         }),
       });
       const data = (await res.json().catch(() => ({}))) as ReelManifest & {
@@ -216,25 +252,33 @@ const handleInterpret = async () => {
         .replace(/[^\w\u00C0-\u024f\- ]+/gi, "")
         .trim()
         .replace(/\s+/g, "-")
-        .slice(0, 48);
-      const filename = `reel-instagram-${safeTitle || travelId}-${durationSeconds}s.zip`;
+        .slice(0, 40);
+      const daySuffix =
+        scope === "day" && (data.scopeDayKey || dayKey)
+          ? `-${data.scopeDayKey || dayKey}`
+          : "";
+      const filename = `reel-instagram-${safeTitle || travelId}${daySuffix}-${durationSeconds}s.zip`;
 
       const result: DownloadResult = await downloadBlob(zipBlob, filename);
       const sizeMb = (zipBlob.size / (1024 * 1024)).toFixed(1);
+      const scopeNote =
+        scope === "day" && selectedDay
+          ? ` Día: ${selectedDay.label}.`
+          : " Viaje completo.";
       const briefNote = data.briefInterpretation
         ? ` Brief: ${data.briefInterpretation}`
         : "";
       if (result === "saved") {
         setSuccess(
-          `ZIP guardado (~${sizeMb} MB): incluye instagram-reel.mp4 listo para subir a Reels.${briefNote}`
+          `ZIP guardado (~${sizeMb} MB): incluye instagram-reel.mp4 listo para subir a Reels.${scopeNote}${briefNote}`
         );
       } else if (result === "shared") {
         setSuccess(
-          `Elige dónde guardar el ZIP (~${sizeMb} MB) en el menú Compartir.${briefNote}`
+          `Elige dónde guardar el ZIP (~${sizeMb} MB) en el menú Compartir.${scopeNote}${briefNote}`
         );
       } else {
         setSuccess(
-          `ZIP listo (~${sizeMb} MB). Usa Compartir/guardar para descargarlo.${briefNote}`
+          `ZIP listo (~${sizeMb} MB). Usa Compartir/guardar para descargarlo.${scopeNote}${briefNote}`
         );
       }
     } catch (err) {
@@ -251,17 +295,81 @@ const handleInterpret = async () => {
       <p className="text-sm text-fg-secondary">
         Genera un MP4 vertical 1080×1920 (9:16, H.264, sin audio) pensado para publicarlo
         directamente como <span className="font-medium text-fg">Reel de Instagram</span>.
-        Alterna clips con descripción tipográfica (cita / tarjeta / acento), pin de lugar, mapa
-        con pin activo y fotos limpias, con transiciones variadas. ZIP aparte del HTML; la música
-        se añade en Instagram.
+        Puedes montar el viaje entero o solo un día (útil mientras el viaje sigue). ZIP aparte
+        del HTML; la música se añade en Instagram.
       </p>
 
       {photoCount > 0 && (
         <p className="text-xs text-fg-secondary">
-          Usa hasta {photoCount} fotos seleccionadas (reparte por días; omite ida/vuelta si hay
-          alternativas).
+          {scope === "day"
+            ? selectedDay
+              ? `${selectedDay.photoCount} foto${selectedDay.photoCount === 1 ? "" : "s"} seleccionada${selectedDay.photoCount === 1 ? "" : "s"} ese día.`
+              : "Elige un día con fotos."
+            : `Usa hasta ${photoCount} fotos seleccionadas (reparte por días; omite ida/vuelta si hay alternativas).`}
         </p>
       )}
+
+      <fieldset className="space-y-2" disabled={loading}>
+        <legend className="mb-2 text-sm font-medium text-accent-cyan">Ámbito del Reel</legend>
+        <label
+          className={`option-radio ${scope === "trip" ? "option-radio-active" : ""}`}
+        >
+          <input
+            type="radio"
+            name="reel-scope"
+            value="trip"
+            checked={scope === "trip"}
+            onChange={() => setScope("trip")}
+            className="mt-1"
+          />
+          <span>
+            <span className="block text-sm font-semibold text-fg">Todo el viaje</span>
+            <span className="block text-xs text-fg-secondary">
+              Resumen con fotos de varios días
+            </span>
+          </span>
+        </label>
+        <label
+          className={`option-radio ${scope === "day" ? "option-radio-active" : ""} ${
+            reelDays.length === 0 ? "opacity-50" : ""
+          }`}
+        >
+          <input
+            type="radio"
+            name="reel-scope"
+            value="day"
+            checked={scope === "day"}
+            disabled={reelDays.length === 0}
+            onChange={() => setScope("day")}
+            className="mt-1"
+          />
+          <span>
+            <span className="block text-sm font-semibold text-fg">Un día</span>
+            <span className="block text-xs text-fg-secondary">
+              {reelDays.length === 0
+                ? "Aún no hay días con fotos seleccionadas"
+                : "Ideal para publicar en Instagram durante el viaje"}
+            </span>
+          </span>
+        </label>
+        {scope === "day" && reelDays.length > 0 && (
+          <label className="mt-2 block text-sm text-fg">
+            <span className="mb-1 block text-xs font-medium text-fg-secondary">Día</span>
+            <select
+              value={dayKey}
+              onChange={(e) => setDayKey(e.target.value)}
+              disabled={loading}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg focus:border-accent-cyan focus:outline-none"
+            >
+              {reelDays.map((day) => (
+                <option key={day.dayKey} value={day.dayKey}>
+                  {day.label} · {day.photoCount} foto{day.photoCount === 1 ? "" : "s"}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </fieldset>
 
       <fieldset className="space-y-2" disabled={loading}>
         <legend className="mb-2 text-sm font-medium text-accent-cyan">Duración del Reel</legend>
@@ -414,19 +522,25 @@ const handleInterpret = async () => {
       <button
         type="button"
         onClick={() => void handleExport()}
-        disabled={loading || photoCount === 0}
+        disabled={loading || !canExport}
         className="btn-primary w-full py-3 text-sm disabled:opacity-50"
       >
-        {loading ? "Generando Reel…" : "Descargar ZIP del Reel (Instagram)"}
+        {loading
+          ? "Generando Reel…"
+          : scope === "day"
+            ? "Descargar ZIP del Reel (este día)"
+            : "Descargar ZIP del Reel (Instagram)"}
       </button>
 
       {loading && progressLabel && (
         <p className="progress-panel text-sm progress-step-active">{progressLabel}</p>
       )}
 
-      {photoCount === 0 && (
+      {!canExport && (
         <p className="text-sm text-fg-secondary">
-          Selecciona al menos una foto en el viaje para poder generar el Reel.
+          {scope === "day"
+            ? "Ese día no tiene fotos seleccionadas. Elige otro día o marca fotos en el viaje."
+            : "Selecciona al menos una foto en el viaje para poder generar el Reel."}
         </p>
       )}
 
