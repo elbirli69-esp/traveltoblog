@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createLocalId } from "@/lib/utils";
 import MemoryDateTimeField from "@/components/MemoryDateTimeField";
 import { todayKey } from "@/lib/travel-dates";
@@ -44,6 +44,9 @@ interface NoteFormProps {
    * Prefer type=PLACE + placeId for new code.
    */
   onPersist?: (text: string) => Promise<void>;
+  /** Prefill textarea when `prefillNonce` increments (e.g. AI draft). */
+  prefillText?: string;
+  prefillNonce?: number;
 }
 
 export default function NoteForm({
@@ -61,11 +64,19 @@ export default function NoteForm({
   submitLabel = "Añadir nota",
   rows = 3,
   onPersist,
+  prefillText,
+  prefillNonce = 0,
 }: NoteFormProps) {
   const [text, setText] = useState("");
   const [tripDate, setTripDate] = useState(defaultTripDate ?? todayKey());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (prefillNonce > 0 && typeof prefillText === "string") {
+      setText(prefillText);
+    }
+  }, [prefillNonce, prefillText]);
 
   const resolvedLabel =
     label ?? (type ? DEFAULT_LABELS[type] : "Nota");

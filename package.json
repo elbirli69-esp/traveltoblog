@@ -14,6 +14,7 @@
     "db:studio": "prisma studio",
     "test:timeline": "npx --yes tsx scripts/test-timeline.mjs",
     "test:project-backup": "npx --yes tsx scripts/test-project-backup.mjs",
+    "test:ai-suggest-photo-note": "npx --yes tsx scripts/test-ai-suggest-photo-note.mjs",
     "build:android": "bash scripts/build-android-apk.sh",
     "cap:sync": "npx cap sync android",
     "deploy:synology": "bash scripts/deploy-synology.sh"

@@ -15,6 +15,8 @@ import { findNearby, formatDistanceM, NEARBY_THRESHOLD_M } from "@/lib/geo";
 import { isValidGps } from "@/lib/exif";
 import { PHOTOS_PAGE_SIZE } from "@/lib/pagination";
 import { todayKey } from "@/lib/travel-dates";
+import SuggestPhotoNote from "@/components/SuggestPhotoNote";
+import { getSessionFromStorage } from "@/lib/utils";
 
 export interface GalleryPhoto {
   id: string;
@@ -164,6 +166,11 @@ export default function PhotoGallery({
   const [transportError, setTransportError] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [notePrefill, setNotePrefill] = useState<{
+    photoId: string;
+    text: string;
+    nonce: number;
+  } | null>(null);
   const pageRef = useRef(page);
   pageRef.current = page;
   const parentRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -700,11 +707,40 @@ export default function PhotoGallery({
                         ))}
                       </ul>
                     )}
+                    <SuggestPhotoNote
+                      travelId={travelId}
+                      photoId={photo.id}
+                      authorAlias={
+                        getSessionFromStorage()?.alias ?? photo.user.alias
+                      }
+                      sparseHint={
+                        !photo.place &&
+                        photoNotes.length === 0 &&
+                        !photo.exifDateTime
+                      }
+                      onApplyDraft={(text) => {
+                        setNotePrefill((prev) => ({
+                          photoId: photo.id,
+                          text,
+                          nonce: (prev?.photoId === photo.id ? prev.nonce : 0) + 1,
+                        }));
+                      }}
+                    />
                     <NoteForm
                       travelId={travelId}
                       userId={userId}
                       photoId={photo.id}
                       type="PHOTO"
+                      prefillText={
+                        notePrefill?.photoId === photo.id
+                          ? notePrefill.text
+                          : undefined
+                      }
+                      prefillNonce={
+                        notePrefill?.photoId === photo.id
+                          ? notePrefill.nonce
+                          : 0
+                      }
                       onCreated={(note) => {
                         if (note) {
                           patchPhotoNotes(photo.id, (notes) => {
