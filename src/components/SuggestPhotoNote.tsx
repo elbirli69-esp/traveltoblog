@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { PhotoNoteTone } from "@/lib/ai-suggest-photo-note";
+import {
+  PHOTO_NOTE_SEED_MIN_CHARS,
+  type PhotoNoteTone,
+} from "@/lib/ai-suggest-photo-note";
 
 const TONES: { id: PhotoNoteTone; label: string }[] = [
   { id: "neutro", label: "Neutro" },
@@ -13,8 +16,6 @@ interface SuggestPhotoNoteProps {
   travelId: string;
   photoId: string;
   authorAlias?: string;
-  /** True when photo has no place, notes, or EXIF (client hint; server rechecks). */
-  sparseHint?: boolean;
   onApplyDraft: (text: string) => void;
 }
 
@@ -22,23 +23,21 @@ export default function SuggestPhotoNote({
   travelId,
   photoId,
   authorAlias,
-  sparseHint = false,
   onApplyDraft,
 }: SuggestPhotoNoteProps) {
   const [tone, setTone] = useState<PhotoNoteTone>("neutro");
-  const [forceAi, setForceAi] = useState(false);
+  const [seed, setSeed] = useState("");
   const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
   const [meta, setMeta] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [confirmSparse, setConfirmSparse] = useState(false);
 
-  const runSuggest = async (opts?: { forceAi?: boolean }) => {
-    const useForce = opts?.forceAi ?? forceAi;
-    if (sparseHint && !confirmSparse && !useForce) {
-      setError(null);
-      setMeta(
-        "Poca info en esta foto (sin lugar, notas ni fecha). Marca «Aun así» o usa «Mejorar con IA»."
+  const seedReady = seed.trim().length >= PHOTO_NOTE_SEED_MIN_CHARS;
+
+  const runSuggest = async () => {
+    if (!seedReady) {
+      setError(
+        `Describe la foto en al menos ${PHOTO_NOTE_SEED_MIN_CHARS} caracteres; la IA solo complementa lo que escribas.`
       );
       return;
     }
@@ -54,7 +53,7 @@ export default function SuggestPhotoNote({
           travelId,
           photoId,
           tone,
-          forceAi: useForce,
+          userSeed: seed.trim(),
           authorAlias,
         }),
       });
@@ -64,22 +63,20 @@ export default function SuggestPhotoNote({
         interpretation?: string | null;
         fromAi?: boolean;
         cached?: boolean;
-        sparse?: boolean;
       };
       if (!res.ok) {
-        throw new Error(data.error ?? "No se pudo sugerir la nota");
+        throw new Error(data.error ?? "No se pudo completar la nota");
       }
       setDraft(data.suggestion ?? "");
       const bits: string[] = [];
       if (data.interpretation) bits.push(data.interpretation);
       if (data.cached) bits.push("Desde caché.");
       if (data.fromAi === false && !data.interpretation) {
-        bits.push("Sugerencia local (sin IA).");
+        bits.push("Versión local (sin IA).");
       }
       setMeta(bits.join(" ") || null);
-      if (useForce) setForceAi(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al sugerir");
+      setError(err instanceof Error ? err.message : "Error al completar");
       setDraft(null);
     } finally {
       setLoading(false);
@@ -90,10 +87,33 @@ export default function SuggestPhotoNote({
     <div className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--surface-inset)] px-3 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-medium text-fg-secondary">
-          Sugerir nota con IA
+          Completar nota con IA
         </p>
         <p className="text-[11px] text-fg-tertiary">
-          Solo al pulsar · no ve la foto · editable
+          Tú describes · la IA pulirá · editable
+        </p>
+      </div>
+
+      <div>
+        <label
+          className="mb-1 block text-xs font-medium text-fg-secondary"
+          htmlFor={`ai-seed-${photoId}`}
+        >
+          Qué hay en la foto (breve)
+        </label>
+        <textarea
+          id={`ai-seed-${photoId}`}
+          value={seed}
+          onChange={(e) => setSeed(e.target.value)}
+          rows={2}
+          placeholder="Ej. Café en terraza con vistas al río, lluvia ligera"
+          className="form-input input-focus text-sm"
+          disabled={loading}
+        />
+        <p className="mt-1 text-[11px] text-fg-tertiary">
+          Mínimo {PHOTO_NOTE_SEED_MIN_CHARS} caracteres. Si la foto tiene lugar
+          enlazado, fecha o sitios cercanos, la IA los usa para complementar —
+          sin inventar la escena.
         </p>
       </div>
 
@@ -116,40 +136,15 @@ export default function SuggestPhotoNote({
         ))}
       </div>
 
-      {sparseHint && (
-        <label className="flex items-start gap-2 text-xs text-fg-secondary">
-          <input
-            type="checkbox"
-            className="mt-0.5"
-            checked={confirmSparse}
-            onChange={(e) => setConfirmSparse(e.target.checked)}
-            disabled={loading}
-          />
-          <span>
-            Poca info; la sugerencia puede ser genérica. Aun así.
-          </span>
-        </label>
-      )}
-
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => void runSuggest()}
-          disabled={loading}
+          disabled={loading || !seedReady}
           className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
         >
-          {loading ? "Sugiriendo…" : "Sugerir nota"}
+          {loading ? "Completando…" : "Completar con IA"}
         </button>
-        {draft != null && (
-          <button
-            type="button"
-            onClick={() => void runSuggest({ forceAi: true })}
-            disabled={loading}
-            className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
-          >
-            Mejorar con IA
-          </button>
-        )}
       </div>
 
       {error && <p className="text-xs text-danger">{error}</p>}
@@ -157,7 +152,10 @@ export default function SuggestPhotoNote({
 
       {draft != null && (
         <div className="space-y-2">
-          <label className="text-xs font-medium text-fg-secondary" htmlFor={`ai-draft-${photoId}`}>
+          <label
+            className="text-xs font-medium text-fg-secondary"
+            htmlFor={`ai-draft-${photoId}`}
+          >
             Borrador
           </label>
           <textarea

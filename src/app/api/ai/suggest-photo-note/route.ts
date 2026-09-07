@@ -3,7 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { aiSuggestionsEnabled } from "@/lib/ai-suggestions-enabled";
 import {
   buildPhotoNoteSuggestContext,
+  hasUsablePhotoNoteSeed,
+  normalizePhotoNoteSeed,
   parsePhotoNoteTone,
+  PHOTO_NOTE_SEED_MIN_CHARS,
   pickNearbyPlaceNames,
   suggestPhotoNote,
 } from "@/lib/ai-suggest-photo-note";
@@ -25,12 +28,13 @@ export async function POST(request: NextRequest) {
       travelId,
       photoId,
       tone: toneRaw,
-      forceAi,
+      userSeed: userSeedRaw,
       authorAlias,
     } = body as {
       travelId?: string;
       photoId?: string;
       tone?: string;
+      userSeed?: string;
       forceAi?: boolean;
       authorAlias?: string;
     };
@@ -38,6 +42,16 @@ export async function POST(request: NextRequest) {
     if (!travelId?.trim() || !photoId?.trim()) {
       return NextResponse.json(
         { error: "travelId y photoId son obligatorios" },
+        { status: 400 }
+      );
+    }
+
+    const userSeed = normalizePhotoNoteSeed(userSeedRaw);
+    if (!hasUsablePhotoNoteSeed(userSeed)) {
+      return NextResponse.json(
+        {
+          error: `Escribe una breve descripción de la foto (mínimo ${PHOTO_NOTE_SEED_MIN_CHARS} caracteres). La IA solo la complementa.`,
+        },
         { status: 400 }
       );
     }
@@ -85,10 +99,12 @@ export async function POST(request: NextRequest) {
       authorAlias:
         (typeof authorAlias === "string" && authorAlias.trim()) ||
         photo.user.alias,
+      userSeed,
       exifDateTime: photo.exifDateTime?.toISOString() ?? null,
       place: photo.place
         ? { name: photo.place.name, type: photo.place.type }
         : null,
+      hasGps: photo.latitude != null && photo.longitude != null,
       existingNotes: photo.notes.map((n) => n.text),
       nearbyPlaceNames,
       tone,
@@ -97,7 +113,6 @@ export async function POST(request: NextRequest) {
     const result = await suggestPhotoNote({
       photoId: photo.id,
       context,
-      forceAi: Boolean(forceAi),
     });
 
     return NextResponse.json({

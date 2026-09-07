@@ -311,9 +311,6 @@ export default function TravelDayCalendar({
                       authorAlias={
                         getSessionFromStorage()?.alias ?? photo.user.alias
                       }
-                      sparseHint={
-                        photoNotes.length === 0 && !photo.exifDateTime
-                      }
                       onApplyDraft={(text) => {
                         setNotePrefill((prev) => ({
                           photoId: photo.id,

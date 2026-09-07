@@ -3,9 +3,12 @@ import assert from "node:assert/strict";
 import {
   buildPhotoNoteSuggestContext,
   buildPhotoNoteSystemPrompt,
+  buildPhotoNoteUserPrompt,
+  hasUsablePhotoNoteSeed,
   heuristicPhotoNote,
-  isPhotoNoteContextSparse,
+  normalizePhotoNoteSeed,
   parsePhotoNoteTone,
+  PHOTO_NOTE_SEED_MIN_CHARS,
   pickNearbyPlaceNames,
   sanitizeSuggestionText,
 } from "../src/lib/ai-suggest-photo-note.ts";
@@ -16,31 +19,17 @@ test("parsePhotoNoteTone defaults to neutro", () => {
   assert.equal(parsePhotoNoteTone("nope"), "neutro");
 });
 
-test("sparse context detection", () => {
-  assert.equal(
-    isPhotoNoteContextSparse({
-      place: null,
-      existingNotes: [],
-      exifLocal: null,
-      nearbyPlaceNames: [],
-    }),
-    true
-  );
-  assert.equal(
-    isPhotoNoteContextSparse({
-      place: { name: "Wawel", type: "VIEWPOINT" },
-      existingNotes: [],
-      exifLocal: null,
-      nearbyPlaceNames: [],
-    }),
-    false
-  );
+test("user seed min length gate", () => {
+  assert.equal(hasUsablePhotoNoteSeed("corta"), false);
+  assert.equal(hasUsablePhotoNoteSeed("a".repeat(PHOTO_NOTE_SEED_MIN_CHARS)), true);
+  assert.equal(normalizePhotoNoteSeed("  hola   mundo  "), "hola mundo");
 });
 
-test("heuristic includes place name", () => {
+test("heuristic keeps seed as core and may add place", () => {
   const ctx = buildPhotoNoteSuggestContext({
     travelTitle: "Krakow 2026",
     authorAlias: "Irene",
+    userSeed: "Café en terraza con vistas al río",
     exifDateTime: "2026-06-11T10:00:00.000Z",
     place: { name: "Wawel", type: "VIEWPOINT" },
     existingNotes: [],
@@ -48,7 +37,24 @@ test("heuristic includes place name", () => {
     tone: "neutro",
   });
   const text = heuristicPhotoNote(ctx);
+  assert.match(text, /Café en terraza/i);
   assert.match(text, /Wawel/);
+});
+
+test("heuristic without seed does not invent scenery", () => {
+  const ctx = buildPhotoNoteSuggestContext({
+    travelTitle: "Krakow 2026",
+    authorAlias: "Irene",
+    userSeed: "",
+    exifDateTime: null,
+    place: { name: "Kazimierz", type: "OTHER" },
+    existingNotes: [],
+    nearbyPlaceNames: [],
+    tone: "neutro",
+  });
+  const text = heuristicPhotoNote(ctx);
+  assert.match(text, /Kazimierz|descripción/i);
+  assert.doesNotMatch(text, /gueto|puente|película/i);
 });
 
 test("pickNearbyPlaceNames respects radius and linked place", () => {
@@ -70,10 +76,30 @@ test("sanitizeSuggestionText strips wrappers", () => {
   assert.equal(sanitizeSuggestionText("Nota: algo"), "algo");
 });
 
-test("photo note system prompt forbids inventing visuals", () => {
+test("photo note prompts weave place/location and forbid inventing visuals", () => {
   const prompt = buildPhotoNoteSystemPrompt();
+  assert.match(prompt, /semilla/i);
+  assert.match(prompt, /COMPLEMENTAR/i);
+  assert.match(prompt, /lugar/i);
   assert.match(prompt, /NO ves la imagen/i);
   assert.match(prompt, /PROHIBIDO inventar/i);
+
+  const ctx = buildPhotoNoteSuggestContext({
+    travelTitle: "Viaje",
+    authorAlias: "A",
+    userSeed: "Café en terraza",
+    exifDateTime: null,
+    place: { name: "Wawel", type: "VIEWPOINT" },
+    hasGps: true,
+    existingNotes: [],
+    nearbyPlaceNames: ["Rynek"],
+    tone: "neutro",
+  });
+  const user = buildPhotoNoteUserPrompt(ctx);
+  assert.match(user, /"semilla":"Café en terraza"/);
+  assert.match(user, /"nombre":"Wawel"/);
+  assert.match(user, /"tiene_gps":true/);
+  assert.match(user, /"cerca":\["Rynek"\]/);
 });
 
 test("aiSuggestionsEnabled respects AI_SUGGESTIONS=0", () => {
