@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import ExportFormatTabs from "@/components/ExportFormatTabs";
 import TravelWorkspaceNav from "@/components/TravelWorkspaceNav";
+import { formatDateKey, isoToDateKey } from "@/lib/travel-dates";
 
 function photoThumbApiPath(photoId: string): string {
   return `/api/photos/${photoId}/thumb`;
@@ -22,12 +23,15 @@ export default async function ExportPage({
       title: true,
       journalMarkdown: true,
       photos: {
-        where: { selected: true, mediaType: { not: "VIDEO" } },
+        where: { selected: true },
         select: {
           id: true,
           latitude: true,
           longitude: true,
           highlightScore: true,
+          exifDateTime: true,
+          mediaType: true,
+          posterFilename: true,
         },
         orderBy: [{ highlightScore: "desc" }, { exifDateTime: "asc" }],
       },
@@ -41,11 +45,28 @@ export default async function ExportPage({
     (p) => p.latitude != null && p.longitude != null
   );
 
-  const coverPhotos = travel.photos.map((p) => ({
-    id: p.id,
-    thumbUrl: photoThumbApiPath(p.id),
-    highlightScore: p.highlightScore ?? undefined,
-  }));
+  const coverPhotos = travel.photos
+    .filter((p) => p.mediaType !== "VIDEO")
+    .map((p) => ({
+      id: p.id,
+      thumbUrl: photoThumbApiPath(p.id),
+      highlightScore: p.highlightScore ?? undefined,
+    }));
+
+  const dayCounts = new Map<string, number>();
+  for (const photo of travel.photos) {
+    if (photo.mediaType === "VIDEO" && !photo.posterFilename) continue;
+    if (!photo.exifDateTime) continue;
+    const key = isoToDateKey(photo.exifDateTime.toISOString());
+    dayCounts.set(key, (dayCounts.get(key) ?? 0) + 1);
+  }
+  const reelDays = [...dayCounts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([dayKey, photoCount]) => ({
+      dayKey,
+      label: formatDateKey(dayKey, "short"),
+      photoCount,
+    }));
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 px-4 py-8">
@@ -69,6 +90,7 @@ export default async function ExportPage({
         hasGpsPhotos={hasGpsPhotos}
         photoCount={travel._count.photos}
         coverPhotos={coverPhotos}
+        reelDays={reelDays}
       />
     </main>
   );
