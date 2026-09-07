@@ -108,6 +108,7 @@ export default function ExportFormatTabs({
             travelId={travelId}
             hasJournal={hasJournal}
             hasGpsPhotos={hasGpsPhotos}
+            photoCount={photoCount}
           />
         )}
         {activeTab === "pdf" && (

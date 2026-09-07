@@ -13,6 +13,7 @@ import {
   resolveReelDirectivesForPreset,
   type ReelPresetId,
 } from "@/lib/export/reel-preset-catalog";
+import { parseReelAudioPresetId } from "@/lib/export/reel-audio";
 
 const REEL_PRESETS: ReelPresetId[] = [
   "balanced-story",
@@ -42,6 +43,8 @@ export async function POST(request: NextRequest) {
       presetId?: string;
       /** Optional YYYY-MM-DD — mount only that day's photos/places. */
       dayKey?: string | null;
+      /** Typed audio bed preset (none / soft-pulse / travel-beat). */
+      audioPreset?: string;
     };
 
     if (!body.travelId) {
@@ -53,6 +56,7 @@ export async function POST(request: NextRequest) {
     const brief = typeof body.brief === "string" ? body.brief.trim() : "";
     const presetId = parseReelPresetId(body.presetId);
     const dayKey = parseReelDayKey(body.dayKey);
+    const audioPreset = parseReelAudioPresetId(body.audioPreset);
 
     const travel = await prisma.travel.findUnique({
       where: { id: body.travelId },
@@ -139,10 +143,14 @@ export async function POST(request: NextRequest) {
       : null;
 
     // Preset defaults ⊕ brief knobs (brief wins). UI duration still wins above.
-    const reelDirectives = resolveReelDirectivesForPreset(
-      presetId,
-      briefResult?.directives.reel ?? null
-    );
+    // UI audioPreset overrides brief/preset audio so the panel choice sticks.
+    const reelDirectives = {
+      ...resolveReelDirectivesForPreset(
+        presetId,
+        briefResult?.directives.reel ?? null
+      ),
+      audioPreset,
+    };
     const presetLabel = getReelPresetCatalogEntry(presetId)?.label ?? presetId;
 
     const manifest = buildReelManifest({

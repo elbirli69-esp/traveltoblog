@@ -90,6 +90,7 @@ interface ExportHtmlPanelProps {
   travelId: string;
   hasJournal?: boolean;
   hasGpsPhotos?: boolean;
+  photoCount?: number;
 }
 
 function blobFromBase64(base64: string, contentType: string): Blob {
@@ -105,6 +106,7 @@ export default function ExportHtmlPanel({
   travelId,
   hasJournal = false,
   hasGpsPhotos = false,
+  photoCount = 0,
 }: ExportHtmlPanelProps) {
   const [template, setTemplate] = useState<ExportTemplateId>("magazine");
   const [themePack, setThemePack] = useState<ThemePackId>("light-paper");
@@ -297,6 +299,15 @@ export default function ExportHtmlPanel({
   const runExport = useCallback(
     async (mode: "download" | "preview") => {
       const isPreview = mode === "preview";
+      const exportFormat: ExportFormat = isPreview ? "html" : format;
+
+      if (!isPreview && exportFormat === "html" && photoCount >= 25) {
+        const ok = window.confirm(
+          `Vas a exportar un HTML único con ${photoCount} fotos. El archivo puede superar fácilmente decenas de MB y ser difícil de enviar por WhatsApp o email. ¿Continuar? (Recomendamos ZIP.)`
+        );
+        if (!ok) return;
+      }
+
       if (isPreview) {
         setPreviewing(true);
       } else {
@@ -307,8 +318,6 @@ export default function ExportHtmlPanel({
       setCurrentStep(null);
       setStepMessage(null);
       setCompletedSteps([]);
-
-      const exportFormat: ExportFormat = isPreview ? "html" : format;
 
       try {
         if (typology !== "auto") {
@@ -445,7 +454,18 @@ export default function ExportHtmlPanel({
         setStepMessage(null);
       }
     },
-    [brief, format, includeGpsTrail, progressSteps, template, travelId, typology]
+    [
+      brief,
+      format,
+      includeGpsTrail,
+      photoCount,
+      progressSteps,
+      template,
+      themePack,
+      travelId,
+      typePack,
+      typology,
+    ]
   );
 
   return (

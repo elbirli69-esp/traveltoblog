@@ -23,11 +23,29 @@ import {
   type ReelPresetId,
 } from "@/lib/export/reel-preset-catalog";
 import {
+  REEL_AUDIO_PRESETS,
+  type ReelAudioPresetId,
+} from "@/lib/export/reel-audio";
+import type { ExportWarning } from "@/lib/export-warnings";
+import {
   fetchTravelExportPrefs,
   saveTravelExportPrefs,
 } from "@/lib/export-prefs";
 
 const REEL_PRESETS = featuredReelPresetCatalog();
+
+function uniqueStoryboardIds(frames: { photoId?: string | null }[]): string[] {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const frame of frames) {
+    const id = frame.photoId?.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+    if (ids.length >= 8) break;
+  }
+  return ids;
+}
 
 export interface ReelDayOption {
   dayKey: string;
@@ -68,6 +86,9 @@ export default function ExportReelPanel({
   const [interpretation, setInterpretation] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [interpreting, setInterpreting] = useState(false);
+  const [audioPreset, setAudioPreset] = useState<ReelAudioPresetId>("none");
+  const [warnings, setWarnings] = useState<ExportWarning[]>([]);
+  const [storyboardIds, setStoryboardIds] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -111,6 +132,21 @@ export default function ExportReelPanel({
         setPresetId(prefs.reelPresetId as ReelPresetId);
       }
     });
+    return () => {
+      cancelled = true;
+    };
+  }, [travelId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`/api/travels/${travelId}/export-warnings?format=reel`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) setWarnings(data.warnings ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setWarnings([]);
+      });
     return () => {
       cancelled = true;
     };
@@ -188,6 +224,7 @@ export default function ExportReelPanel({
     setLoading(true);
     setError(null);
     setSuccess(null);
+    setStoryboardIds(null);
     setProgress({ phase: "frames", current: 0, total: 1, message: "Preparando guion…" });
 
     try {
@@ -209,6 +246,7 @@ export default function ExportReelPanel({
           durationSeconds,
           brief: brief.trim() || undefined,
           presetId,
+          audioPreset,
           ...(scope === "day" && dayKey ? { dayKey } : {}),
         }),
       });
@@ -227,6 +265,15 @@ export default function ExportReelPanel({
       if (data.briefWarning) {
         setError(data.briefWarning);
       }
+
+      const thumbs = uniqueStoryboardIds(data.frames ?? []);
+      setStoryboardIds(thumbs.length > 0 ? thumbs : null);
+      setProgress({
+        phase: "frames",
+        current: 0,
+        total: 1,
+        message: "Vista previa del montaje — codificando MP4…",
+      });
 
       const { mp4, cover } = await encodeInstagramReelMp4(data, setProgress);
 
@@ -257,7 +304,8 @@ export default function ExportReelPanel({
         scope === "day" && (data.scopeDayKey || dayKey)
           ? `-${data.scopeDayKey || dayKey}`
           : "";
-      const filename = `reel-instagram-${safeTitle || travelId}${daySuffix}-${durationSeconds}s.zip`;
+      const audioSuffix = audioPreset !== "none" ? "-audio" : "";
+      const filename = `reel-instagram-${safeTitle || travelId}${daySuffix}-${durationSeconds}s${audioSuffix}.zip`;
 
       const result: DownloadResult = await downloadBlob(zipBlob, filename);
       const sizeMb = (zipBlob.size / (1024 * 1024)).toFixed(1);
@@ -287,16 +335,18 @@ export default function ExportReelPanel({
     } finally {
       setLoading(false);
       setProgress(null);
+      setStoryboardIds(null);
     }
   };
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-fg-secondary">
-        Genera un MP4 vertical 1080×1920 (9:16, H.264, sin audio) pensado para publicarlo
-        directamente como <span className="font-medium text-fg">Reel de Instagram</span>.
-        Puedes montar el viaje entero o solo un día (útil mientras el viaje sigue). ZIP aparte
-        del HTML; la música se añade en Instagram.
+        Genera un MP4 vertical 1080×1920 (9:16, H.264) pensado para publicarlo directamente como{" "}
+        <span className="font-medium text-fg">Reel de Instagram</span>. Puedes montar el viaje
+        entero o solo un día (útil mientras el viaje sigue). Audio tipado opcional (cama
+        sintética) o silencio — en Instagram siempre puedes sustituir la música. ZIP aparte del
+        HTML.
       </p>
 
       {photoCount > 0 && (
@@ -434,6 +484,38 @@ export default function ExportReelPanel({
         </div>
       </fieldset>
 
+      <fieldset className="space-y-2" disabled={loading}>
+        <legend className="mb-2 text-sm font-medium text-accent-cyan">
+          Audio (opcional)
+        </legend>
+        <p className="text-xs text-fg-secondary">
+          Presets tipados sintetizados (sin subir MP3). Por defecto silencio; Instagram puede
+          añadir la banda sonora.
+        </p>
+        {REEL_AUDIO_PRESETS.map((preset) => {
+          const selected = audioPreset === preset.id;
+          return (
+            <label
+              key={preset.id}
+              className={`option-radio ${selected ? "option-radio-active" : ""}`}
+            >
+              <input
+                type="radio"
+                name="reel-audio"
+                value={preset.id}
+                checked={selected}
+                onChange={() => setAudioPreset(preset.id)}
+                className="mt-1"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-fg">{preset.label}</span>
+                <span className="block text-xs text-fg-secondary">{preset.tagline}</span>
+              </span>
+            </label>
+          );
+        })}
+      </fieldset>
+
       <div className="space-y-2">
         <label htmlFor="reel-export-brief" className="block text-sm font-medium text-accent-cyan">
           Indicaciones para este Reel (opcional)
@@ -519,6 +601,21 @@ export default function ExportReelPanel({
 
       </div>
 
+      {warnings.length > 0 && (
+        <ul className="space-y-2">
+          {warnings.map((w, i) => (
+            <li
+              key={i}
+              className={`callout text-sm ${
+                w.level === "warning" ? "callout-warning" : "callout-success"
+              }`}
+            >
+              {w.message}
+            </li>
+          ))}
+        </ul>
+      )}
+
       <button
         type="button"
         onClick={() => void handleExport()}
@@ -531,6 +628,25 @@ export default function ExportReelPanel({
             ? "Descargar ZIP del Reel (este día)"
             : "Descargar ZIP del Reel (Instagram)"}
       </button>
+
+      {storyboardIds && storyboardIds.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-fg-secondary">
+            Vista previa del montaje (sin codificar aún)
+          </p>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {storyboardIds.map((id) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={id}
+                src={`/api/photos/${id}/reel-frame`}
+                alt=""
+                className="h-20 w-12 shrink-0 rounded object-cover"
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading && progressLabel && (
         <p className="progress-panel text-sm progress-step-active">{progressLabel}</p>
