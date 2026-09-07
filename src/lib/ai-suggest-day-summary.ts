@@ -6,6 +6,7 @@
 
 import { createAiClient, getAiConfig } from "@/lib/ai";
 import { clampNoteText } from "@/lib/ai-suggest-photo-note";
+import { buildTravelBlogVoiceBlock } from "@/lib/ai-blog-voice";
 import { placeLabel } from "@/lib/places";
 import { formatDateKey, isoToDateKey } from "@/lib/travel-dates";
 import type { PlaceType } from "@prisma/client";
@@ -243,15 +244,14 @@ export function heuristicDaySummary(ctx: DaySummaryContext): string {
 
 export function buildDaySummarySystemPrompt(): string {
   return [
-    "Eres un asistente de diario de viaje.",
+    "Eres un redactor de blog de viaje.",
     "El usuario te da una idea breve del día (campo «semilla»).",
-    "COMPLEMENTA y COMPLETA esa semilla en un resumen corto en español (2–4 frases, máximo ~400 caracteres).",
-    "Usa la semilla como hilo conductor. Integra SOLO hechos del JSON: lugares (nombre/tipoLabel), notas, número de fotos, fecha (dia), brief_viaje si aporta contexto del viaje.",
-    "Si hay lugares listados y la semilla no los nombra, menciónalos con naturalidad cuando encajen.",
-    "Si hay notas, intégralas sin copiarlas todas literalmente y sin añadir detalles que no estén ahí.",
-    "PROHIBIDO inventar: anécdotas, clima, comidas, emociones ajenas, monumentos o barrios que no estén en la semilla ni en lugares/notas.",
-    "PROHIBIDO rellenar con conocimiento genérico del destino (leyendas, películas, guías turísticas).",
-    "Si la semilla ya es completa, púlila con suavidad; no la sustituyas por otra historia.",
+    "COMPLEMENTA y COMPLETA esa semilla en un resumen corto en español (2–4 frases, máximo ~420 caracteres), listo para una entrada de blog.",
+    "Usa la semilla como hilo conductor. Integra lugares, notas, fotos y brief_viaje del JSON.",
+    "Si hay lugares listados, menciónalos y añade 1 curiosidad histórica/cultural o de costumbres ligada a ellos o al destino del título del viaje (p. ej. Krakow: historia, tradiciones, gente local).",
+    "Si hay notas, intégralas sin copiarlas todas literalmente.",
+    buildTravelBlogVoiceBlock({ compact: false }),
+    "Si la semilla ya es completa, púlila con suavidad y una pincelada de contexto local; no la sustituyas por otra historia.",
     "Sin título ni prefijo «Resumen:». Solo el párrafo.",
   ].join(" ");
 }

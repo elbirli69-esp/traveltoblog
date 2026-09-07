@@ -114,7 +114,7 @@ export default function SuggestDaySummary({
           Completar resumen del día con IA
         </p>
         <p className="text-[11px] text-fg-tertiary">
-          Tú cuentas · lugares/notas del día · editable
+          Tú cuentas · lugares + curiosidades de blog · editable
         </p>
       </div>
 
@@ -135,8 +135,9 @@ export default function SuggestDaySummary({
           disabled={loading}
         />
         <p className="mt-1 text-[11px] text-fg-tertiary">
-          Mínimo {DAY_SUMMARY_SEED_MIN_CHARS} caracteres. La IA añade lugares,
-          fotos y notas ya registradas — sin inventar el día.
+          Mínimo {DAY_SUMMARY_SEED_MIN_CHARS} caracteres. La IA une tu idea con
+          lugares/notas del día y una pincelada histórica o de costumbres del
+          destino — sin inventar visitas que no registraste.
         </p>
       </div>
 

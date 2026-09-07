@@ -127,9 +127,11 @@ test("parseStoryboardResponse returns null for empty valid set", () => {
   );
 });
 
-test("storyboard prompts are seed-first and forbid inventing visuals", () => {
+test("storyboard prompts are seed-first blog voice and forbid inventing visuals", () => {
   const prompt = buildStoryboardSystemPrompt();
   assert.match(prompt, /semilla/i);
+  assert.match(prompt, /BLOG/i);
+  assert.match(prompt, /curiosidad/i);
   assert.match(prompt, /PROHIBIDO inventar/i);
 
   const user = buildStoryboardUserPrompt({

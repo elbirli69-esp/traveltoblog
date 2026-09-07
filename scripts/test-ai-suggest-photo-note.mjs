@@ -76,13 +76,14 @@ test("sanitizeSuggestionText strips wrappers", () => {
   assert.equal(sanitizeSuggestionText("Nota: algo"), "algo");
 });
 
-test("photo note prompts weave place/location and forbid inventing visuals", () => {
+test("photo note prompts are blog-oriented and forbid inventing photo visuals", () => {
   const prompt = buildPhotoNoteSystemPrompt();
   assert.match(prompt, /semilla/i);
   assert.match(prompt, /COMPLEMENTAR/i);
-  assert.match(prompt, /lugar/i);
+  assert.match(prompt, /BLOG/i);
+  assert.match(prompt, /curiosidad/i);
   assert.match(prompt, /NO ves la imagen/i);
-  assert.match(prompt, /PROHIBIDO inventar/i);
+  assert.match(prompt, /PROHIBIDO inventar lo que SE VE/i);
 
   const ctx = buildPhotoNoteSuggestContext({
     travelTitle: "Viaje",
