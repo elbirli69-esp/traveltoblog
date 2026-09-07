@@ -37,14 +37,12 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as {
       travelId?: string;
       durationSeconds?: ReelDurationPreset;
-      /** Free-text creative brief — grounded to typed reel directives. */
       brief?: string;
-      /** Montage preset from UI catalog (defaults to balanced-story). */
       presetId?: string;
-      /** Optional YYYY-MM-DD — mount only that day's photos/places. */
       dayKey?: string | null;
-      /** Typed audio bed preset (none / soft-pulse / travel-beat). */
       audioPreset?: string;
+      storyboardPhotoIds?: string[];
+      captionOverrides?: Record<string, string>;
     };
 
     if (!body.travelId) {
@@ -57,6 +55,24 @@ export async function POST(request: NextRequest) {
     const presetId = parseReelPresetId(body.presetId);
     const dayKey = parseReelDayKey(body.dayKey);
     const audioPreset = parseReelAudioPresetId(body.audioPreset);
+
+    const storyboardPhotoIds = Array.isArray(body.storyboardPhotoIds)
+      ? [
+          ...new Set(
+            body.storyboardPhotoIds
+              .map((id) => String(id).trim())
+              .filter(Boolean)
+          ),
+        ]
+      : [];
+    const captionOverrides: Record<string, string> = {};
+    if (body.captionOverrides && typeof body.captionOverrides === "object") {
+      for (const [id, text] of Object.entries(body.captionOverrides)) {
+        if (typeof text === "string" && text.trim()) {
+          captionOverrides[id] = text.trim().slice(0, 120);
+        }
+      }
+    }
 
     const travel = await prisma.travel.findUnique({
       where: { id: body.travelId },
@@ -126,6 +142,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Viaje no encontrado" }, { status: 404 });
     }
 
+    const allowedPhotoIds = new Set(travel.photos.map((p) => p.id));
+    const safeStoryboardIds = storyboardPhotoIds.filter((id) =>
+      allowedPhotoIds.has(id)
+    );
+    const safeCaptions: Record<string, string> = {};
+    for (const [id, text] of Object.entries(captionOverrides)) {
+      if (allowedPhotoIds.has(id)) safeCaptions[id] = text;
+    }
+
     const briefResult = brief
       ? await interpretExportBrief(brief, {
           target: "reel",
@@ -164,6 +189,10 @@ export async function POST(request: NextRequest) {
       briefInterpretation: briefResult?.directives.interpretation
         ? `${briefResult.directives.interpretation} · preset ${presetLabel}`
         : `Preset: ${presetLabel}`,
+      storyboardPhotoIds:
+        safeStoryboardIds.length > 0 ? safeStoryboardIds : null,
+      captionOverrides:
+        Object.keys(safeCaptions).length > 0 ? safeCaptions : null,
       photos: travel.photos.map((p) => {
         const placeNotes =
           p.place?.notes?.map((n) => n.text.trim()).filter(Boolean) ?? [];

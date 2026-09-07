@@ -234,6 +234,10 @@ export interface ReelBuildOptions {
   mapBias: Emphasis;
   look: import("@/lib/export-directives").ReelLook;
   audioPreset: ReelAudioPresetId;
+  /** Forced ordered photo ids from AI / manual storyboard (validated upstream). */
+  storyboardPhotoIds?: string[];
+  /** Optional overlay captions keyed by photo id. */
+  captionOverrides?: Record<string, string>;
 }
 
 export function resolveReelBuildOptions(
@@ -352,6 +356,14 @@ function maxFramesForDuration(
   const hardMin = seconds <= 15 ? 3 : seconds <= 30 ? 5 : 8;
   if (targetPhotoCount == null) return softMax;
   return Math.max(hardMin, Math.min(hardMax, targetPhotoCount));
+}
+
+/** Soft photo-clip count for duration (storyboard / UI). */
+export function reelSoftMaxFrames(
+  seconds: ReelDurationPreset,
+  targetPhotoCount?: number
+): number {
+  return maxFramesForDuration(seconds, targetPhotoCount);
 }
 
 /** Keys match Prisma PlaceType. */
@@ -685,6 +697,157 @@ export function selectReelFrames(
       : null
   );
 
+  const captionOverrides = buildOpts?.captionOverrides ?? {};
+  const storyboardIds = (buildOpts?.storyboardPhotoIds ?? [])
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  const photosForPick = photos.map((p) => {
+    const override = captionOverrides[p.id]?.trim();
+    if (!override) return p;
+    return {
+      ...p,
+      comments: [override, ...(p.comments ?? [])],
+    };
+  });
+
+  if (storyboardIds.length > 0) {
+    return selectReelFramesFromStoryboard(
+      photosForPick,
+      storyboardIds,
+      durationSeconds,
+      dayNotes,
+      hasMap,
+      opts
+    );
+  }
+
+  return selectReelFramesAuto(
+    photosForPick,
+    durationSeconds,
+    dayNotes,
+    hasMap,
+    opts
+  );
+}
+
+function selectReelFramesFromStoryboard(
+  photos: ReelPhotoInput[],
+  storyboardIds: string[],
+  durationSeconds: ReelDurationPreset,
+  dayNotes: ReelDayNoteInput[],
+  hasMap: boolean,
+  opts: ReelBuildOptions
+): ReelFramePlan[] {
+  const byId = new Map(photos.map((p) => [p.id, p]));
+  const maxFrames = Math.min(
+    maxFramesForDuration(durationSeconds, opts.targetPhotoCount),
+    storyboardIds.length
+  );
+  const notesByDay = new Map<string, string>();
+  for (const n of dayNotes) {
+    if (!notesByDay.has(n.dayKey) && n.text.trim()) {
+      notesByDay.set(n.dayKey, clipOverlayText(`${n.author}: ${n.text}`, 90));
+    }
+  }
+  const usedDayNotes = new Set<string>();
+  const frames: ReelFramePlan[] = [];
+  const seenDays = new Set<string>();
+
+  for (const id of storyboardIds) {
+    if (frames.length >= maxFrames) break;
+    const candidate = byId.get(id);
+    if (!candidate) continue;
+    if (!candidate.selected) continue;
+    if (candidate.mediaType === "VIDEO" && !candidate.posterFilename) continue;
+
+    const dayKey = toDayKey(candidate.exifDateTime);
+    const firstOfDay = Boolean(dayKey && !seenDays.has(dayKey));
+    if (dayKey) seenDays.add(dayKey);
+
+    let dayNote: string | null = null;
+    if (
+      firstOfDay &&
+      dayKey &&
+      notesByDay.has(dayKey) &&
+      !usedDayNotes.has(dayKey) &&
+      opts.captionMode !== "none" &&
+      opts.captionMode !== "placeOnly"
+    ) {
+      dayNote = notesByDay.get(dayKey) ?? null;
+      usedDayNotes.add(dayKey);
+    }
+
+    const caption =
+      opts.captionMode === "none" || opts.captionMode === "placeOnly"
+        ? null
+        : resolveFrameCaption(candidate);
+
+    frames.push({
+      photoId: candidate.id,
+      dayKey,
+      dayLabel: dayKey ? formatDateKey(dayKey, "short") : null,
+      placeName: candidate.placeName?.trim() || null,
+      highlightScore: candidate.highlightScore ?? 5,
+      caption,
+      dayNote,
+      hero: false,
+      durationSeconds: 1.2,
+      layout: "full",
+      treatment: "clean",
+      transitionOut: "fade",
+      captionStyle: "glassCard",
+      kenBurns: frames.length % 2 === 0 ? "in" : "out",
+      latitude: candidate.latitude ?? null,
+      longitude: candidate.longitude ?? null,
+      role: "clip",
+      dayIndex: null,
+      sticker: resolveSticker(candidate.placeType),
+      showDayChip: firstOfDay,
+    });
+  }
+
+  if (frames.length === 0) {
+    return selectReelFramesAuto(photos, durationSeconds, dayNotes, hasMap, opts);
+  }
+
+  const heroBudget = Math.min(3, Math.max(1, Math.floor(frames.length / 3)));
+  const heroCandidates = frames
+    .map((f, i) => ({
+      f,
+      i,
+      score: computeReelPhotoPriority({
+        highlightScore: f.highlightScore,
+        hasCaption: Boolean(f.caption),
+        placeName: f.placeName,
+      }),
+    }))
+    .sort((a, b) => b.score - a.score || a.i - b.i);
+  const heroes = new Set<number>();
+  for (const c of heroCandidates) {
+    if (heroes.size >= heroBudget) break;
+    if ([...heroes].some((h) => Math.abs(h - c.i) < 2)) continue;
+    heroes.add(c.i);
+  }
+  if (heroes.size === 0 && frames.length > 0) heroes.add(0);
+
+  const withHeroes = frames.map((f, i) => ({
+    ...f,
+    hero: heroes.has(i),
+    durationSeconds: heroes.has(i) ? 2.0 : 1.15,
+    kenBurns: (i % 2 === 0 ? "in" : "out") as "in" | "out",
+  }));
+
+  return assignReelTreatments(withHeroes, hasMap, opts);
+}
+
+function selectReelFramesAuto(
+  photos: ReelPhotoInput[],
+  durationSeconds: ReelDurationPreset,
+  dayNotes: ReelDayNoteInput[],
+  hasMap: boolean,
+  opts: ReelBuildOptions
+): ReelFramePlan[] {
   const usable = photos.filter((p) => {
     if (!p.selected) return false;
     if (p.mediaType === "VIDEO" && !p.posterFilename) return false;
@@ -1425,9 +1588,21 @@ export function buildReelManifest(input: {
   briefInterpretation?: string | null;
   /** Limit montage to one calendar day (YYYY-MM-DD). */
   dayKey?: string | null;
+  /** Optional forced storyboard order (AI / manual). */
+  storyboardPhotoIds?: string[] | null;
+  captionOverrides?: Record<string, string> | null;
 }): ReelManifest {
   const durationSeconds = input.durationSeconds;
-  const buildOpts = resolveReelBuildOptions(input.reelDirectives ?? null);
+  const resolvedOpts = resolveReelBuildOptions(input.reelDirectives ?? null);
+  const buildOpts: ReelBuildOptions = {
+    ...resolvedOpts,
+    ...(input.storyboardPhotoIds?.length
+      ? { storyboardPhotoIds: input.storyboardPhotoIds }
+      : {}),
+    ...(input.captionOverrides && Object.keys(input.captionOverrides).length > 0
+      ? { captionOverrides: input.captionOverrides }
+      : {}),
+  };
   const scopeDayKey = parseReelDayKey(input.dayKey) ?? null;
   const scoped = scopeDayKey
     ? filterReelInputsForDayKey({
@@ -1572,7 +1747,7 @@ export function buildReelManifest(input: {
     briefInterpretation: input.briefInterpretation ?? null,
     appliedReelDirectives: input.reelDirectives
       ? {
-          ...buildOpts,
+          ...resolvedOpts,
           ...(input.reelDirectives.durationSeconds
             ? { durationSeconds: input.reelDirectives.durationSeconds }
             : {}),

@@ -89,6 +89,18 @@ export default function ExportReelPanel({
   const [audioPreset, setAudioPreset] = useState<ReelAudioPresetId>("none");
   const [warnings, setWarnings] = useState<ExportWarning[]>([]);
   const [storyboardIds, setStoryboardIds] = useState<string[] | null>(null);
+  const [appliedStoryboard, setAppliedStoryboard] = useState<{
+    photoIds: string[];
+    captions: Record<string, string>;
+  } | null>(null);
+  const [proposedFrames, setProposedFrames] = useState<Array<{
+    photoId: string;
+    caption?: string;
+    role?: string;
+    reason?: string;
+  }> | null>(null);
+  const [proposing, setProposing] = useState(false);
+  const [proposeMeta, setProposeMeta] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -220,11 +232,81 @@ export default function ExportReelPanel({
     }
   };
 
+  const handleProposeStoryboard = async () => {
+    setProposing(true);
+    setError(null);
+    setProposeMeta(null);
+    try {
+      if (scope === "day" && !dayKey) {
+        throw new Error("Elige un día con fotos antes de proponer el storyboard.");
+      }
+      const res = await fetch("/api/ai/suggest-reel-storyboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          travelId,
+          durationSeconds,
+          brief: brief.trim() || undefined,
+          ...(scope === "day" && dayKey ? { dayKey } : {}),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        frames?: Array<{
+          photoId: string;
+          caption?: string;
+          role?: string;
+          reason?: string;
+        }>;
+        interpretation?: string | null;
+        fromAi?: boolean;
+        cached?: boolean;
+        candidateCount?: number;
+      };
+      if (!res.ok) throw new Error(data.error ?? "No se pudo proponer el storyboard");
+      setProposedFrames(data.frames ?? []);
+      const bits: string[] = [];
+      if (data.interpretation) bits.push(data.interpretation);
+      if (typeof data.candidateCount === "number") {
+        bits.push(`${data.candidateCount} candidatas · ${(data.frames ?? []).length} en montaje.`);
+      }
+      if (data.cached) bits.push("Desde caché.");
+      if (data.fromAi === false) bits.push("Orden local (sin IA o fallback).");
+      setProposeMeta(bits.join(" ") || null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al proponer storyboard");
+      setProposedFrames(null);
+    } finally {
+      setProposing(false);
+    }
+  };
+
+  const applyProposedStoryboard = () => {
+    if (!proposedFrames?.length) return;
+    const photoIds = proposedFrames.map((f) => f.photoId);
+    const captions: Record<string, string> = {};
+    for (const f of proposedFrames) {
+      if (f.caption?.trim()) captions[f.photoId] = f.caption.trim();
+    }
+    setAppliedStoryboard({ photoIds, captions });
+    setStoryboardIds(photoIds);
+    setProposeMeta(
+      `Storyboard aplicado (${photoIds.length} fotos). Se usará al exportar el Reel.`
+    );
+  };
+
+  const clearAppliedStoryboard = () => {
+    setAppliedStoryboard(null);
+    setProposedFrames(null);
+    setStoryboardIds(null);
+    setProposeMeta(null);
+  };
+
   const handleExport = async () => {
     setLoading(true);
     setError(null);
     setSuccess(null);
-    setStoryboardIds(null);
+    if (!appliedStoryboard) setStoryboardIds(null);
     setProgress({ phase: "frames", current: 0, total: 1, message: "Preparando guion…" });
 
     try {
@@ -248,6 +330,12 @@ export default function ExportReelPanel({
           presetId,
           audioPreset,
           ...(scope === "day" && dayKey ? { dayKey } : {}),
+          ...(appliedStoryboard
+            ? {
+                storyboardPhotoIds: appliedStoryboard.photoIds,
+                captionOverrides: appliedStoryboard.captions,
+              }
+            : {}),
         }),
       });
       const data = (await res.json().catch(() => ({}))) as ReelManifest & {
@@ -267,7 +355,9 @@ export default function ExportReelPanel({
       }
 
       const thumbs = uniqueStoryboardIds(data.frames ?? []);
-      setStoryboardIds(thumbs.length > 0 ? thumbs : null);
+      if (!appliedStoryboard) {
+        setStoryboardIds(thumbs.length > 0 ? thumbs : null);
+      }
       setProgress({
         phase: "frames",
         current: 0,
@@ -335,7 +425,7 @@ export default function ExportReelPanel({
     } finally {
       setLoading(false);
       setProgress(null);
-      setStoryboardIds(null);
+      if (!appliedStoryboard) setStoryboardIds(null);
     }
   };
 
@@ -615,6 +705,73 @@ export default function ExportReelPanel({
           ))}
         </ul>
       )}
+
+      <div className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--surface-inset)] px-3 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-medium text-fg-secondary">
+            Storyboard con IA
+          </p>
+          <p className="text-[11px] text-fg-tertiary">Solo al pulsar · no exporta solo</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void handleProposeStoryboard()}
+            disabled={proposing || loading || !canExport}
+            className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+          >
+            {proposing ? "Proponiendo…" : "Proponer storyboard"}
+          </button>
+          {proposedFrames && proposedFrames.length > 0 && (
+            <button
+              type="button"
+              onClick={applyProposedStoryboard}
+              disabled={loading}
+              className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50"
+            >
+              Aplicar al export
+            </button>
+          )}
+          {(appliedStoryboard || proposedFrames) && (
+            <button
+              type="button"
+              onClick={clearAppliedStoryboard}
+              disabled={loading}
+              className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+            >
+              Quitar
+            </button>
+          )}
+        </div>
+        {proposeMeta && <p className="text-xs text-fg-tertiary">{proposeMeta}</p>}
+        {appliedStoryboard && (
+          <p className="text-xs text-accent-mint">
+            Activo: {appliedStoryboard.photoIds.length} fotos
+            {Object.keys(appliedStoryboard.captions).length > 0
+              ? ` · ${Object.keys(appliedStoryboard.captions).length} captions`
+              : ""}
+          </p>
+        )}
+        {proposedFrames && proposedFrames.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {proposedFrames.map((frame) => (
+              <div key={frame.photoId} className="w-16 shrink-0 space-y-1">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/photos/${frame.photoId}/reel-frame`}
+                  alt=""
+                  className="h-20 w-12 rounded object-cover"
+                />
+                {frame.caption ? (
+                  <p className="line-clamp-2 text-[10px] text-fg-tertiary">
+                    {frame.caption}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <button
         type="button"
