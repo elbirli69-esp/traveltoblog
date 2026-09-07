@@ -31,6 +31,7 @@ import {
   fetchTravelExportPrefs,
   saveTravelExportPrefs,
 } from "@/lib/export-prefs";
+import { REEL_STORYBOARD_SEED_MIN_CHARS } from "@/lib/ai-suggest-reel-storyboard";
 
 const REEL_PRESETS = featuredReelPresetCatalog();
 
@@ -101,6 +102,7 @@ export default function ExportReelPanel({
   }> | null>(null);
   const [proposing, setProposing] = useState(false);
   const [proposeMeta, setProposeMeta] = useState<string | null>(null);
+  const [storyboardSeed, setStoryboardSeed] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -240,12 +242,19 @@ export default function ExportReelPanel({
       if (scope === "day" && !dayKey) {
         throw new Error("Elige un día con fotos antes de proponer el storyboard.");
       }
+      const seed = storyboardSeed.trim();
+      if (seed.length < REEL_STORYBOARD_SEED_MIN_CHARS) {
+        throw new Error(
+          `Cuenta qué quieres en el Reel (mín. ${REEL_STORYBOARD_SEED_MIN_CHARS} caracteres); la IA ordena fotos y captions con esa idea.`
+        );
+      }
       const res = await fetch("/api/ai/suggest-reel-storyboard", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           travelId,
           durationSeconds,
+          userSeed: seed,
           brief: brief.trim() || undefined,
           ...(scope === "day" && dayKey ? { dayKey } : {}),
         }),
@@ -709,18 +718,46 @@ export default function ExportReelPanel({
       <div className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--surface-inset)] px-3 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-medium text-fg-secondary">
-            Storyboard con IA
+            Completar storyboard con IA
           </p>
-          <p className="text-[11px] text-fg-tertiary">Solo al pulsar · no exporta solo</p>
+          <p className="text-[11px] text-fg-tertiary">
+            Tú cuentas · fotos/lugares/notas · no exporta solo
+          </p>
+        </div>
+        <div>
+          <label
+            className="mb-1 block text-xs font-medium text-fg-secondary"
+            htmlFor="reel-storyboard-seed"
+          >
+            Qué quieres contar en este Reel
+          </label>
+          <textarea
+            id="reel-storyboard-seed"
+            value={storyboardSeed}
+            onChange={(e) => setStoryboardSeed(e.target.value)}
+            rows={2}
+            placeholder="Ej. Ritmo rápido: salida, callejeo, comida y atardecer"
+            className="form-input input-focus text-sm"
+            disabled={proposing || loading}
+          />
+          <p className="mt-1 text-[11px] text-fg-tertiary">
+            Mínimo {REEL_STORYBOARD_SEED_MIN_CHARS} caracteres. La IA ordena
+            candidatas y captions existentes — sin inventar la escena.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => void handleProposeStoryboard()}
-            disabled={proposing || loading || !canExport}
+            disabled={
+              proposing ||
+              loading ||
+              !canExport ||
+              storyboardSeed.trim().length < REEL_STORYBOARD_SEED_MIN_CHARS
+            }
             className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
           >
-            {proposing ? "Proponiendo…" : "Proponer storyboard"}
+            {proposing ? "Completando…" : "Completar con IA"}
           </button>
           {proposedFrames && proposedFrames.length > 0 && (
             <button

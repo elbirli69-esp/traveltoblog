@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { aiSuggestionsEnabled } from "@/lib/ai-suggestions-enabled";
 import {
   buildStoryboardCandidates,
+  hasUsableReelStoryboardSeed,
+  normalizeReelStoryboardSeed,
+  REEL_STORYBOARD_SEED_MIN_CHARS,
   suggestReelStoryboard,
 } from "@/lib/ai-suggest-reel-storyboard";
 import { parseReelDayKey, parseReelDuration } from "@/lib/export-reel";
@@ -25,16 +28,28 @@ export async function POST(request: NextRequest) {
       durationSeconds: durationRaw,
       dayKey: dayKeyRaw,
       brief,
+      userSeed: userSeedRaw,
     } = body as {
       travelId?: string;
       durationSeconds?: number;
       dayKey?: string | null;
       brief?: string | null;
+      userSeed?: string;
     };
 
     if (!travelId?.trim()) {
       return NextResponse.json(
         { error: "travelId es obligatorio" },
+        { status: 400 }
+      );
+    }
+
+    const userSeed = normalizeReelStoryboardSeed(userSeedRaw);
+    if (!hasUsableReelStoryboardSeed(userSeed)) {
+      return NextResponse.json(
+        {
+          error: `Escribe qué quieres contar en el Reel (mínimo ${REEL_STORYBOARD_SEED_MIN_CHARS} caracteres). La IA ordena fotos y captions con esa idea.`,
+        },
         { status: 400 }
       );
     }
@@ -104,6 +119,7 @@ export async function POST(request: NextRequest) {
       durationSeconds,
       dayKey,
       brief: typeof brief === "string" ? brief : null,
+      userSeed,
       candidates,
     });
 

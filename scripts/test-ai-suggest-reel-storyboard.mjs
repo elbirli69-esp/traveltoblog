@@ -2,8 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildStoryboardCandidates,
+  buildStoryboardSystemPrompt,
+  buildStoryboardUserPrompt,
+  hasUsableReelStoryboardSeed,
   heuristicStoryboard,
+  normalizeReelStoryboardSeed,
   parseStoryboardResponse,
+  REEL_STORYBOARD_SEED_MIN_CHARS,
   slotCountForDuration,
 } from "../src/lib/ai-suggest-reel-storyboard.ts";
 
@@ -11,6 +16,15 @@ test("slotCountForDuration matches soft targets", () => {
   assert.equal(slotCountForDuration(15), 6);
   assert.equal(slotCountForDuration(30), 10);
   assert.equal(slotCountForDuration(60), 20);
+});
+
+test("reel storyboard seed min length gate", () => {
+  assert.equal(hasUsableReelStoryboardSeed("corto"), false);
+  assert.equal(
+    hasUsableReelStoryboardSeed("a".repeat(REEL_STORYBOARD_SEED_MIN_CHARS)),
+    true
+  );
+  assert.equal(normalizeReelStoryboardSeed("  hola   mundo  "), "hola mundo");
 });
 
 test("buildStoryboardCandidates filters day and ranks", () => {
@@ -111,4 +125,33 @@ test("parseStoryboardResponse returns null for empty valid set", () => {
     parseStoryboardResponse({ frames: [{ photoId: "x" }] }, new Set(["a"]), 5),
     null
   );
+});
+
+test("storyboard prompts are seed-first and forbid inventing visuals", () => {
+  const prompt = buildStoryboardSystemPrompt();
+  assert.match(prompt, /semilla/i);
+  assert.match(prompt, /PROHIBIDO inventar/i);
+
+  const user = buildStoryboardUserPrompt({
+    travelTitle: "Krakow",
+    userSeed: "Ritmo rápido comida y atardecer",
+    durationSeconds: 30,
+    maxFrames: 8,
+    dayKey: "2026-06-11",
+    brief: null,
+    candidates: [
+      {
+        photoId: "a",
+        dayKey: "2026-06-11",
+        placeName: "Wawel",
+        highlightScore: 8,
+        isTransportStart: false,
+        isTransportEnd: false,
+        existingCaption: "Muralla",
+        priority: 4,
+      },
+    ],
+  });
+  assert.match(user, /"semilla":"Ritmo rápido comida y atardecer"/);
+  assert.match(user, /"photoId":"a"/);
 });
