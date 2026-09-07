@@ -3,11 +3,12 @@
 import { useState } from "react";
 import ExportHtmlPanel from "@/components/ExportHtmlPanel";
 import ExportPdfPanel from "@/components/ExportPdfPanel";
+import ExportProjectPanel from "@/components/ExportProjectPanel";
 import ExportReelPanel, {
   type ReelDayOption,
 } from "@/components/ExportReelPanel";
 
-export type ExportFormatTab = "html" | "pdf" | "video";
+export type ExportFormatTab = "html" | "pdf" | "video" | "backup";
 
 interface PdfCoverPhotoOption {
   id: string;
@@ -21,6 +22,8 @@ interface ExportFormatTabsProps {
   hasJournal: boolean;
   hasGpsPhotos: boolean;
   photoCount: number;
+  /** All media files (selected + unselected) for backup sizing hints */
+  allPhotoCount?: number;
   coverPhotos: PdfCoverPhotoOption[];
   reelDays?: ReelDayOption[];
   initialTab?: ExportFormatTab;
@@ -57,6 +60,14 @@ const TABS: {
       "ZIP con un vídeo vertical listo para Reels: viaje entero o un solo día (para publicar mientras viajas).",
     titleClass: "text-accent-cyan",
   },
+  {
+    id: "backup",
+    label: "Copia",
+    title: "Copia de seguridad del proyecto",
+    description:
+      "ZIP restaurable con fotos, lugares, notas, diario y GPS. Para no perder el viaje si falla el servidor.",
+    titleClass: "text-accent-blue",
+  },
 ];
 
 export default function ExportFormatTabs({
@@ -65,6 +76,7 @@ export default function ExportFormatTabs({
   hasJournal,
   hasGpsPhotos,
   photoCount,
+  allPhotoCount,
   coverPhotos,
   reelDays = [],
   initialTab = "html",
@@ -125,6 +137,13 @@ export default function ExportFormatTabs({
             travelTitle={travelTitle}
             photoCount={photoCount}
             reelDays={reelDays}
+          />
+        )}
+        {activeTab === "backup" && (
+          <ExportProjectPanel
+            travelId={travelId}
+            travelTitle={travelTitle}
+            photoCount={allPhotoCount ?? photoCount}
           />
         )}
       </section>
