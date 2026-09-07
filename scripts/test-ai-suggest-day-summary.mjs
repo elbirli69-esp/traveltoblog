@@ -2,9 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildDaySummaryContext,
+  buildDaySummarySystemPrompt,
+  buildDaySummaryUserPrompt,
   collectDaySummaryInputs,
+  DAY_SUMMARY_SEED_MIN_CHARS,
+  hasUsableDaySummarySeed,
   heuristicDaySummary,
   isDaySummaryEmpty,
+  normalizeDaySummarySeed,
   parseDayKey,
   sanitizeDaySummaryText,
 } from "../src/lib/ai-suggest-day-summary.ts";
@@ -14,18 +19,44 @@ test("parseDayKey validates YYYY-MM-DD", () => {
   assert.equal(parseDayKey("11/06/2026"), null);
 });
 
-test("empty day skips AI path via heuristic", () => {
+test("day summary seed min length gate", () => {
+  assert.equal(hasUsableDaySummarySeed("corto"), false);
+  assert.equal(
+    hasUsableDaySummarySeed("a".repeat(DAY_SUMMARY_SEED_MIN_CHARS)),
+    true
+  );
+  assert.equal(normalizeDaySummarySeed("  hola   mundo  "), "hola mundo");
+});
+
+test("empty day facts still allow seed-based heuristic", () => {
   const ctx = buildDaySummaryContext({
     travelTitle: "Krakow",
     dayKey: "2026-06-11",
     authorAlias: "Irene",
+    userSeed: "",
     photoCount: 0,
     places: [],
     noteBullets: [],
     journalBrief: null,
   });
   assert.equal(isDaySummaryEmpty(ctx), true);
-  assert.match(heuristicDaySummary(ctx), /Sin actividad/);
+  assert.match(heuristicDaySummary(ctx), /Sin actividad|Escribe/i);
+});
+
+test("heuristic keeps seed and weaves places", () => {
+  const ctx = buildDaySummaryContext({
+    travelTitle: "Krakow",
+    dayKey: "2026-06-11",
+    authorAlias: "Irene",
+    userSeed: "Mañana tranquila paseando por el casco",
+    photoCount: 3,
+    places: [{ name: "Wawel", type: "VIEWPOINT" }],
+    noteBullets: ["Callejeamos"],
+    journalBrief: null,
+  });
+  const text = heuristicDaySummary(ctx);
+  assert.match(text, /casco/i);
+  assert.match(text, /Wawel/);
 });
 
 test("collectDaySummaryInputs filters by dayKey", () => {
@@ -69,17 +100,23 @@ test("sanitizeDaySummaryText strips prefix", () => {
   );
 });
 
-test("heuristic mentions places", () => {
+test("day summary prompts are seed-first and forbid inventing", () => {
+  const prompt = buildDaySummarySystemPrompt();
+  assert.match(prompt, /semilla/i);
+  assert.match(prompt, /COMPLEMENTA/i);
+  assert.match(prompt, /PROHIBIDO inventar/i);
+
   const ctx = buildDaySummaryContext({
     travelTitle: "Krakow",
     dayKey: "2026-06-11",
     authorAlias: "Irene",
-    photoCount: 3,
+    userSeed: "Mañana en el casco antiguo",
+    photoCount: 2,
     places: [{ name: "Wawel", type: "VIEWPOINT" }],
-    noteBullets: ["Callejeamos"],
+    noteBullets: [],
     journalBrief: null,
   });
-  const text = heuristicDaySummary(ctx);
-  assert.match(text, /Wawel/);
-  assert.match(text, /3 foto/);
+  const user = buildDaySummaryUserPrompt(ctx);
+  assert.match(user, /"semilla":"Mañana en el casco antiguo"/);
+  assert.match(user, /"nombre":"Wawel"/);
 });
