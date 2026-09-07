@@ -35,7 +35,11 @@ export default async function ExportPage({
         },
         orderBy: [{ highlightScore: "desc" }, { exifDateTime: "asc" }],
       },
-      _count: { select: { photos: { where: { selected: true } } } },
+      _count: {
+        select: {
+          photos: true,
+        },
+      },
     },
   });
 
@@ -68,6 +72,9 @@ export default async function ExportPage({
       photoCount,
     }));
 
+  const selectedPhotoCount = travel.photos.length;
+  const allPhotoCount = travel._count.photos;
+
   return (
     <main className="mx-auto max-w-3xl space-y-6 px-4 py-8">
       <Link href={`/travel/${travel.id}`} className="text-sm link-accent">
@@ -79,7 +86,7 @@ export default async function ExportPage({
       <header className="border-b border-[var(--border)] pb-6">
         <h1 className="heading-page">{travel.title}</h1>
         <p className="mt-2 text-sm text-fg-secondary">
-          Elige el formato: diario HTML, álbum PDF o vídeo Reel.
+          Elige el formato: diario HTML, álbum PDF, vídeo Reel o copia de seguridad del proyecto.
         </p>
       </header>
 
@@ -88,7 +95,8 @@ export default async function ExportPage({
         travelTitle={travel.title}
         hasJournal={Boolean(travel.journalMarkdown)}
         hasGpsPhotos={hasGpsPhotos}
-        photoCount={travel._count.photos}
+        photoCount={selectedPhotoCount}
+        allPhotoCount={allPhotoCount}
         coverPhotos={coverPhotos}
         reelDays={reelDays}
       />

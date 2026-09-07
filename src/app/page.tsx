@@ -2,6 +2,7 @@ import Link from "next/link";
 import CreateTravelForm from "@/components/CreateTravelForm";
 import RecentTravels from "@/components/RecentTravels";
 import PendingShareBanner from "@/components/PendingShareBanner";
+import ImportProjectCard from "@/components/ImportProjectCard";
 
 export default function HomePage() {
   return (
@@ -19,6 +20,8 @@ export default function HomePage() {
       <PendingShareBanner />
 
       <RecentTravels />
+
+      <ImportProjectCard />
 
       <section className="surface p-6">
         <h2 className="mb-4 text-lg font-semibold">Nuevo viaje</h2>
