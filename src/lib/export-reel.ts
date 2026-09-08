@@ -788,7 +788,7 @@ function selectReelFramesFromStoryboard(
       dayKey,
       dayLabel: dayKey ? formatDateKey(dayKey, "short") : null,
       placeName: candidate.placeName?.trim() || null,
-      highlightScore: candidate.highlightScore ?? 5,
+      highlightScore: candidate.highlightScore ?? 0,
       caption,
       dayNote,
       hero: false,
@@ -988,7 +988,7 @@ function selectReelFramesAuto(
       dayKey: realDay,
       dayLabel: realDay ? formatDateKey(realDay, "short") : null,
       placeName: candidate.placeName?.trim() || null,
-      highlightScore: candidate.highlightScore ?? 5,
+      highlightScore: candidate.highlightScore ?? 0,
       caption,
       dayNote,
       hero: false,
@@ -1476,7 +1476,7 @@ function pickBestCoverFrame(frames: ReelFramePlan[]): ReelFramePlan | null {
       (a.hero ? 3 : 0) +
       // Prefer a still that already carries place context — better Instagram cover.
       (a.placeName ? 1.5 : 0) +
-      ((a.highlightScore ?? 5) >= 8 ? 2 : 0);
+      ((a.highlightScore ?? 0) >= 8 ? 2 : 0);
     const scoreB =
       computeReelPhotoPriority({
         highlightScore: b.highlightScore,
@@ -1485,7 +1485,7 @@ function pickBestCoverFrame(frames: ReelFramePlan[]): ReelFramePlan | null {
       }) +
       (b.hero ? 3 : 0) +
       (b.placeName ? 1.5 : 0) +
-      ((b.highlightScore ?? 5) >= 8 ? 2 : 0);
+      ((b.highlightScore ?? 0) >= 8 ? 2 : 0);
     return scoreB - scoreA;
   })[0]!;
 }

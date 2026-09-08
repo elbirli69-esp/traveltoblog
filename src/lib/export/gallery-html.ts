@@ -67,7 +67,7 @@ function groupGalleryPhotosByDay(
 
   const sortPhotos = (list: GalleryPhotoInput[]) =>
     [...list].sort((a, b) => {
-      const byScore = compareHighlightScore(a.highlightScore ?? 5, b.highlightScore ?? 5);
+      const byScore = compareHighlightScore(a.highlightScore ?? 0, b.highlightScore ?? 0);
       if (byScore !== 0) return byScore;
       return (
         new Date(a.exifDateTime ?? 0).getTime() - new Date(b.exifDateTime ?? 0).getTime()
@@ -91,7 +91,7 @@ function groupGalleryPhotosByDay(
 }
 
 function buildGalleryTile(photo: GalleryPhotoInput): string {
-  const score = photo.highlightScore ?? 5;
+  const score = photo.highlightScore ?? 0;
   const tier = exportHighlightTier(score);
   const tierClass = exportHighlightClass(score, "gallery-tile");
   const when = photo.exifDateTime ? formatPhotoTime(photo.exifDateTime) : "";

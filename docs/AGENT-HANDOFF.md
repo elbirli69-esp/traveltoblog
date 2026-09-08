@@ -80,7 +80,7 @@ Entidades clave en `prisma/schema.prisma`:
 |--------|-----|
 | **Travel** | “Sala” compartida: `shareCode`, fechas, tipología, crónica (`journalMarkdown` + previous/undo), brief, prefs de export |
 | **User** | Participante por `alias` único en el viaje; **sin passwords**. `creatorId` en Travel |
-| **Photo** | IMAGE/VIDEO, EXIF datetime/GPS, `placeId`, `selected`, `highlightScore`, flags ida/vuelta, `localId` offline |
+| **Photo** | IMAGE/VIDEO, EXIF datetime/GPS, `placeId`, `selected`, `highlightScore` (0–10, **0 = sin puntuar**), flags ida/vuelta, `localId` offline |
 | **Note** | `PHOTO` \| `DAY` \| `TRIP` \| `PLACE` |
 | **Place** | Pin tipado (hotel, museo, mirador…), `visitedAt`, notas PLACE |
 | **GpsTrack** | Trail opcional JSON + `includeInExport` |

@@ -674,7 +674,7 @@ export default function PhotoGallery({
                     )}
 
                     <HighlightScoreControl
-                      value={photo.highlightScore ?? 5}
+                      value={photo.highlightScore ?? 0}
                       onChange={(highlightScore) => {
                         setPhotos((prev) =>
                           prev.map((p) =>

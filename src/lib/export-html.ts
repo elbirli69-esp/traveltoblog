@@ -2127,14 +2127,14 @@ ${buildTocHtml(timelineEvents)}`
     profile,
   });
   const calloutPlaces = [...places]
-    .sort((a, b) => compareHighlightScore(a.highlightScore ?? 5, b.highlightScore ?? 5))
+    .sort((a, b) => compareHighlightScore(a.highlightScore ?? 0, b.highlightScore ?? 0))
     .map((p) => ({
       id: p.id,
       name: p.name,
       type: p.type,
       comment: htmlDir.placeCallouts === "low" ? null : p.comment,
       alias: p.alias,
-      highlightScore: p.highlightScore ?? 5,
+      highlightScore: p.highlightScore ?? 0,
     }));
   const calloutsBlock = isMagazine
     ? buildReaderGuideHtml(calloutPlaces, {
@@ -2375,7 +2375,7 @@ export function buildMapPhotoList(
       alias: photo.user.alias,
       isTransportStart: photo.isTransportStart,
       isTransportEnd: photo.isTransportEnd,
-      highlightScore: photo.highlightScore ?? 5,
+      highlightScore: photo.highlightScore ?? 0,
     };
   });
 }
@@ -2416,7 +2416,7 @@ export async function loadPhotoFiles(
         alias: photo.user.alias,
         isTransportStart: photo.isTransportStart,
         isTransportEnd: photo.isTransportEnd,
-        highlightScore: photo.highlightScore ?? 5,
+        highlightScore: photo.highlightScore ?? 0,
       };
     })
   );
