@@ -86,7 +86,7 @@ export default async function ExportPage({
       <header className="border-b border-[var(--border)] pb-6">
         <h1 className="heading-page">{travel.title}</h1>
         <p className="mt-2 text-sm text-fg-secondary">
-          Empieza por la audiencia (blog, álbum o Reel) o elige el formato a mano.
+          Elige el formato: diario HTML, álbum PDF, vídeo Reel o copia de seguridad del proyecto.
         </p>
       </header>
 

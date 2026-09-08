@@ -171,12 +171,12 @@ Heurísticas puras en v1. Opcional v2: una llamada IA **solo** para priorizar/re
 **Alcance**
 
 - Preview HTML a pantalla casi completa antes del ZIP
-- Pregunta de audiencia: Blog largo / Álbum / Reel → rellena brief + preset
+- ~~Pregunta de audiencia: Blog largo / Álbum / Reel → rellena brief + preset~~ *(retirado: solapaba con las pestañas HTML/PDF/Vídeo)*
 
 **Criterio de hecho**
 
 - Usuario puede juzgar “¿se puede compartir?” sin descargar
-- Elegir “Reel” no obliga a conocer knobs técnicos
+- ~~Elegir “Reel” no obliga a conocer knobs técnicos~~ *(las pestañas de formato bastan)*
 
 **Riesgo:** medio.
 
@@ -226,5 +226,5 @@ No mezclar con A1 auth SaaS en el mismo PR; sí puede vivir en self-host.
 | B1 Completeness + cola | ✅ En `main` |
 | B2 Semillas + chips | ✅ En `main` |
 | B3 Guía lector + arco | ✅ En `main` |
-| B4 Preview + audiencia | ✅ En `main` |
+| B4 Preview HTML | ✅ En `main` (audiencia retirada) |
 | B5 Ficha destino | 🚧 Este PR |
