@@ -137,8 +137,9 @@ ${text}
 Incorpóralas con naturalidad. No inventes nada fuera de estas indicaciones y de los datos del viaje.${intentionAddon}`;
 }
 
-function promptContextAddon(ctx: EnhancedJournalContext): string {
-  return promptContextAddon(ctx) + destinationFichePromptAddon(ctx.destination);
+/** Exported for regression tests — must not recurse. */
+export function journalPromptContextAddon(ctx: EnhancedJournalContext): string {
+  return briefBlock(ctx.brief) + destinationFichePromptAddon(ctx.destination);
 }
 
 function getJournalPromptConfig(style: JournalStyle): JournalPromptConfig {
@@ -570,7 +571,7 @@ export async function refineJournalMarkdown(
   const raw = await callAi(
     ai,
     model,
-    system + promptContextAddon(ctx),
+    system + journalPromptContextAddon(ctx),
     buildRefineUserPayload(ctx, existingMarkdown),
     temperature
   );
@@ -604,7 +605,7 @@ export async function generateIntroduction(
   return callAi(
     ai,
     model,
-    prompts.intro.system + promptContextAddon(ctx),
+    prompts.intro.system + journalPromptContextAddon(ctx),
     user,
     prompts.intro.temperature
   );
@@ -642,7 +643,7 @@ export async function generateDaySummaries(
   const raw = await callAi(
     ai,
     model,
-    prompts.days.system + promptContextAddon(ctx),
+    prompts.days.system + journalPromptContextAddon(ctx),
     user,
     prompts.days.temperature
   );
@@ -693,7 +694,7 @@ export async function generatePhotoCaptions(
   const raw = await callAi(
     ai,
     model,
-    prompts.captions.system + promptContextAddon(ctx),
+    prompts.captions.system + journalPromptContextAddon(ctx),
     user,
     prompts.captions.temperature
   );
@@ -736,7 +737,7 @@ export async function generateConclusion(
   return callAi(
     ai,
     model,
-    prompts.conclusion.system + promptContextAddon(ctx),
+    prompts.conclusion.system + journalPromptContextAddon(ctx),
     user,
     prompts.conclusion.temperature
   );
