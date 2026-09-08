@@ -659,18 +659,26 @@ export default function PhotoGallery({
 
                     <HighlightScoreControl
                       value={photo.highlightScore ?? 5}
-                      onChange={async (highlightScore) => {
-                        try {
-                          const res = await fetch(`/api/photos/${photo.id}`, {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ highlightScore }),
-                          });
-                          if (!res.ok) throw new Error("fail");
-                          onNoteCreated?.();
-                        } catch {
-                          /* refresh on next load */
-                        }
+                      onChange={(highlightScore) => {
+                        setPhotos((prev) =>
+                          prev.map((p) =>
+                            p.id === photo.id ? { ...p, highlightScore } : p
+                          )
+                        );
+                        void (async () => {
+                          try {
+                            const res = await fetch(`/api/photos/${photo.id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ highlightScore }),
+                            });
+                            if (!res.ok) throw new Error("fail");
+                          } catch {
+                            void loadPage(pageRef.current, null, {
+                              silent: true,
+                            });
+                          }
+                        })();
                       }}
                     />
 
