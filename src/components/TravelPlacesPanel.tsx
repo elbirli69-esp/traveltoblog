@@ -914,18 +914,21 @@ export default function TravelPlacesPanel({
           </div>
           <HighlightScoreControl
             value={selectedPlace.highlightScore ?? 5}
-            onChange={async (highlightScore) => {
-              try {
-                const res = await fetch(`/api/places/${selectedPlace.id}`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ highlightScore }),
-                });
-                if (!res.ok) throw new Error("fail");
-                onChanged?.();
-              } catch {
-                setError("No se pudo guardar la nota");
-              }
+            onChange={(highlightScore) => {
+              // Optimistic: parent list may refresh; control keeps draft until release.
+              void (async () => {
+                try {
+                  const res = await fetch(`/api/places/${selectedPlace.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ highlightScore }),
+                  });
+                  if (!res.ok) throw new Error("fail");
+                  onChanged?.();
+                } catch {
+                  setError("No se pudo guardar el protagonismo");
+                }
+              })();
             }}
           />
           {placeNotes(selectedPlace).length > 0 && (
