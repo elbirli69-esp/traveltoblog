@@ -1,6 +1,8 @@
 # TravelToBlog — PWA colaborativa de diarios de viaje
 
-Progressive Web App open-source para registrar viajes con fotos y notas, generar crónicas con IA y publicarlas en un blog. Diseñada para auto-alojamiento en Docker / Synology NAS.
+Progressive Web App open-source para registrar viajes con fotos y notas, generar crónicas con IA orientadas a **blog** (historia y curiosidades del destino) y exportar HTML / PDF / Reel. Diseñada para auto-alojamiento en Docker / Synology NAS; dirección de producto: escala pública + freemium.
+
+> **Agentes de IA:** leed primero [`docs/AGENT-HANDOFF.md`](docs/AGENT-HANDOFF.md) (estado completo, contrato de IA, roadmap). Índice de planes: [`docs/README.md`](docs/README.md).
 
 ## Stack
 
@@ -8,9 +10,11 @@ Progressive Web App open-source para registrar viajes con fotos y notas, generar
 - **PWA:** Serwist (service worker, offline, instalable)
 - **Backend:** API Routes de Next.js
 - **BD:** SQLite + Prisma ORM
-- **EXIF:** `exifr` (solo cliente)
-- **IA:** DeepSeek API (`/api/generate-journal`) — misma clave que el resto de proyectos
+- **EXIF:** `exifr` (cliente) + plugins nativos en APK Android
+- **IA:** DeepSeek (crónica, sugerencias on-demand con semilla, export brief)
+- **Mapas:** Mapbox (app) + Leaflet (exports)
 - **Offline:** IndexedDB (`idb`)
+- **Mobile:** Capacitor 6 (APK)
 
 ## Inicio rápido (desarrollo)
 
@@ -76,18 +80,24 @@ docker compose up -d --build
 10. **Sinergias** — Notas de foto desde Días; Ida/Vuelta editable en galería; sugerencias foto↔lugar por GPS (~120 m); mapa con fotos clicables.
 11. **Estados vacíos y checklist** — Cada pestaña invita a «+ Añadir recuerdo»; contadores en tabs; checklist opcional antes de generar la crónica.
 12. **Offline** — Sin conexión, fotos/notas/lugares van a IndexedDB y sincronizan al volver online.
-13. **Generar crónica** — La IA redacta un artículo Markdown con fotos, notas, lugares y vuelos del grupo.
+13. **Completar con IA (on-demand)** — Nota de foto, resumen del día y storyboard del Reel: tú escribes una semilla breve; la IA completa con lugares y curiosidades de blog, sin inventar la escena.
+14. **Generar crónica** — Pipeline IA (intro/días/leyendas/conclusión o refine) en Markdown, tono blog + historia del destino anclada a vuestros sitios.
+15. **Exportar** — HTML tipado, PDF, Reel Instagram (viaje o un día), copia ZIP completa del proyecto.
+16. **Brief de export** — Indicaciones en lenguaje natural → plantillas/presets y knobs de presentación.
 
 ## Estructura del proyecto
 
 ```
-prisma/schema.prisma                 # Travel, User, Photo, Note, Place
-src/components/TravelWorkspaceTabs.tsx  # Tabs: Fotos, Lugares, Días, Viaje
-src/components/PhotoUploadGrid.tsx   # Grid + lectura EXIF (cliente)
-src/lib/exif.ts                      # Utilidades exifr
-src/lib/offline-db.ts                # IndexedDB para sync offline
-src/app/api/generate-journal/        # Endpoint IA → Markdown
-docker-compose.yml                   # Despliegue NAS
+docs/AGENT-HANDOFF.md                # Biblia para agentes (empezar aquí)
+prisma/schema.prisma                 # Travel, User, Photo, Note, Place, GpsTrack
+src/components/TravelWorkspaceTabs.tsx
+src/lib/ai-blog-voice.ts             # Voz blog + anti-alucinación
+src/lib/journal-pipeline.ts          # Crónica IA
+src/lib/ai-suggest-*.ts              # Sugerencias on-demand
+src/lib/export-*.ts + src/lib/export/  # HTML / PDF / Reel
+src/lib/offline-db.ts                # IndexedDB
+docker-compose.yml / Dockerfile.bookworm
+scripts/deploy-synology.sh
 ```
 
 ## Variables de entorno
@@ -98,7 +108,12 @@ docker-compose.yml                   # Despliegue NAS
 | `DEEPSEEK_API_KEY` | Clave API de DeepSeek (o `OPENAI_API_KEY` como alias) |
 | `OPENAI_BASE_URL` | Endpoint DeepSeek (`https://api.deepseek.com/v1`) |
 | `OPENAI_MODEL` | Modelo (`deepseek-chat` por defecto) |
-| `NEXT_PUBLIC_APP_URL` | URL pública de la app |
+| `AI_SUGGESTIONS` | `0` desactiva `/api/ai/suggest-*` (crónica/brief siguen activos) |
+| `NEXT_PUBLIC_APP_URL` | URL pública HTTP |
+| `NEXT_PUBLIC_HTTPS_APP_URL` | URL HTTPS (GPS móvil, join, Capacitor) |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | Token Mapbox |
+
+Lista completa y roadmap técnico: [`docs/AGENT-HANDOFF.md`](docs/AGENT-HANDOFF.md).
 
 ## Roadmap de producto
 
@@ -110,6 +125,8 @@ Exports con dirección creativa en lenguaje natural (HTML / vídeo / PDF): ver [
 1. **Público general** — SaaS/cloud además del self-host en Synology.
 2. **Freemium** — free usable + Plus de pago.
 3. **Experiencias** — no solo viajes (boda, festival, fin de semana, etc.), mismo motor de captura y export.
+
+Priorización operativa para agentes: sección 10 de [`docs/AGENT-HANDOFF.md`](docs/AGENT-HANDOFF.md).
 
 ## Licencia
 
