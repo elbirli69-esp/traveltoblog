@@ -278,10 +278,14 @@ Orden pensado para **robustez → calidad → público**. No estimar calendario;
 
 ### P1 — Calidad de contenido / blog
 
-1. Merge y uso estable de voz blog (`ai-blog-voice` + crónica) — validar en viaje Krakow real.
-2. **Retrieval ligero** (ficha destino/lugar) para curiosidades verificables vs. solo pesos del modelo.
-3. Mejorar **semillas UX** (placeholders por tipología; reutilizar nota existente como seed).
-4. Unificar copy “Completar con IA” y mensajes de fuentes en toda la app.
+Ver plan dedicado: [`plan-blog-editorial.md`](./plan-blog-editorial.md).
+
+1. Merge y uso estable de voz blog (`ai-blog-voice` + crónica) — validar en viaje real.
+2. **Blog completeness** — indicar qué falta para un buen blog (lugares, comidas, experiencias personales, tips, días sin relato, fotos sin nota) con CTAs; no inventar visitas.
+3. Semillas guiadas por tipo de lugar + chips de intención en crónica.
+4. Bloque “Guía para el lector” en HTML solo con lugares visitados.
+5. Preview HTML tipo blog antes del ZIP.
+6. (Opcional) Ficha destino ligera + retrieval para curiosidades verificables.
 
 ### P2 — Producto export
 
@@ -344,6 +348,7 @@ Del [`plan-producto-escala.md`](./plan-producto-escala.md):
 | Doc | Propósito |
 |-----|-----------|
 | **Este archivo** | Handoff completo para agentes |
+| [`plan-blog-editorial.md`](./plan-blog-editorial.md) | Blog editorial + huecos (comida, personal, tips…) |
 | [`plan-producto-escala.md`](./plan-producto-escala.md) | SaaS, freemium, tipologías |
 | [`plan-contenido-unificado.md`](./plan-contenido-unificado.md) | UX captura unificada |
 | [`plan-export-ai-brief.md`](./plan-export-ai-brief.md) | Brief → directivas |

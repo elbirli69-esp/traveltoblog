@@ -3,6 +3,7 @@
 | Documento | Para quién | Contenido |
 |-----------|------------|-----------|
 | **[AGENT-HANDOFF.md](./AGENT-HANDOFF.md)** | Agentes de IA / onboarding técnico | Estado completo, IA, export, deploy, roadmap priorizado |
+| [plan-blog-editorial.md](./plan-blog-editorial.md) | Producto / contenido / UX | De archivo a blog: huecos editoriales, semillas, guía lector |
 | [plan-producto-escala.md](./plan-producto-escala.md) | Producto | SaaS, freemium, tipologías de experiencia |
 | [plan-contenido-unificado.md](./plan-contenido-unificado.md) | Producto/UX | Captura unificada de recuerdos |
 | [plan-export-ai-brief.md](./plan-export-ai-brief.md) | Export | Brief creativo → directivas |
