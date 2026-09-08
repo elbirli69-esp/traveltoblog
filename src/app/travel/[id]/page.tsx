@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import PhotoUploadSection from "@/components/PhotoUploadSection";
 import PhotoGallery from "@/components/PhotoGallery";
+import BlogCompletenessPanel from "@/components/BlogCompletenessPanel";
+import { blogCompletenessInputFromTravel } from "@/lib/blog-completeness-from-travel";
+import { listPhotosWithoutNote } from "@/lib/blog-completeness";
+import type { BlogGapActionKind } from "@/lib/blog-completeness";
 import SharePanel from "@/components/SharePanel";
 import EditableNote from "@/components/EditableNote";
 import NoteForm from "@/components/NoteForm";
@@ -132,6 +136,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   const [tripNoteSignal, setTripNoteSignal] = useState(0);
   const [focusPhotoId, setFocusPhotoId] = useState<string | null>(null);
   const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
+  const [galleryUnnotedFilter, setGalleryUnnotedFilter] = useState(false);
   const [placeSeedFromPhoto, setPlaceSeedFromPhoto] =
     useState<PlaceSeedFromPhoto | null>(null);
   const [activeTimelineEventId, setActiveTimelineEventId] = useState<string | null>(null);
@@ -265,6 +270,36 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
     window.history.replaceState({}, "", `/travel/${travelId}`);
   }, [travelId, session, searchParams, applyAddMemory]);
 
+  useEffect(() => {
+    if (!travelId || !session || session.travelId !== travelId) return;
+    const tab = searchParams.get("tab");
+    const photo = searchParams.get("photo");
+    const unnoted = searchParams.get("unnoted");
+    if (!tab && !photo && !unnoted) return;
+
+    const token = `tab:${tab}:${photo}:${unnoted}`;
+    if (deepLinkHandled.current === token) return;
+    deepLinkHandled.current = token;
+
+    if (tab === "photos" || photo || unnoted === "1") {
+      setActiveTab("photos");
+    } else if (tab === "places") {
+      setActiveTab("places");
+    } else if (tab === "days") {
+      setActiveTab("days");
+    } else if (tab === "trip") {
+      setActiveTab("trip");
+    }
+
+    if (unnoted === "1") setGalleryUnnotedFilter(true);
+    if (photo) {
+      setFocusPhotoId(null);
+      queueMicrotask(() => setFocusPhotoId(photo));
+    }
+
+    window.history.replaceState({}, "", `/travel/${travelId}`);
+  }, [travelId, session, searchParams]);
+
   if (travelNotFound) {
     return (
       <main className="mx-auto max-w-lg px-4 py-10 text-center">
@@ -310,6 +345,54 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
 
   const tripNotes = travel.notes.filter((n) => n.type === "TRIP");
   const dayNotes = travel.notes.filter((n) => n.type === "DAY");
+
+  const blogCompleteness = blogCompletenessInputFromTravel({
+    title: travel.title,
+    journalBrief: null,
+    startDate: travel.startDate,
+    endDate: travel.endDate,
+    photos: travel.photos,
+    places: travel.places,
+    notes: travel.notes,
+  });
+  const unnotedPhotoIds = listPhotosWithoutNote(
+    travel.photos.map((p) => ({
+      id: p.id,
+      selected: p.selected,
+      exifDateTime: p.exifDateTime,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      placeId: p.placeId,
+      photoNoteCount: p.notes.filter((n) => n.type === "PHOTO").length,
+    }))
+  );
+
+  const handleBlogFix = (
+    kind: BlogGapActionKind,
+    opts?: { dayDate?: string; photoId?: string }
+  ) => {
+    if (kind === "photos_notes" || kind === "photos_highlight") {
+      setActiveTab("photos");
+      if (kind === "photos_notes") setGalleryUnnotedFilter(true);
+      const id = opts?.photoId ?? unnotedPhotoIds[0] ?? null;
+      if (id) {
+        setFocusPhotoId(null);
+        queueMicrotask(() => setFocusPhotoId(id));
+      }
+      return;
+    }
+    if (kind === "place" || kind === "place_food") {
+      applyAddMemory("place");
+      return;
+    }
+    if (kind === "day") {
+      applyAddMemory("day", opts?.dayDate ?? null);
+      return;
+    }
+    if (kind === "trip") {
+      applyAddMemory("trip");
+    }
+  };
 
   const tabCounts = {
     photos: travel.photos.length,
@@ -454,13 +537,20 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
         onTabChange={setActiveTab}
         tabCounts={tabCounts}
         photosContent={
-          <section className="surface p-6">
+          <section className="surface space-y-4 p-6">
+            <BlogCompletenessPanel
+              compact
+              input={blogCompleteness}
+              onFix={handleBlogFix}
+            />
             <PhotoGallery
               travelId={travelId}
               userId={session.userId}
               places={travel.places}
               focusPhotoId={focusPhotoId}
               refreshSignal={refreshKey}
+              unnotedPhotoIds={unnotedPhotoIds}
+              initialUnnotedFilter={galleryUnnotedFilter}
               onOpenPlace={(placeId) => {
                 setFocusPlaceId(placeId);
                 setActiveTab("places");

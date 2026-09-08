@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import BlogCompletenessPanel from "@/components/BlogCompletenessPanel";
 import GenerateJournalButton from "@/components/GenerateJournalButton";
 import JournalEditor from "@/components/JournalEditor";
 import JournalReadinessChecklist from "@/components/JournalReadinessChecklist";
+import type { BlogCompletenessInput, BlogGapActionKind } from "@/lib/blog-completeness";
 import type { ReadinessActionKind } from "@/lib/journal-readiness";
 
 interface JournalWorkspaceProps {
@@ -23,6 +25,7 @@ interface JournalWorkspaceProps {
   }[];
   dayNotes: { dayDate: string | null }[];
   tripNoteCount: number;
+  blogCompleteness: BlogCompletenessInput;
 }
 
 export default function JournalWorkspace({
@@ -37,13 +40,53 @@ export default function JournalWorkspace({
   photos,
   dayNotes,
   tripNoteCount,
+  blogCompleteness,
 }: JournalWorkspaceProps) {
   const router = useRouter();
 
-  const handleFix = (kind: ReadinessActionKind, dayDate?: string) => {
-    const params = new URLSearchParams({ add: kind });
-    if (dayDate) params.set("date", dayDate);
+  const goTravel = (query: Record<string, string>) => {
+    const params = new URLSearchParams(query);
     router.push(`/travel/${travelId}?${params.toString()}`);
+  };
+
+  const handleReadinessFix = (kind: ReadinessActionKind, dayDate?: string) => {
+    const params: Record<string, string> = { add: kind };
+    if (dayDate) params.date = dayDate;
+    goTravel(params);
+  };
+
+  const handleBlogFix = (
+    kind: BlogGapActionKind,
+    opts?: { dayDate?: string; photoId?: string }
+  ) => {
+    if (kind === "journal_brief") {
+      document.getElementById("journal-brief")?.focus();
+      return;
+    }
+    if (kind === "photos_notes" || kind === "photos_highlight") {
+      const q: Record<string, string> = { tab: "photos" };
+      if (opts?.photoId) q.photo = opts.photoId;
+      if (kind === "photos_notes") q.unnoted = "1";
+      goTravel(q);
+      return;
+    }
+    if (kind === "place" || kind === "place_food") {
+      goTravel({
+        add: "place",
+        ...(kind === "place_food" ? { placeType: "RESTAURANT" } : {}),
+      });
+      return;
+    }
+    if (kind === "day") {
+      goTravel({
+        add: "day",
+        ...(opts?.dayDate ? { date: opts.dayDate } : {}),
+      });
+      return;
+    }
+    if (kind === "trip") {
+      goTravel({ add: "trip" });
+    }
   };
 
   return (
@@ -64,13 +107,17 @@ export default function JournalWorkspace({
             ? "Refina la crónica existente: conserva tus ediciones, aplica las indicaciones e incorpora notas y fotos nuevas."
             : "Añade indicaciones si quieres, elige el estilo y genera (introducción, días, leyendas y conclusión)."}
         </p>
+        <BlogCompletenessPanel
+          input={blogCompleteness}
+          onFix={handleBlogFix}
+        />
         <JournalReadinessChecklist
           startDate={startDate}
           endDate={endDate}
           photos={photos}
           dayNotes={dayNotes}
           tripNoteCount={tripNoteCount}
-          onFix={handleFix}
+          onFix={handleReadinessFix}
         />
         <GenerateJournalButton
           travelId={travelId}
