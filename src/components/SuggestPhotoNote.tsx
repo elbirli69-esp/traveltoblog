@@ -90,7 +90,7 @@ export default function SuggestPhotoNote({
           Completar nota con IA
         </p>
         <p className="text-[11px] text-fg-tertiary">
-          Tú describes · la IA pulirá · editable
+          Tú describes · la IA añade contexto de blog · editable
         </p>
       </div>
 
@@ -111,9 +111,9 @@ export default function SuggestPhotoNote({
           disabled={loading}
         />
         <p className="mt-1 text-[11px] text-fg-tertiary">
-          Mínimo {PHOTO_NOTE_SEED_MIN_CHARS} caracteres. Si la foto tiene lugar
-          enlazado, fecha o sitios cercanos, la IA los usa para complementar —
-          sin inventar la escena.
+          Mínimo {PHOTO_NOTE_SEED_MIN_CHARS} caracteres. Si hay lugar enlazado o
+          el viaje nombra el destino, la IA puede añadir una curiosidad
+          histórica/cultural — sin inventar lo que se ve en la foto.
         </p>
       </div>
 

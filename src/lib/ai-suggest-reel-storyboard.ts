@@ -5,6 +5,7 @@
 
 import { createAiClient, getAiConfig } from "@/lib/ai";
 import { clampNoteText } from "@/lib/ai-suggest-photo-note";
+import { buildTravelBlogVoiceBlock } from "@/lib/ai-blog-voice";
 import { computeReelPhotoPriority } from "@/lib/highlight-score";
 import { pickDiverseExportPhotos } from "@/lib/export-photo-pick";
 import {
@@ -278,17 +279,16 @@ function extractJsonObject(text: string): unknown | null {
 
 export function buildStoryboardSystemPrompt(): string {
   return [
-    "Eres un montador de Reels de viaje.",
+    "Eres un montador y copywriter de Reels para un blog de viaje.",
     "El usuario te da una idea narrativa (campo «semilla») de lo que quiere contar.",
     "Devuelve SOLO JSON: {\"version\":1,\"frames\":[{\"photoId\":\"...\",\"caption\":\"...\",\"role\":\"open|beat|close\",\"reason\":\"...\"}],\"interpretation\":\"...\"}.",
     "Usa únicamente photoId de la lista de candidatos. No inventes ids.",
     "Ordena open → beats → close según la semilla y los metadatos (lugar, caption existente, salida/regreso, prioridad). Respeta max_frames.",
-    "Captions en español, cortos (≤90 caracteres).",
-    "Si hay caption en el candidato, reutilízalo o mejóralo ligeramente SIN añadir detalles visuales nuevos.",
-    "Si no hay caption, puedes usar solo el lugar del candidato o una frase corta alineada con la semilla y ese lugar — sin inventar lo que se ve en la foto.",
-    "PROHIBIDO inventar: puentes, clima, comida, personas u objetos que no estén en caption/lugar/semilla.",
-    "PROHIBIDO rellenar con conocimiento genérico del destino.",
-    "interpretation: una frase sobre cómo encaja el montaje con la semilla.",
+    "Captions en español, cortos (≤90 caracteres), pensados para enganchar a quien ve el Reel / lee el blog.",
+    "Si hay caption en el candidato, reutilízalo o enriquécelo con una curiosidad breve del lugar/destino si hay ancla.",
+    "Si no hay caption pero sí lugar, caption = lugar + micro-curiosidad o gancho alineado con la semilla.",
+    buildTravelBlogVoiceBlock({ compact: true }),
+    "interpretation: una frase sobre cómo el montaje sirve al relato de blog / semilla.",
   ].join(" ");
 }
 

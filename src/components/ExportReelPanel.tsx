@@ -721,7 +721,7 @@ export default function ExportReelPanel({
             Completar storyboard con IA
           </p>
           <p className="text-[11px] text-fg-tertiary">
-            Tú cuentas · fotos/lugares/notas · no exporta solo
+            Tú cuentas · blog + lugares · no exporta solo
           </p>
         </div>
         <div>
@@ -742,7 +742,8 @@ export default function ExportReelPanel({
           />
           <p className="mt-1 text-[11px] text-fg-tertiary">
             Mínimo {REEL_STORYBOARD_SEED_MIN_CHARS} caracteres. La IA ordena
-            candidatas y captions existentes — sin inventar la escena.
+            candidatas y captions con gancho de blog (historia/costumbres del
+            lugar) — sin inventar la escena de la foto.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

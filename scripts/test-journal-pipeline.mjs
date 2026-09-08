@@ -2,9 +2,17 @@ import assert from "node:assert/strict";
 import {
   assembleJournalMarkdown,
   buildLocalJournalMarkdown,
+  journalPipelineVoiceRules,
   sanitizeDaySummaryProse,
   sanitizeJournalDayProse,
 } from "../src/lib/journal-pipeline.ts";
+import { SYSTEM_PROMPT } from "../src/lib/journal.ts";
+
+assert.match(journalPipelineVoiceRules(), /BLOG/i);
+assert.match(journalPipelineVoiceRules(), /curiosidad/i);
+assert.match(journalPipelineVoiceRules(), /PROHIBIDO inventar lo que SE VE/i);
+assert.match(SYSTEM_PROMPT, /curiosidades/i);
+assert.match(SYSTEM_PROMPT, /Krakow|destino/i);
 
 const ctx = {
   title: "Test Trip",

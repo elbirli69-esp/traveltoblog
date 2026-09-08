@@ -52,7 +52,8 @@ export default function JournalWorkspace({
         <h1 className="heading-page">{title}</h1>
         <p className="mt-2 text-sm text-fg-secondary">
           Genera y edita la crónica con IA. Puedes dejar indicaciones libres (tono, anécdotas,
-          énfasis) y refinarla en varias pasadas.
+          énfasis) y refinarla en varias pasadas. La IA enriquecerá con historia y costumbres
+          del destino ancladas a vuestros lugares — sin inventar visitas.
         </p>
       </header>
 

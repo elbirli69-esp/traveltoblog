@@ -1,6 +1,7 @@
 import type OpenAI from "openai";
 import type { Note, Photo, Place, Travel, User } from "@prisma/client";
 import { createAiClient, getAiConfig } from "@/lib/ai";
+import { buildTravelBlogVoiceBlock } from "@/lib/ai-blog-voice";
 import { resolveFlightLegs } from "@/lib/flights";
 import { placeEmoji, placeLabel } from "@/lib/places";
 import { formatDateKey, isoToDateKey, resolveTravelDayRange } from "@/lib/travel-dates";
@@ -83,23 +84,33 @@ export const JOURNAL_STYLE_LABELS: Record<
 };
 
 const VOICE_RULES = `VOZ Y LENGUAJE:
-- Escribe como un amigo que cuenta el viaje en voz alta: natural, claro, humano.
+- Escribe como un amigo que cuenta el viaje en voz alta: natural, claro, humano — y con ganas de que otra persona lea el blog.
 - Preferir concreto a abstracto (qué pasó, quién estaba, dónde).
 - Las notas y comentarios de foto son MATERIA PRIMA: parafraséalos en hechos y ambiente. NO los copies.
 - PROHIBIDO en la prosa: blockquotes Markdown (> …), comillas largas con la frase casi literal, y fórmulas tipo «como dijo X: "…"» o «X escribió: …».
 - Sí puedes nombrar aliases al contar hechos (“Irene se reía en la plaza”), sin pegar su texto.
 - PROHIBIDO (y variantes): inolvidable, mágico/a, experiencia única, tejido de recuerdos, odisea, sinfonía de sensaciones, "cada rincón", "momentos que quedarán grabados".
 - Evita párrafos que solo ambientan sin aportar un hecho de los datos.
-- Español peninsular natural; no suenes a folleto turístico ni a IA.`;
+- Español peninsular natural; no suenes a folleto turístico ni a IA.
+
+CONTEXTO PARA BLOG (historia y curiosidades):
+${buildTravelBlogVoiceBlock({ compact: false })}
+- Intro y conclusión: enmarca el destino del título del viaje (p. ej. Krakow) con 1–2 pinceladas de historia, tradiciones o costumbres locales útiles para el lector.
+- Días: al nombrar lugares_del_dia, añade una curiosidad breve anclada a ese sitio (por qué importa, tradición, gente del lugar), sin inventar que lo visitasteis si no está en los datos.
+- Captions: como máximo media frase de color cultural si hay lugar; la semilla/comentario manda sobre lo que se ve.`;
 
 /** Day-summary role: synthesis for «El viaje»; literal quotes live on timeline cards. */
 const DAY_SYNTHESIS_RULES = `SÍNTESIS (importante — el export HTML ya muestra las notas literales junto a fotos/lugares):
-- Resume lugares visitados y qué se hizo ese día en 1-3 párrafos fluidos.
+- Resume lugares visitados y qué se hizo ese día en 1-3 párrafos fluidos, pensados para un capítulo de blog.
 - Usa notas_dia y comentarios de fotos solo para extraer hechos; reescríbelos con tus palabras.
 - NO repitas citas textuales ni listas "Autor: texto".
-- Integra lugares_del_dia en la narración (no como viñetas sueltas).
-- Si hay poca información, 1-2 frases sobrias sin rellenar.`;
+- Integra lugares_del_dia en la narración (no como viñetas sueltas) y, si encaja, una curiosidad histórica/cultural por lugar relevante.
+- Si hay poca información, 1-2 frases sobrias sin rellenar con inventos personales.`;
 
+/** Exported for unit tests — prompt voice must stay blog-oriented. */
+export function journalPipelineVoiceRules(): string {
+  return VOICE_RULES;
+}
 interface JournalPromptConfig {
   intro: { system: string; temperature: number };
   days: { system: string; temperature: number };
@@ -121,43 +132,44 @@ function getJournalPromptConfig(style: JournalStyle): JournalPromptConfig {
   if (style === "factual") {
     return {
       intro: {
-        system: `Eres un editor de diarios de viaje. Escribe SOLO la introducción (1-3 párrafos en Markdown).
+        system: `Eres un editor de crónicas de viaje para un blog. Escribe SOLO la introducción (1-3 párrafos en Markdown).
 ${VOICE_RULES}
 REGLAS ESTRICTAS:
-- Usa ÚNICAMENTE notas_viaje, participantes, fechas, vuelos e indicaciones_usuario.
-- Puedes mejorar redacción y claridad; NO inventes lugares, anécdotas ni emociones no dichas.
+- Usa notas_viaje, participantes, fechas, vuelos, lugares del contexto e indicaciones_usuario.
+- Puedes mejorar redacción y añadir curiosidades históricas/culturales ancladas al destino o lugares nombrados.
+- NO inventes anécdotas personales, emociones no dichas ni visitas no documentadas.
 - Si hay poca información, intro breve y sobria.
 - No uses encabezados (#).`,
         temperature: 0.35,
       },
       days: {
-        system: `Eres un editor de diarios de viaje. Recibirás días con notas, lugares y comentarios de fotos.
+        system: `Eres un editor de crónicas de viaje para un blog. Recibirás días con notas, lugares y comentarios de fotos.
 Responde SOLO un JSON array: [{"date":"YYYY-MM-DD","summary":"texto markdown"}].
 ${VOICE_RULES}
 ${DAY_SYNTHESIS_RULES}
 REGLAS ESTRICTAS:
 - Un elemento por cada día del input.
-- Basa cada párrafo SOLO en notas_dia, lugares_del_dia, comentarios de fotos e indicaciones_usuario.
-- No añadas clima, reflexiones ni eventos no documentados.
+- Basa cada párrafo en notas_dia, lugares_del_dia, comentarios de fotos e indicaciones_usuario; puedes enriquecer con curiosidades ancladas a esos lugares.
+- No añadas clima inventado, reflexiones personales falsas ni eventos no documentados.
 - No incluyas imágenes ni URLs.`,
         temperature: 0.3,
       },
       captions: {
-        system: `Reescribe leyendas de fotos para un diario de viaje.
+        system: `Reescribe leyendas de fotos para un blog de viaje.
 Responde SOLO JSON: [{"url":"...","caption":"leyenda max 120 chars"}].
 ${VOICE_RULES}
 REGLAS ESTRICTAS:
 - NO ves las imágenes; solo metadatos y comentarios.
 - Basa cada caption en comentarios del usuario; reescribe sin cambiar el significado.
-- Si no hay comentarios, leyenda neutra breve ("Foto de {autor}" o el nombre del lugar si viene en los datos).
-- PROHIBIDO inventar la escena (puentes, clima, gestos, objetos no mencionados).`,
+- Si no hay comentarios, leyenda neutra breve ("Foto de {autor}" o el nombre del lugar + micro-curiosidad si hay lugar en los datos).
+- PROHIBIDO inventar la escena de la foto (puentes, clima, gestos, objetos no mencionados).`,
         temperature: 0.2,
       },
       conclusion: {
-        system: `Eres un editor de diarios de viaje. Escribe SOLO la conclusión (1-2 párrafos Markdown).
+        system: `Eres un editor de crónicas de viaje para un blog. Escribe SOLO la conclusión (1-2 párrafos Markdown).
 ${VOICE_RULES}
 REGLAS ESTRICTAS:
-- Cierra usando SOLO intro_resumen, dias_resumen e indicaciones_usuario.
+- Cierra usando intro_resumen, dias_resumen e indicaciones_usuario; una pincelada del destino está bien si ya salió en el viaje.
 - No inventes moralejas ni experiencias no mencionadas. Sin encabezados.`,
         temperature: 0.35,
       },
@@ -168,7 +180,7 @@ REGLAS ESTRICTAS:
     intro: {
       system: `Eres un cronista de blogs de viaje. Escribe SOLO la introducción (2-4 párrafos en Markdown) de un artículo colaborativo.
 ${VOICE_RULES}
-Puedes dar ritmo y calidez, pero solo con hechos de los datos e indicaciones_usuario.
+Puedes dar ritmo y calidez con hechos de los datos e indicaciones_usuario, más 1–2 curiosidades del destino (historia, tradiciones, costumbres) ancladas al título o a lugares del viaje.
 Empieza cerca de algo concreto (un detalle del viaje, el motivo, el primer lugar), no con una tesis grandilocuente ni con una cita entre comillas.
 No uses encabezados (#).`,
       temperature: 0.65,
@@ -179,22 +191,23 @@ Responde SOLO un JSON array: [{"date":"YYYY-MM-DD","summary":"texto markdown 1-3
 ${VOICE_RULES}
 ${DAY_SYNTHESIS_RULES}
 Un elemento por cada día. Conecta momentos con transiciones naturales (no "Ese día… Ese día…").
-Puedes ambientar con lo implícito mínimo (mañana/tarde por el orden de fotos), pero no contradigas las notas ni inventes tormentas, discusiones o descubrimientos no escritos.
+Puedes ambientar con lo implícito mínimo (mañana/tarde por el orden de fotos) y enriquecer con curiosidades ancladas a lugares_del_dia / destino del viaje.
+No contradigas las notas ni inventes tormentas, discusiones o visitas no escritas.
 Respeta indicaciones_usuario. No incluyas imágenes ni URLs.`,
       temperature: 0.6,
     },
     captions: {
-      system: `Escribes pies de foto para un blog de viaje, tono cercano.
+      system: `Escribes pies de foto para un blog de viaje, tono cercano y con gancho para el lector.
 Responde SOLO JSON: [{"url":"...","caption":"leyenda max 120 chars"}].
 ${VOICE_RULES}
-NO ves las imágenes. Basa cada caption en comentarios; si no hay, una línea sobria con autor o lugar conocido.
-PROHIBIDO inventar la escena (puentes, clima, gestos, objetos no mencionados en los datos).`,
+NO ves las imágenes. Basa cada caption en comentarios; si no hay, una línea sobria con autor o lugar + micro-curiosidad anclada.
+PROHIBIDO inventar la escena de la foto (puentes, clima, gestos, objetos no mencionados en los datos).`,
       temperature: 0.35,
     },
     conclusion: {
       system: `Eres un cronista de blogs de viaje. Escribe SOLO la conclusión (1-3 párrafos Markdown).
 ${VOICE_RULES}
-Cierra con eco de lo vivido (hechos ya contados), sin sermón, sin citas literales nuevas y sin resumen telegráfico de toda la intro.
+Cierra con eco de lo vivido (hechos ya contados) y, si encaja, una nota sobre el destino o su gente — sin sermón, sin citas literales nuevas y sin resumen telegráfico de toda la intro.
 Sin encabezados. Respeta indicaciones_usuario.`,
       temperature: 0.6,
     },
@@ -399,7 +412,7 @@ export interface JournalPipelineOptions {
 const MAX_EXISTING_MARKDOWN_CHARS = 60_000;
 
 function getRefineSystemPrompt(style: JournalStyle): { system: string; temperature: number } {
-  const base = `Eres un editor de crónicas de viaje colaborativas.
+  const base = `Eres un editor de crónicas de viaje colaborativas pensadas para un BLOG.
 Te dan la crónica Markdown YA ESCRITA (puede incluir ediciones humanas) y el contexto actualizado del viaje (notas, fotos, lugares, vuelos) más indicaciones_usuario si existen.
 
 Tu tarea: devolver UNA única crónica Markdown completa REFINADA.
@@ -409,11 +422,12 @@ ${VOICE_RULES}
 REGLAS DE REFINAMIENTO:
 - Parte de la crónica existente: conserva el tono, la estructura y las formulaciones que ya funcionan.
 - Incorpora notas, fotos o lugares NUEVOS que falten en el texto — como SÍNTESIS, no como citas pegadas.
-- En los párrafos de cada día: resume lugares y hechos; PROHIBIDO blockquotes (>) y comillas con el texto casi literal de notas/comentarios (esas citas viven en el recorrido del export).
+- En los párrafos de cada día: resume lugares y hechos; añade curiosidades históricas/culturales ancladas a lugares o al destino del título cuando falten y aporten al lector.
+- PROHIBIDO blockquotes (>) y comillas con el texto casi literal de notas/comentarios (esas citas viven en el recorrido del export).
 - Si la crónica actual tiene citas literales de notas, reescríbelas como prosa resumida.
 - Corrige solo lo contradictorio, vacío o claramente peor que el contexto nuevo.
 - NO tires el texto para reescribirlo de cero si no hace falta.
-- PRESERVA todas las imágenes Markdown existentes (![alt](url)) y sus URLs; puedes mejorar el alt/caption.
+- PRESERVA todas las imágenes Markdown existentes (![alt](url)) y sus URLs; puedes mejorar el alt/caption con micro-contexto del lugar.
 - Añade imágenes de fotos nuevas del contexto si aún no están en la crónica, con caption breve.
 - Mantén el título (# …), secciones por día y conclusión.
 - Respeta indicaciones_usuario con prioridad alta.
@@ -423,7 +437,8 @@ REGLAS DE REFINAMIENTO:
     return {
       system: `${base}
 ESTILO FIEL A LAS NOTAS:
-- No inventes hechos, emociones ni escenas no documentadas.
+- No inventes anécdotas personales, emociones ni escenas de foto no documentadas.
+- Sí puedes completar con hechos culturales/históricos sobrios anclados a lugares nombrados o al destino.
 - Prefiere pulir y completar con material real del contexto.`,
       temperature: 0.35,
     };
@@ -432,7 +447,7 @@ ESTILO FIEL A LAS NOTAS:
   return {
     system: `${base}
 ESTILO VIVO:
-- Puedes enriquecer atmósfera y ritmo, sin contradecir notas ni ediciones humanas claras.`,
+- Puedes enriquecer atmósfera, ritmo y color local (historia, tradiciones, costumbres) anclado a lugares/destino, sin contradecir notas ni ediciones humanas claras.`,
     temperature: 0.65,
   };
 }

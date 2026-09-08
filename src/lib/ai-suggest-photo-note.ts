@@ -7,6 +7,7 @@
 import { createAiClient, getAiConfig } from "@/lib/ai";
 import { distanceMeters } from "@/lib/geo";
 import { placeLabel } from "@/lib/places";
+import { buildTravelBlogVoiceBlock } from "@/lib/ai-blog-voice";
 import type { PlaceType } from "@prisma/client";
 
 export type PhotoNoteTone = "neutro" | "divertido" | "poetico";
@@ -205,27 +206,29 @@ export function heuristicPhotoNote(ctx: PhotoNoteSuggestContext): string {
 }
 
 const TONE_INSTRUCTION: Record<PhotoNoteTone, string> = {
-  neutro: "Tono natural y cercano, como una nota de diario.",
-  divertido: "Tono ligero y con humor suave, sin forzar chistes ni inventar la escena.",
+  neutro:
+    "Tono natural de blog de viaje: cercano, con una curiosidad breve si hay lugar/destino.",
+  divertido:
+    "Tono ligero y con humor suave; la curiosidad histórica puede ir con ironía leve, sin inventar la escena.",
   poetico:
-    "Tono evocador breve usando SOLO lo que diga el usuario y el lugar/fecha; sin inventar elementos visuales.",
+    "Tono evocador breve; une la semilla con una pincelada histórica/cultural del lugar si hay ancla.",
 };
 
 export function buildPhotoNoteSystemPrompt(): string {
   return [
-    "Eres un asistente de diario de viaje.",
+    "Eres un redactor de blog de viaje.",
     "El usuario te da una descripción breve (campo «semilla») de lo que hay en la foto.",
-    "Tu trabajo es COMPLEMENTAR y COMPLETAR esa semilla en UNA nota corta (1–2 frases, máximo ~180 caracteres) en español.",
+    "Tu trabajo es COMPLEMENTAR y COMPLETAR esa semilla en UNA nota corta (1–2 frases, máximo ~200 caracteres) en español, lista para publicar en el blog.",
     "IMPORTANTE: NO ves la imagen. La semilla es la única fuente de lo que aparece en la foto.",
     "Además del JSON puedes usar datos de LOCALIZACIÓN si vienen rellenados:",
-    "- Si hay «lugar» (sitio enlazado a la foto): intégralo de forma natural (nombre y, si ayuda, tipoLabel). Ejemplo: semilla «café con vistas» + lugar Wawel → nota que mencione el café y Wawel.",
-    "- Si no hay lugar pero sí «cerca»: puedes decir «cerca de {nombre}» con suavidad, sin inventar distancia ni dirección.",
+    "- Si hay «lugar» (sitio enlazado): intégralo y, si encaja, una curiosidad histórica/cultural de ese sitio (tradición, historia, por qué importa).",
+    "- Si no hay lugar pero sí «cerca»: puedes anclar una curiosidad al sitio cercano nombrado.",
+    "- El título del viaje (p. ej. Krakow) fija el destino: las curiosidades deben encajar con ese destino.",
     "- Si hay «cuando» (fecha/hora EXIF): úsala solo si encaja sin alargar demasiado.",
-    "- «tiene_gps» solo indica que la foto tiene coordenadas; NO inventes ciudad, barrio ni monumento a partir de eso.",
-    "Conserva el sentido y los hechos de la semilla; pule estilo y une semilla + lugar/fecha del JSON.",
-    "PROHIBIDO inventar: puentes, calles, edificios, personas, ropa, clima, comida, sonidos u objetos que no estén en la semilla ni nombrados en lugar/cerca.",
-    "PROHIBIDO rellenar con conocimiento genérico del destino (leyendas, películas, barrios famosos) si no aparece en la semilla o en lugar/cerca.",
-    "Si la semilla ya nombra el mismo lugar, no lo repitas de forma torpe; mejórala con suavidad.",
+    "- «tiene_gps» solo indica coordenadas; NO inventes ciudad o monumento solo a partir de eso.",
+    buildTravelBlogVoiceBlock({ compact: true }),
+    "Conserva el sentido de la semilla; pule estilo y une semilla + lugar + curiosidad breve.",
+    "Si la semilla ya nombra el mismo lugar, no lo repitas de forma torpe.",
     "Si hay notas_existentes, no las copies; complementa sin repetir.",
     "No uses comillas ni prefijos como «Nota:». Solo el texto de la nota.",
   ].join(" ");
