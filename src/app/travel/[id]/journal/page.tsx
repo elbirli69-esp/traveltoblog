@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import JournalWorkspace from "@/components/JournalWorkspace";
 import TravelWorkspaceNav from "@/components/TravelWorkspaceNav";
+import { blogCompletenessInputFromTravel } from "@/lib/blog-completeness-from-travel";
 
 export default async function JournalPage({
   params,
@@ -24,14 +25,33 @@ export default async function JournalPage({
       journalBrief: true,
       photos: {
         select: {
+          id: true,
+          selected: true,
           exifDateTime: true,
+          latitude: true,
+          longitude: true,
+          placeId: true,
+          highlightScore: true,
           isTransportStart: true,
           isTransportEnd: true,
+          notes: {
+            where: { type: "PHOTO" },
+            select: { type: true, text: true },
+          },
+        },
+      },
+      places: {
+        select: {
+          type: true,
+          notes: {
+            where: { type: "PLACE" },
+            select: { text: true },
+          },
         },
       },
       notes: {
-        where: { type: { in: ["DAY", "TRIP"] } },
-        select: { type: true, dayDate: true },
+        where: { type: { in: ["DAY", "TRIP", "PLACE"] } },
+        select: { type: true, dayDate: true, text: true },
       },
     },
   });
@@ -40,6 +60,34 @@ export default async function JournalPage({
 
   const dayNotes = travel.notes.filter((n) => n.type === "DAY");
   const tripNoteCount = travel.notes.filter((n) => n.type === "TRIP").length;
+
+  const blogCompleteness = blogCompletenessInputFromTravel({
+    title: travel.title,
+    journalBrief: travel.journalBrief,
+    startDate: travel.startDate?.toISOString() ?? null,
+    endDate: travel.endDate?.toISOString() ?? null,
+    photos: travel.photos.map((p) => ({
+      id: p.id,
+      selected: p.selected,
+      exifDateTime: p.exifDateTime?.toISOString() ?? null,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      placeId: p.placeId,
+      highlightScore: p.highlightScore,
+      isTransportStart: p.isTransportStart,
+      isTransportEnd: p.isTransportEnd,
+      notes: p.notes,
+    })),
+    places: travel.places.map((pl) => ({
+      type: pl.type,
+      notes: pl.notes,
+    })),
+    notes: travel.notes.map((n) => ({
+      type: n.type,
+      text: n.text,
+      dayDate: n.dayDate?.toISOString() ?? null,
+    })),
+  });
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 px-4 py-8">
@@ -70,6 +118,7 @@ export default async function JournalPage({
           dayDate: n.dayDate?.toISOString() ?? null,
         }))}
         tripNoteCount={tripNoteCount}
+        blogCompleteness={blogCompleteness}
       />
     </main>
   );

@@ -71,6 +71,10 @@ interface PhotoGalleryProps {
   onAddPhoto?: () => void;
   /** Increment to reload gallery (tras subir fotos). */
   refreshSignal?: number;
+  /** Selected photos without a PHOTO note (from travel payload). */
+  unnotedPhotoIds?: string[];
+  /** Start with “solo sin nota” filter (deep link). */
+  initialUnnotedFilter?: boolean;
 }
 
 function formatPhotoDate(iso: string | null): string {
@@ -154,6 +158,8 @@ export default function PhotoGallery({
   onAddPhoto,
   onPhotoDeleted,
   refreshSignal = 0,
+  unnotedPhotoIds = [],
+  initialUnnotedFilter = false,
 }: PhotoGalleryProps) {
   const [photos, setPhotos] = useState<GalleryPhoto[]>([]);
   const [page, setPage] = useState(1);
@@ -171,10 +177,12 @@ export default function PhotoGallery({
     text: string;
     nonce: number;
   } | null>(null);
+  const [unnotedCursor, setUnnotedCursor] = useState(0);
   const pageRef = useRef(page);
   pageRef.current = page;
   const parentRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadGenRef = useRef(0);
+  const unnotedKickoff = useRef(false);
 
   /** Soft parent refresh — avoids slamming NAS with full travel reload on every keystroke-save. */
   const scheduleParentRefresh = useCallback(() => {
@@ -267,6 +275,32 @@ export default function PhotoGallery({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to focusPhotoId changes
   }, [focusPhotoId]);
+
+  const focusUnnotedAt = useCallback(
+    (index: number) => {
+      if (unnotedPhotoIds.length === 0) return;
+      const i = ((index % unnotedPhotoIds.length) + unnotedPhotoIds.length) %
+        unnotedPhotoIds.length;
+      const id = unnotedPhotoIds[i]!;
+      setUnnotedCursor(i);
+      void loadPage(1, id).then(() => {
+        setExpandedId(id);
+        window.setTimeout(() => {
+          document
+            .getElementById(`gallery-photo-${id}`)
+            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 100);
+      });
+    },
+    [unnotedPhotoIds, loadPage]
+  );
+
+  useEffect(() => {
+    if (!initialUnnotedFilter || unnotedKickoff.current) return;
+    if (unnotedPhotoIds.length === 0) return;
+    unnotedKickoff.current = true;
+    focusUnnotedAt(0);
+  }, [initialUnnotedFilter, unnotedPhotoIds, focusUnnotedAt]);
 
   const setTransport = async (
     photo: GalleryPhoto,
@@ -375,6 +409,34 @@ export default function PhotoGallery({
           Miniaturas en la app · resolución completa al exportar
         </p>
       </div>
+
+      {unnotedPhotoIds.length > 0 && (
+        <div className="callout callout-warning flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm">
+            {unnotedPhotoIds.length} foto
+            {unnotedPhotoIds.length === 1 ? "" : "s"} sin nota — ideales para
+            «Completar con IA» o una frase tuya.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-secondary px-3 py-1.5 text-xs"
+              onClick={() => focusUnnotedAt(unnotedCursor)}
+            >
+              Ir a una sin nota
+            </button>
+            {unnotedPhotoIds.length > 1 && (
+              <button
+                type="button"
+                className="btn-secondary px-3 py-1.5 text-xs"
+                onClick={() => focusUnnotedAt(unnotedCursor + 1)}
+              >
+                Siguiente sin nota
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {loadError && <p className="text-sm text-danger">{loadError}</p>}
       {transportError && <p className="text-sm text-danger">{transportError}</p>}
