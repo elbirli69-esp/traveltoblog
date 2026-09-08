@@ -30,6 +30,7 @@ interface DayPhoto {
   url: string;
   exifDateTime: string | null;
   user: { alias: string };
+  place?: { id: string; name: string; type: string } | null;
   notes?: {
     id: string;
     text: string;
@@ -51,6 +52,22 @@ interface TravelDayCalendarProps {
   /** Increment to scroll/focus the day note form */
   focusNoteSignal?: number;
   onAddDayNote?: (dateKey: string) => void;
+}
+
+function lastOtherDayPhotoNoteText(
+  photos: DayPhoto[],
+  excludePhotoId: string
+): string | null {
+  for (let i = photos.length - 1; i >= 0; i--) {
+    const p = photos[i]!;
+    if (p.id === excludePhotoId) continue;
+    const notes = p.notes ?? [];
+    for (let j = notes.length - 1; j >= 0; j--) {
+      const n = notes[j]!;
+      if (n.type === "PHOTO" && n.text.trim()) return n.text.trim();
+    }
+  }
+  return null;
 }
 
 export default function TravelDayCalendar({
@@ -308,6 +325,11 @@ export default function TravelDayCalendar({
                     <SuggestPhotoNote
                       travelId={travelId}
                       photoId={photo.id}
+                      placeType={photo.place?.type ?? null}
+                      lastPhotoNoteText={lastOtherDayPhotoNoteText(
+                        photos,
+                        photo.id
+                      )}
                       authorAlias={
                         getSessionFromStorage()?.alias ?? photo.user.alias
                       }

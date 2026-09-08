@@ -223,8 +223,8 @@ No mezclar con A1 auth SaaS en el mismo PR; sí puede vivir en self-host.
 | Fase | Estado |
 |------|--------|
 | B0 Plan | ✅ En `main` |
-| B1 Completeness + cola | 🚧 Este PR |
-| B2 Semillas + chips | 📋 Pendiente |
-| B3 Guía lector + arco | 📋 Pendiente |
+| B1 Completeness + cola | ✅ En `main` |
+| B2 Semillas + chips | 🚧 PR B2 |
+| B3 Guía lector + arco | 🚧 Este PR |
 | B4 Preview + audiencia | 📋 Pendiente |
 | B5 Ficha destino | 📋 Pendiente |

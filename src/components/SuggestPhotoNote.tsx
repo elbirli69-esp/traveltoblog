@@ -5,6 +5,11 @@ import {
   PHOTO_NOTE_SEED_MIN_CHARS,
   type PhotoNoteTone,
 } from "@/lib/ai-suggest-photo-note";
+import {
+  appendSeedStarter,
+  photoSeedPlaceholder,
+  photoSeedStarters,
+} from "@/lib/blog-seed-prompts";
 
 const TONES: { id: PhotoNoteTone; label: string }[] = [
   { id: "neutro", label: "Neutro" },
@@ -16,6 +21,10 @@ interface SuggestPhotoNoteProps {
   travelId: string;
   photoId: string;
   authorAlias?: string;
+  /** Linked place type for guided placeholders/chips. */
+  placeType?: string | null;
+  /** Most recent PHOTO note text elsewhere — optional seed prefill. */
+  lastPhotoNoteText?: string | null;
   onApplyDraft: (text: string) => void;
 }
 
@@ -23,6 +32,8 @@ export default function SuggestPhotoNote({
   travelId,
   photoId,
   authorAlias,
+  placeType = null,
+  lastPhotoNoteText = null,
   onApplyDraft,
 }: SuggestPhotoNoteProps) {
   const [tone, setTone] = useState<PhotoNoteTone>("neutro");
@@ -33,6 +44,8 @@ export default function SuggestPhotoNote({
   const [error, setError] = useState<string | null>(null);
 
   const seedReady = seed.trim().length >= PHOTO_NOTE_SEED_MIN_CHARS;
+  const starters = photoSeedStarters(placeType);
+  const lastNote = lastPhotoNoteText?.trim() || null;
 
   const runSuggest = async () => {
     if (!seedReady) {
@@ -101,12 +114,36 @@ export default function SuggestPhotoNote({
         >
           Qué hay en la foto (breve)
         </label>
+        <div className="mb-1.5 flex flex-wrap gap-1.5" role="group" aria-label="Ideas para empezar">
+          {starters.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setSeed((prev) => appendSeedStarter(prev, s.text))}
+              className="chip-btn text-[11px]"
+              disabled={loading}
+            >
+              {s.label}
+            </button>
+          ))}
+          {lastNote && (
+            <button
+              type="button"
+              onClick={() => setSeed(lastNote)}
+              className="chip-btn text-[11px]"
+              disabled={loading}
+              title="Copia la última nota de otra foto como punto de partida"
+            >
+              Usar última nota
+            </button>
+          )}
+        </div>
         <textarea
           id={`ai-seed-${photoId}`}
           value={seed}
           onChange={(e) => setSeed(e.target.value)}
           rows={2}
-          placeholder="Ej. Café en terraza con vistas al río, lluvia ligera"
+          placeholder={photoSeedPlaceholder(placeType)}
           className="form-input input-focus text-sm"
           disabled={loading}
         />

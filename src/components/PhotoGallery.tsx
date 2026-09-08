@@ -88,6 +88,22 @@ function formatPhotoDate(iso: string | null): string {
   }  );
 }
 
+/** Most recent PHOTO note text on another photo in the current page. */
+function lastOtherPhotoNoteText(
+  photos: GalleryPhoto[],
+  excludePhotoId: string
+): string | null {
+  for (let i = photos.length - 1; i >= 0; i--) {
+    const p = photos[i]!;
+    if (p.id === excludePhotoId) continue;
+    for (let j = p.notes.length - 1; j >= 0; j--) {
+      const n = p.notes[j]!;
+      if (n.type === "PHOTO" && n.text.trim()) return n.text.trim();
+    }
+  }
+  return null;
+}
+
 function PhotoDateEditor({
   photo,
   onSaved,
@@ -780,6 +796,17 @@ export default function PhotoGallery({
                     <SuggestPhotoNote
                       travelId={travelId}
                       photoId={photo.id}
+                      placeType={
+                        photo.place?.type ??
+                        (photo.placeId
+                          ? places.find((p) => p.id === photo.placeId)?.type
+                          : null) ??
+                        null
+                      }
+                      lastPhotoNoteText={lastOtherPhotoNoteText(
+                        photos,
+                        photo.id
+                      )}
                       authorAlias={
                         getSessionFromStorage()?.alias ?? photo.user.alias
                       }

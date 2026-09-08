@@ -2,6 +2,7 @@ import type OpenAI from "openai";
 import type { Note, Photo, Place, Travel, User } from "@prisma/client";
 import { createAiClient, getAiConfig } from "@/lib/ai";
 import { buildTravelBlogVoiceBlock } from "@/lib/ai-blog-voice";
+import { journalIntentionPromptAddon } from "@/lib/blog-seed-prompts";
 import { resolveFlightLegs } from "@/lib/flights";
 import { placeEmoji, placeLabel } from "@/lib/places";
 import { formatDateKey, isoToDateKey, resolveTravelDayRange } from "@/lib/travel-dates";
@@ -121,11 +122,12 @@ interface JournalPromptConfig {
 function briefBlock(brief: string | null | undefined): string {
   const text = brief?.trim();
   if (!text) return "";
+  const intentionAddon = journalIntentionPromptAddon(text);
   return `
 
 INDICACIONES DEL USUARIO (prioridad alta):
 ${text}
-Incorpóralas con naturalidad. No inventes nada fuera de estas indicaciones y de los datos del viaje.`;
+Incorpóralas con naturalidad. No inventes nada fuera de estas indicaciones y de los datos del viaje.${intentionAddon}`;
 }
 
 function getJournalPromptConfig(style: JournalStyle): JournalPromptConfig {
@@ -208,6 +210,7 @@ PROHIBIDO inventar la escena de la foto (puentes, clima, gestos, objetos no menc
       system: `Eres un cronista de blogs de viaje. Escribe SOLO la conclusión (1-3 párrafos Markdown).
 ${VOICE_RULES}
 Cierra con eco de lo vivido (hechos ya contados) y, si encaja, una nota sobre el destino o su gente — sin sermón, sin citas literales nuevas y sin resumen telegráfico de toda la intro.
+Si indicaciones_usuario piden tips o enfoque práctico, termina con un consejo útil anclado a un lugar o día ya documentado (sin inventar horarios ni sitios no visitados).
 Sin encabezados. Respeta indicaciones_usuario.`,
       temperature: 0.6,
     },
@@ -431,6 +434,7 @@ REGLAS DE REFINAMIENTO:
 - Añade imágenes de fotos nuevas del contexto si aún no están en la crónica, con caption breve.
 - Mantén el título (# …), secciones por día y conclusión.
 - Respeta indicaciones_usuario con prioridad alta.
+- Si las indicaciones piden tips: asegura al menos un consejo práctico anclado a un lugar/día del contexto (en cuerpo o cierre).
 - Responde SOLO con el Markdown final, sin explicaciones ni fences \`\`\`.`;
 
   if (style === "factual") {
