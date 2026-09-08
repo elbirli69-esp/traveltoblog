@@ -84,6 +84,8 @@ export async function POST(request: NextRequest) {
       brief = "",
       themePack: themePackRaw,
       typePack: typePackRaw,
+      publicTitle = "",
+      includeReaderGuide = true,
     } = body as {
       travelId?: string;
       template?: ExportTemplateId;
@@ -94,6 +96,8 @@ export async function POST(request: NextRequest) {
       brief?: string;
       themePack?: string;
       typePack?: string;
+      publicTitle?: string;
+      includeReaderGuide?: boolean;
     };
 
     if (!travelId) {
@@ -249,9 +253,18 @@ export async function POST(request: NextRequest) {
         typePack,
         htmlDirectives: briefResult?.directives.html ?? null,
         briefInterpretation: briefResult?.directives.interpretation ?? null,
+        publicTitle:
+          typeof publicTitle === "string" && publicTitle.trim()
+            ? publicTitle.trim().slice(0, 200)
+            : null,
+        includeReaderGuide: includeReaderGuide !== false,
       };
 
-      const slug = exportSlug(travel.title);
+      const slug = exportSlug(
+        (typeof publicTitle === "string" && publicTitle.trim()
+          ? publicTitle.trim()
+          : travel.title) || travel.title
+      );
       const buffer = await buildExportArtifact(ctx, format, emit);
       const filename = format === "html" ? `${slug}.html` : `${slug}-export.zip`;
       const contentType = format === "html" ? "text/html; charset=utf-8" : "application/zip";

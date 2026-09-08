@@ -70,5 +70,14 @@ test("journalIntentionPromptAddon emits guidance for active chips", () => {
   const addon = journalIntentionPromptAddon(brief);
   assert.match(addon, /INTENCIÓN EDITORIAL/);
   assert.match(addon, /evocador/);
+  assert.match(addon, /ARCO NARRATIVO/);
   assert.equal(journalIntentionPromptAddon(""), "");
+});
+
+test("tips chip asks for anchored tip and useful closing", () => {
+  const brief = toggleJournalIntention("", "tips");
+  const addon = journalIntentionPromptAddon(brief);
+  assert.match(addon, /consejo práctico/);
+  assert.match(addon, /CONCLUSIÓN/);
+  assert.match(addon, /cierre útil|gancho concreto/i);
 });

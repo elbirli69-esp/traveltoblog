@@ -60,7 +60,7 @@ const TEMPLATES: {
     id: "magazine",
     name: "Magazine",
     description:
-      "Estilo blog experto: hero con subtítulo, recorrido cronológico, guía práctica, TOC y meta para compartir.",
+      "Estilo blog experto: hero, recorrido, guía «Si vais…» (≤5 lugares), TOC y meta para compartir.",
   },
   {
     id: "visual-journey",
@@ -122,6 +122,8 @@ export default function ExportHtmlPanel({
     null
   );
   const [includeGpsTrail, setIncludeGpsTrail] = useState(false);
+  const [includeReaderGuide, setIncludeReaderGuide] = useState(true);
+  const [publicTitle, setPublicTitle] = useState("");
   const [format, setFormat] = useState<ExportFormat>("zip");
   const [brief, setBrief] = useState("");
   const [interpretation, setInterpretation] = useState<string | null>(null);
@@ -164,6 +166,22 @@ export default function ExportHtmlPanel({
       }
       if (prefs.htmlTypePackId) {
         setTypePack(prefs.htmlTypePackId as TypePackId);
+      }
+      if (prefs.exportBriefCache) {
+        try {
+          const cache = JSON.parse(prefs.exportBriefCache) as {
+            publicTitle?: string;
+            includeReaderGuide?: boolean;
+          };
+          if (typeof cache.publicTitle === "string") {
+            setPublicTitle(cache.publicTitle.slice(0, 200));
+          }
+          if (typeof cache.includeReaderGuide === "boolean") {
+            setIncludeReaderGuide(cache.includeReaderGuide);
+          }
+        } catch {
+          /* ignore stale cache */
+        }
       }
     });
     return () => {
@@ -258,6 +276,8 @@ export default function ExportHtmlPanel({
           templateMatch: data.templateMatch ?? null,
           themePackMatch: data.themePackMatch ?? null,
           typePackMatch: data.typePackMatch ?? null,
+          publicTitle: publicTitle.trim() || null,
+          includeReaderGuide,
           at: new Date().toISOString(),
         }),
       });
@@ -267,6 +287,26 @@ export default function ExportHtmlPanel({
       setInterpreting(false);
     }
   };
+
+  const persistBlogMeta = useCallback(
+    (next: { publicTitle?: string; includeReaderGuide?: boolean }) => {
+      const title =
+        next.publicTitle !== undefined ? next.publicTitle : publicTitle;
+      const guide =
+        next.includeReaderGuide !== undefined
+          ? next.includeReaderGuide
+          : includeReaderGuide;
+      persistHtmlPrefs({
+        exportBriefCache: JSON.stringify({
+          target: "html",
+          publicTitle: title.trim() || null,
+          includeReaderGuide: guide,
+          at: new Date().toISOString(),
+        }),
+      });
+    },
+    [persistHtmlPrefs, publicTitle, includeReaderGuide]
+  );
 
   useEffect(() => {
     void fetch(`/api/travels/${travelId}/suggest-type`)
@@ -337,6 +377,8 @@ export default function ExportHtmlPanel({
             typology,
             format: exportFormat,
             includeGpsTrail,
+            includeReaderGuide,
+            publicTitle: publicTitle.trim() || undefined,
             stream: true,
             brief: brief.trim() || undefined,
             themePack,
@@ -587,6 +629,49 @@ export default function ExportHtmlPanel({
           </span>
         </span>
       </label>
+
+      <div className="space-y-2">
+        <label htmlFor="html-public-title" className="block text-sm font-semibold text-fg-secondary">
+          Título público del blog{" "}
+          <span className="font-normal text-fg-tertiary">(opcional)</span>
+        </label>
+        <input
+          id="html-public-title"
+          type="text"
+          value={publicTitle}
+          maxLength={200}
+          onChange={(e) => setPublicTitle(e.target.value.slice(0, 200))}
+          onBlur={() => persistBlogMeta({ publicTitle })}
+          disabled={busy}
+          placeholder="Si está vacío, se usa el título del viaje"
+          className="form-input w-full text-sm"
+        />
+        <p className="text-xs text-fg-tertiary">
+          Distinto del título interno del viaje. Sale en el hero y en la pestaña del HTML.
+        </p>
+      </div>
+
+      {template === "magazine" && (
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-fg-secondary">
+          <input
+            type="checkbox"
+            checked={includeReaderGuide}
+            onChange={(e) => {
+              const next = e.target.checked;
+              setIncludeReaderGuide(next);
+              persistBlogMeta({ includeReaderGuide: next });
+            }}
+            disabled={busy}
+            className="mt-0.5 accent-theme"
+          />
+          <span>
+            Incluir guía «Si vais, no os perdáis…»
+            <span className="mt-0.5 block text-xs text-fg-tertiary">
+              Hasta 5 lugares visitados; si hay nota de lugar, se muestra como tip.
+            </span>
+          </span>
+        </label>
+      )}
 
       <div>
         <h3 className="mb-2 text-sm font-semibold text-fg-secondary">Formato</h3>

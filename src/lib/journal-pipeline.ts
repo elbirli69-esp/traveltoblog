@@ -210,6 +210,7 @@ PROHIBIDO inventar la escena de la foto (puentes, clima, gestos, objetos no menc
       system: `Eres un cronista de blogs de viaje. Escribe SOLO la conclusión (1-3 párrafos Markdown).
 ${VOICE_RULES}
 Cierra con eco de lo vivido (hechos ya contados) y, si encaja, una nota sobre el destino o su gente — sin sermón, sin citas literales nuevas y sin resumen telegráfico de toda la intro.
+Si indicaciones_usuario piden tips o enfoque práctico, termina con un consejo útil anclado a un lugar o día ya documentado (sin inventar horarios ni sitios no visitados).
 Sin encabezados. Respeta indicaciones_usuario.`,
       temperature: 0.6,
     },
@@ -433,6 +434,7 @@ REGLAS DE REFINAMIENTO:
 - Añade imágenes de fotos nuevas del contexto si aún no están en la crónica, con caption breve.
 - Mantén el título (# …), secciones por día y conclusión.
 - Respeta indicaciones_usuario con prioridad alta.
+- Si las indicaciones piden tips: asegura al menos un consejo práctico anclado a un lugar/día del contexto (en cuerpo o cierre).
 - Responde SOLO con el Markdown final, sin explicaciones ni fences \`\`\`.`;
 
   if (style === "factual") {

@@ -300,11 +300,20 @@ export function journalIntentionPromptAddon(brief: string | null | undefined): s
     bits.push(
       "- Incluye al menos un consejo práctico anclado a un lugar o día documentado (sin inventar datos)."
     );
+    bits.push(
+      "- En la CONCLUSIÓN: un cierre útil para quien repita la ruta (horario, cola, qué merece la pena), anclado a hechos del viaje."
+    );
   }
   if (ids.includes("lirico")) {
     bits.push(
       "- Tono más evocador; sigue prohibido el relleno turístico vacío."
     );
   }
+  bits.push(
+    "ARCO NARRATIVO:",
+    "- Intro: gancho concreto (detalle, motivo o primer lugar), sin tesis vacía ni cita inventada.",
+    "- Cuerpo: conecta días con lo vivido; no listes monumentos como guía turística.",
+    "- Cierre: eco de lo contado + utilidad breve si hay material; sin sermón."
+  );
   return `\n${bits.join("\n")}`;
 }

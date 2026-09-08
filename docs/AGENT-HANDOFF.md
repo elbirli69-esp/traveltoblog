@@ -283,7 +283,7 @@ Ver plan dedicado: [`plan-blog-editorial.md`](./plan-blog-editorial.md).
 1. Merge y uso estable de voz blog (`ai-blog-voice` + crónica) — validar en viaje real.
 2. **Blog completeness (B1)** — panel de huecos + cola «fotos sin nota» ✅ en `main`.
 3. **Semillas guiadas + chips (B2)** — placeholders/chips por `PlaceType`, mañana/tarde/cena, «usar última nota», chips de intención en `journalBrief` (`blog-seed-prompts`).
-4. Bloque “Guía para el lector” en HTML solo con lugares visitados.
+4. **Guía lector + arco (B3)** — HTML Magazine «Si vais, no os perdáis…» (≤5 lugares + tip PLACE); arco gancho/tips/cierre en pipeline; título público opcional en export.
 5. Preview HTML tipo blog antes del ZIP.
 6. (Opcional) Ficha destino ligera + retrieval para curiosidades verificables.
 

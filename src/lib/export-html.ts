@@ -49,12 +49,15 @@ import {
   buildMagazineInteractiveScript,
   buildMagazineNav,
   buildVisualSectionNav,
-  buildPlaceCalloutsHtml,
   buildTocHtml,
   extractDeck,
   findTripNote,
   magazineStyles,
 } from "@/lib/export/magazine-html";
+import {
+  buildReaderGuideHtml,
+  readerGuideStyles,
+} from "@/lib/export/reader-guide";
 import { buildGallerySection, galleryExportStyles } from "@/lib/export/gallery-html";
 import {
   applyHtmlSectionOrderBias,
@@ -168,6 +171,13 @@ export interface ExportContext {
   mapStaticLocalPath?: string | null;
   /** Static Mapbox PNG for flight overview when dual maps apply. */
   mapStaticFlightPath?: string | null;
+  /**
+   * Optional public title for the exported blog (hero / <title>).
+   * Falls back to travel.title when empty.
+   */
+  publicTitle?: string | null;
+  /** Magazine reader guide “Si vais…” (default true when places exist). */
+  includeReaderGuide?: boolean;
 }
 
 export function getExportMapPhotos(ctx: ExportContext): ExportPhoto[] {
@@ -804,7 +814,7 @@ export function mapExportStyles(): string {
 
 function templateStyles(template: ExportTemplateId): string {
   if (template === "magazine") {
-    return magazineStyles();
+    return `${magazineStyles()}\n${readerGuideStyles}`;
   }
   if (template === "visual-journey") {
     return `
@@ -1878,6 +1888,9 @@ function estimateRouteKm(photos: ExportPhoto[]): number | undefined {
 
 export function buildExportHtml(ctx: ExportContext): string {
   const { travel, users, photos, places = [] } = ctx;
+  const displayTitle =
+    ctx.publicTitle?.trim() || travel.title.trim() || travel.title;
+  const includeReaderGuide = ctx.includeReaderGuide !== false;
   const htmlDir = resolveHtmlDirectives(ctx.htmlDirectives ?? null);
   // Structure stays on the UI template; theme/emphasis are directive CSS knobs.
   const template = resolveHtmlTemplateFromBrief(ctx.template, htmlDir);
@@ -2027,7 +2040,7 @@ export function buildExportHtml(ctx: ExportContext): string {
   // Nav is appended after sectionOrder so tabs match body order (Magazine + tipologías).
   const headerBlock = isMagazine
     ? `${buildMagazineHero({
-        title: travel.title,
+        title: displayTitle,
         deck,
         dateRange,
         travelers,
@@ -2040,7 +2053,7 @@ ${buildTocHtml(timelineEvents)}`
       ? `<header class="hero"${heroPhotoPath ? ` data-export-hero="${escapeHtml(heroPhotoPath)}" data-export-hero-gradient="${escapeHtml(heroGradient)}" style="background-image:${heroGradient}, url('${escapeHtml(heroPhotoPath).replace(/'/g, "%27")}');background-size:cover;background-position:center"` : ""}>
       <div class="hero-content reveal">
         <span class="hero-badge">${escapeHtml(profile.label)} · ${escapeHtml(getTemplateLabel(template))}</span>
-        <h1>${escapeHtml(travel.title)}</h1>
+        <h1>${escapeHtml(displayTitle)}</h1>
         <p class="hero-meta">${escapeHtml(dateRange)} · ${users.map((u) => escapeHtml(u.alias)).join(", ")}</p>
         <div class="hero-stats">
           <span class="stat-pill">📷 ${photos.length} fotos</span>
@@ -2050,7 +2063,7 @@ ${buildTocHtml(timelineEvents)}`
       </div>
     </header>`
       : `<header>
-      <h1>${escapeHtml(travel.title)}</h1>
+      <h1>${escapeHtml(displayTitle)}</h1>
       <p class="meta">${escapeHtml(dateRange)} · ${users.map((u) => escapeHtml(u.alias)).join(", ")} · ${escapeHtml(profile.label)}</p>
     </header>`;
   const localMapLead = dualMaps
@@ -2101,7 +2114,6 @@ ${buildTocHtml(timelineEvents)}`
     : "";
   const storyAnchor = "";
   const timelineBlock = buildTimelineSectionHtml(timelineEvents, storyTimelineOptions);
-  const storyPhotoIds = collectPrimaryStoryPhotoIds(timelineEvents);
   const hasFlightsInTimeline = timelineEvents.some(
     (e) => e.kind === "flight-out" || e.kind === "flight-in"
   );
@@ -2116,30 +2128,20 @@ ${buildTocHtml(timelineEvents)}`
   });
   const calloutPlaces = [...places]
     .sort((a, b) => compareHighlightScore(a.highlightScore ?? 5, b.highlightScore ?? 5))
-    .slice(0, htmlDir.placeCallouts === "low" ? 6 : undefined)
-    .map((p) => {
-    const linked = [...photosForPlace(p, mapPhotos)].sort((a, b) =>
-      compareHighlightScore(a.highlightScore, b.highlightScore)
-    );
-    // Guide never reuses photos already shown in El viaje (photo/flight cards).
-    // User rule: each photo at most once in the story and once in the gallery.
-    const unusedForGuide = linked.filter((photo) => !storyPhotoIds.has(photo.id));
-    return {
+    .map((p) => ({
       id: p.id,
       name: p.name,
       type: p.type,
       comment: htmlDir.placeCallouts === "low" ? null : p.comment,
       alias: p.alias,
       highlightScore: p.highlightScore ?? 5,
-      photoPaths:
-        htmlDir.placeCallouts === "low"
-          ? []
-          : unusedForGuide
-              .slice(0, htmlDir.placeCallouts === "high" ? 4 : 3)
-              .map((photo) => photo.thumbPath),
-    };
-  });
-  const calloutsBlock = isMagazine ? buildPlaceCalloutsHtml(calloutPlaces) : "";
+    }));
+  const calloutsBlock = isMagazine
+    ? buildReaderGuideHtml(calloutPlaces, {
+        includeSection: includeReaderGuide,
+        maxItems: htmlDir.placeCallouts === "low" ? 3 : undefined,
+      })
+    : "";
   const closingBlock = isMagazine
     ? buildClosingSectionHtml(tripNote, {
         photoCount: photos.length,
@@ -2251,7 +2253,7 @@ ${buildTocHtml(timelineEvents)}`
   const mapInner = "";
   const headMeta = isMagazine
     ? buildHeadMeta({
-        title: travel.title,
+        title: displayTitle,
         deck,
         dateRange,
         coverImagePath: coverPhoto?.localPath ?? null,
@@ -2275,7 +2277,7 @@ ${buildTocHtml(timelineEvents)}`
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(travel.title)} — TravelToBlog</title>
+  <title>${escapeHtml(displayTitle)} — TravelToBlog</title>
   ${headMeta}
   ${hasMap ? '<link rel="stylesheet" href="assets/leaflet.css">' : ""}
   <style>${templateStyles(template)}${packStyles}${extraStyles}</style>

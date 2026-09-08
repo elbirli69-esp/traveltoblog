@@ -20,6 +20,7 @@
     "test:ai-blog-voice": "npx --yes tsx scripts/test-ai-blog-voice.mjs",
     "test:blog-completeness": "npx --yes tsx scripts/test-blog-completeness.mjs",
     "test:blog-seed-prompts": "npx --yes tsx scripts/test-blog-seed-prompts.mjs",
+    "test:blog-reader-guide": "npx --yes tsx scripts/test-blog-reader-guide.mjs",
     "build:android": "bash scripts/build-android-apk.sh",
     "cap:sync": "npx cap sync android",
     "deploy:synology": "bash scripts/deploy-synology.sh"
