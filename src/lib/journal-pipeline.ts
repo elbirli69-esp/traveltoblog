@@ -2,6 +2,7 @@ import type OpenAI from "openai";
 import type { Note, Photo, Place, Travel, User } from "@prisma/client";
 import { createAiClient, getAiConfig } from "@/lib/ai";
 import { buildTravelBlogVoiceBlock } from "@/lib/ai-blog-voice";
+import { journalIntentionPromptAddon } from "@/lib/blog-seed-prompts";
 import { resolveFlightLegs } from "@/lib/flights";
 import { placeEmoji, placeLabel } from "@/lib/places";
 import { formatDateKey, isoToDateKey, resolveTravelDayRange } from "@/lib/travel-dates";
@@ -121,11 +122,12 @@ interface JournalPromptConfig {
 function briefBlock(brief: string | null | undefined): string {
   const text = brief?.trim();
   if (!text) return "";
+  const intentionAddon = journalIntentionPromptAddon(text);
   return `
 
 INDICACIONES DEL USUARIO (prioridad alta):
 ${text}
-Incorpóralas con naturalidad. No inventes nada fuera de estas indicaciones y de los datos del viaje.`;
+Incorpóralas con naturalidad. No inventes nada fuera de estas indicaciones y de los datos del viaje.${intentionAddon}`;
 }
 
 function getJournalPromptConfig(style: JournalStyle): JournalPromptConfig {

@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 import { DAY_SUMMARY_SEED_MIN_CHARS } from "@/lib/ai-suggest-day-summary";
+import {
+  appendSeedStarter,
+  DAY_SEED_STARTERS,
+  daySeedPlaceholder,
+} from "@/lib/blog-seed-prompts";
 
 interface SuggestDaySummaryProps {
   travelId: string;
@@ -125,12 +130,29 @@ export default function SuggestDaySummary({
         >
           Qué pasó este día (breve)
         </label>
+        <div
+          className="mb-1.5 flex flex-wrap gap-1.5"
+          role="group"
+          aria-label="Estructura del día"
+        >
+          {DAY_SEED_STARTERS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setSeed((prev) => appendSeedStarter(prev, s.text))}
+              className="chip-btn text-[11px]"
+              disabled={loading}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
         <textarea
           id={`ai-day-seed-${dayKey}`}
           value={seed}
           onChange={(e) => setSeed(e.target.value)}
           rows={2}
-          placeholder="Ej. Mañana en el casco antiguo, tarde de museo y cena tranquila"
+          placeholder={daySeedPlaceholder()}
           className="form-input input-focus text-sm"
           disabled={loading}
         />

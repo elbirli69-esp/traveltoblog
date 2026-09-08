@@ -7,6 +7,12 @@ import {
   type JournalPipelineEvent,
   type JournalStyle,
 } from "@/lib/journal-pipeline";
+import {
+  activeJournalIntentions,
+  JOURNAL_INTENTION_CHIPS,
+  toggleJournalIntention,
+  type JournalIntentionId,
+} from "@/lib/blog-seed-prompts";
 
 const GENERATE_STEP_LABELS: Record<string, string> = {
   context: "Preparando datos",
@@ -167,6 +173,12 @@ export default function GenerateJournalButton({
     }
   };
 
+  const activeIntentions = activeJournalIntentions(brief);
+
+  const toggleIntention = (id: JournalIntentionId) => {
+    setBrief((prev) => toggleJournalIntention(prev, id).slice(0, 4000));
+  };
+
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
@@ -174,6 +186,29 @@ export default function GenerateJournalButton({
           Indicaciones para la IA{" "}
           <span className="font-normal text-fg-secondary">(opcional)</span>
         </label>
+        <div
+          className="mb-1.5 flex flex-wrap gap-1.5"
+          role="group"
+          aria-label="Enfoque editorial"
+        >
+          {JOURNAL_INTENTION_CHIPS.map((chip) => {
+            const on = activeIntentions.includes(chip.id);
+            return (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => toggleIntention(chip.id)}
+                disabled={loading || undoBusy}
+                aria-pressed={on}
+                className={`chip-btn text-xs ${
+                  on ? "border-[var(--accent-cyan)] font-semibold text-fg" : ""
+                }`}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
+        </div>
         <textarea
           id="journal-brief"
           value={brief}
@@ -184,7 +219,8 @@ export default function GenerateJournalButton({
           className="form-input w-full resize-y text-sm"
         />
         <p className="text-xs text-fg-secondary">
-          Se guarda con el viaje y se reutiliza al generar o refinar. {brief.length}/4000
+          Los chips se guardan en el brief del viaje y guían el tono al generar o
+          refinar. {brief.length}/4000
         </p>
       </div>
 
