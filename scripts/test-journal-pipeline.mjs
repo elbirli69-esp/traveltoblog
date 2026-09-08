@@ -3,6 +3,7 @@ import {
   assembleJournalMarkdown,
   buildLocalJournalMarkdown,
   journalPipelineVoiceRules,
+  journalPromptContextAddon,
   sanitizeDaySummaryProse,
   sanitizeJournalDayProse,
 } from "../src/lib/journal-pipeline.ts";
@@ -21,7 +22,8 @@ const ctx = {
   flights: { outbound: null, inbound: null },
   places: [],
   tripNotes: [{ text: "Primera nota", author: "Ada" }],
-  brief: null,
+  brief: "Enfoque: más tips prácticos.",
+  destination: { name: "Cracovia", themes: ["Historia"] },
   days: [
     {
       date: "2026-08-01",
@@ -40,6 +42,12 @@ const ctx = {
     },
   ],
 };
+
+// Regression: must not recurse (Maximum call stack size exceeded).
+const addon = journalPromptContextAddon(ctx);
+assert.match(addon, /INDICACIONES DEL USUARIO/);
+assert.match(addon, /FICHA DESTINO/);
+assert.match(addon, /Cracovia/);
 
 assert.equal(
   sanitizeDaySummaryProse('Pasamos la mañana en la plaza.\n\n> "Flipé con el tamaño"\n\nLuego comimos.'),
