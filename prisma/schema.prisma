@@ -38,6 +38,10 @@ model Travel {
   journalMarkdownPrevious String?
   /// Free-text brief: anecdotes, emphasis, tone for AI journal generation
   journalBrief String?
+  /// Optional canonical destination for blog voice (e.g. "Cracovia, Polonia")
+  destinationName String?
+  /// Optional JSON string[] of up to 3 editorial themes (historia, comida, barrios…)
+  destinationThemes String?
   /// Shared free-text brief for HTML / Reel / PDF exports (session-persisted on travel)
   exportBrief String?
   /// Last grounded interpretation / directives cache (JSON)

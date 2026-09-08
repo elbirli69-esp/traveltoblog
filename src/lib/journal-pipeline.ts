@@ -3,6 +3,11 @@ import type { Note, Photo, Place, Travel, User } from "@prisma/client";
 import { createAiClient, getAiConfig } from "@/lib/ai";
 import { buildTravelBlogVoiceBlock } from "@/lib/ai-blog-voice";
 import { journalIntentionPromptAddon } from "@/lib/blog-seed-prompts";
+import {
+  destinationFicheFromTravel,
+  destinationFichePromptAddon,
+  type DestinationFiche,
+} from "@/lib/destination-fiche";
 import { resolveFlightLegs } from "@/lib/flights";
 import { placeEmoji, placeLabel } from "@/lib/places";
 import { formatDateKey, isoToDateKey, resolveTravelDayRange } from "@/lib/travel-dates";
@@ -64,6 +69,8 @@ export interface EnhancedJournalContext {
   tripNotes: { text: string; author: string }[];
   /** User free-text: anecdotes, emphasis, tone */
   brief: string | null;
+  /** Optional destination fiche (B5) */
+  destination: DestinationFiche | null;
 }
 
 export type JournalStyle = "narrative" | "factual";
@@ -128,6 +135,10 @@ function briefBlock(brief: string | null | undefined): string {
 INDICACIONES DEL USUARIO (prioridad alta):
 ${text}
 Incorpóralas con naturalidad. No inventes nada fuera de estas indicaciones y de los datos del viaje.${intentionAddon}`;
+}
+
+function promptContextAddon(ctx: EnhancedJournalContext): string {
+  return promptContextAddon(ctx) + destinationFichePromptAddon(ctx.destination);
 }
 
 function getJournalPromptConfig(style: JournalStyle): JournalPromptConfig {
@@ -376,6 +387,7 @@ export function buildEnhancedJournalContext(
       .filter((n) => n.type === "TRIP")
       .map((n) => ({ text: n.text, author: n.user.alias })),
     brief: brief?.trim() || travel.journalBrief?.trim() || null,
+    destination: destinationFicheFromTravel(travel),
   };
 }
 
@@ -558,7 +570,7 @@ export async function refineJournalMarkdown(
   const raw = await callAi(
     ai,
     model,
-    system + briefBlock(ctx.brief),
+    system + promptContextAddon(ctx),
     buildRefineUserPayload(ctx, existingMarkdown),
     temperature
   );
@@ -592,7 +604,7 @@ export async function generateIntroduction(
   return callAi(
     ai,
     model,
-    prompts.intro.system + briefBlock(ctx.brief),
+    prompts.intro.system + promptContextAddon(ctx),
     user,
     prompts.intro.temperature
   );
@@ -630,7 +642,7 @@ export async function generateDaySummaries(
   const raw = await callAi(
     ai,
     model,
-    prompts.days.system + briefBlock(ctx.brief),
+    prompts.days.system + promptContextAddon(ctx),
     user,
     prompts.days.temperature
   );
@@ -681,7 +693,7 @@ export async function generatePhotoCaptions(
   const raw = await callAi(
     ai,
     model,
-    prompts.captions.system + briefBlock(ctx.brief),
+    prompts.captions.system + promptContextAddon(ctx),
     user,
     prompts.captions.temperature
   );
@@ -724,7 +736,7 @@ export async function generateConclusion(
   return callAi(
     ai,
     model,
-    prompts.conclusion.system + briefBlock(ctx.brief),
+    prompts.conclusion.system + promptContextAddon(ctx),
     user,
     prompts.conclusion.temperature
   );

@@ -8,6 +8,7 @@ import {
   REEL_STORYBOARD_SEED_MIN_CHARS,
   suggestReelStoryboard,
 } from "@/lib/ai-suggest-reel-storyboard";
+import { destinationFicheFromTravel } from "@/lib/destination-fiche";
 import { parseReelDayKey, parseReelDuration } from "@/lib/export-reel";
 
 export const runtime = "nodejs";
@@ -61,6 +62,8 @@ export async function POST(request: NextRequest) {
       where: { id: travelId },
       select: {
         title: true,
+        destinationName: true,
+        destinationThemes: true,
         photos: {
           where: { selected: true },
           select: {
@@ -121,6 +124,7 @@ export async function POST(request: NextRequest) {
       brief: typeof brief === "string" ? brief : null,
       userSeed,
       candidates,
+      destination: destinationFicheFromTravel(travel),
     });
 
     return NextResponse.json({

@@ -10,6 +10,7 @@ import {
   pickNearbyPlaceNames,
   suggestPhotoNote,
 } from "@/lib/ai-suggest-photo-note";
+import { destinationFicheFromTravel } from "@/lib/destination-fiche";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -69,6 +70,8 @@ export async function POST(request: NextRequest) {
         travel: {
           select: {
             title: true,
+            destinationName: true,
+            destinationThemes: true,
             places: {
               select: {
                 id: true,
@@ -108,6 +111,7 @@ export async function POST(request: NextRequest) {
       existingNotes: photo.notes.map((n) => n.text),
       nearbyPlaceNames,
       tone,
+      destination: destinationFicheFromTravel(photo.travel),
     });
 
     const result = await suggestPhotoNote({

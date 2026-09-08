@@ -226,5 +226,5 @@ No mezclar con A1 auth SaaS en el mismo PR; sí puede vivir en self-host.
 | B1 Completeness + cola | ✅ En `main` |
 | B2 Semillas + chips | ✅ En `main` |
 | B3 Guía lector + arco | ✅ En `main` |
-| B4 Preview + audiencia | 🚧 Este PR |
-| B5 Ficha destino | 📋 Pendiente |
+| B4 Preview + audiencia | ✅ En `main` |
+| B5 Ficha destino | 🚧 Este PR |

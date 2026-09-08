@@ -24,6 +24,9 @@ export type ProjectBackupManifestV1 = {
     htmlTypePackId: string | null;
     reelPresetId: string | null;
     pdfPresetId: string | null;
+    /** Optional B5 destination fiche (older backups omit these). */
+    destinationName?: string | null;
+    destinationThemes?: string | null;
     travelType: string | null;
     creatorAlias: string | null;
     startPhotoId: string | null;

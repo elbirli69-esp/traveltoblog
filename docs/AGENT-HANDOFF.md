@@ -284,8 +284,8 @@ Ver plan dedicado: [`plan-blog-editorial.md`](./plan-blog-editorial.md).
 2. **Blog completeness (B1)** — panel de huecos + cola «fotos sin nota» ✅ en `main`.
 3. **Semillas guiadas + chips (B2)** — placeholders/chips por `PlaceType`, mañana/tarde/cena, «usar última nota», chips de intención en `journalBrief` (`blog-seed-prompts`).
 4. **Guía lector + arco (B3)** — HTML Magazine «Si vais, no os perdáis…» (≤5 lugares + tip PLACE); arco gancho/tips/cierre en pipeline; título público opcional en export. ✅ en `main`.
-5. **Preview + audiencia (B4)** — vista previa HTML a pantalla casi completa; atajos Blog largo / Álbum / Reel (`export-audience`).
-6. (Opcional) Ficha destino ligera + retrieval para curiosidades verificables.
+5. **Preview + audiencia (B4)** — vista previa HTML a pantalla casi completa; atajos Blog largo / Álbum / Reel (`export-audience`). ✅ en `main`.
+6. **Ficha destino (B5)** — `destinationName` + temas opcionales; alimentan voz blog y completeness (`destination_fiche`).
 
 ### P2 — Producto export
 

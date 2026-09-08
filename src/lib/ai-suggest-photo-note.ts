@@ -8,6 +8,7 @@ import { createAiClient, getAiConfig } from "@/lib/ai";
 import { distanceMeters } from "@/lib/geo";
 import { placeLabel } from "@/lib/places";
 import { buildTravelBlogVoiceBlock } from "@/lib/ai-blog-voice";
+import type { DestinationFiche } from "@/lib/destination-fiche";
 import type { PlaceType } from "@prisma/client";
 
 export type PhotoNoteTone = "neutro" | "divertido" | "poetico";
@@ -36,6 +37,7 @@ export type PhotoNoteSuggestContext = {
   existingNotes: string[];
   nearbyPlaceNames: string[];
   tone: PhotoNoteTone;
+  destination?: DestinationFiche | null;
 };
 
 const MAX_NOTE_CHARS = 120;
@@ -111,6 +113,7 @@ export function buildPhotoNoteSuggestContext(input: {
   existingNotes: string[];
   nearbyPlaceNames: string[];
   tone: PhotoNoteTone;
+  destination?: DestinationFiche | null;
 }): PhotoNoteSuggestContext {
   const placeType = input.place?.type ?? "";
   return {
@@ -136,6 +139,7 @@ export function buildPhotoNoteSuggestContext(input: {
       .filter(Boolean)
       .slice(0, MAX_NEARBY),
     tone: input.tone,
+    destination: input.destination ?? null,
   };
 }
 
@@ -214,7 +218,9 @@ const TONE_INSTRUCTION: Record<PhotoNoteTone, string> = {
     "Tono evocador breve; une la semilla con una pincelada histórica/cultural del lugar si hay ancla.",
 };
 
-export function buildPhotoNoteSystemPrompt(): string {
+export function buildPhotoNoteSystemPrompt(
+  destination?: DestinationFiche | null
+): string {
   return [
     "Eres un redactor de blog de viaje.",
     "El usuario te da una descripción breve (campo «semilla») de lo que hay en la foto.",
@@ -226,7 +232,7 @@ export function buildPhotoNoteSystemPrompt(): string {
     "- El título del viaje (p. ej. Krakow) fija el destino: las curiosidades deben encajar con ese destino.",
     "- Si hay «cuando» (fecha/hora EXIF): úsala solo si encaja sin alargar demasiado.",
     "- «tiene_gps» solo indica coordenadas; NO inventes ciudad o monumento solo a partir de eso.",
-    buildTravelBlogVoiceBlock({ compact: true }),
+    buildTravelBlogVoiceBlock({ compact: true, destination }),
     "Conserva el sentido de la semilla; pule estilo y une semilla + lugar + curiosidad breve.",
     "Si la semilla ya nombra el mismo lugar, no lo repitas de forma torpe.",
     "Si hay notas_existentes, no las copies; complementa sin repetir.",
@@ -239,6 +245,14 @@ export function buildPhotoNoteUserPrompt(ctx: PhotoNoteSuggestContext): string {
     {
       semilla: ctx.userSeed,
       viaje: ctx.travelTitle,
+      ficha_destino: ctx.destination?.name
+        ? {
+            nombre: ctx.destination.name,
+            temas: ctx.destination.themes,
+          }
+        : ctx.destination?.themes?.length
+          ? { nombre: null, temas: ctx.destination.themes }
+          : null,
       autor: ctx.authorAlias,
       cuando: ctx.exifLocal,
       lugar: ctx.place
@@ -343,7 +357,7 @@ export async function suggestPhotoNote(options: {
     const completion = await ai.chat.completions.create({
       model,
       messages: [
-        { role: "system", content: buildPhotoNoteSystemPrompt() },
+        { role: "system", content: buildPhotoNoteSystemPrompt(context.destination) },
         { role: "user", content: buildPhotoNoteUserPrompt(context) },
       ],
       temperature: 0.25,

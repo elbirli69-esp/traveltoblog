@@ -23,6 +23,8 @@ export default async function JournalPage({
       journalGeneratedAt: true,
       journalMarkdownPrevious: true,
       journalBrief: true,
+      destinationName: true,
+      destinationThemes: true,
       photos: {
         select: {
           id: true,
@@ -64,6 +66,8 @@ export default async function JournalPage({
   const blogCompleteness = blogCompletenessInputFromTravel({
     title: travel.title,
     journalBrief: travel.journalBrief,
+    destinationName: travel.destinationName,
+    destinationThemes: travel.destinationThemes,
     startDate: travel.startDate?.toISOString() ?? null,
     endDate: travel.endDate?.toISOString() ?? null,
     photos: travel.photos.map((p) => ({

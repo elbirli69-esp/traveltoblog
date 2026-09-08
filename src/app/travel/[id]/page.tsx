@@ -24,6 +24,7 @@ import TravelPlacesPanel, {
 import TravelCollaborationBar from "@/components/TravelCollaborationBar";
 import PastTripGuide from "@/components/PastTripGuide";
 import TravelDatesPanel from "@/components/TravelDatesPanel";
+import DestinationFichePanel from "@/components/DestinationFichePanel";
 import DeleteTravelPanel from "@/components/DeleteTravelPanel";
 import AddMemorySheet, {
   type AddMemoryKind,
@@ -86,6 +87,8 @@ interface TravelData {
   }[];
   journalMarkdown: string | null;
   updatedAt: string;
+  destinationName?: string | null;
+  destinationThemes?: string | null;
   places: {
     id: string;
     name: string;
@@ -275,9 +278,10 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
     const tab = searchParams.get("tab");
     const photo = searchParams.get("photo");
     const unnoted = searchParams.get("unnoted");
-    if (!tab && !photo && !unnoted) return;
+    const focus = searchParams.get("focus");
+    if (!tab && !photo && !unnoted && !focus) return;
 
-    const token = `tab:${tab}:${photo}:${unnoted}`;
+    const token = `tab:${tab}:${photo}:${unnoted}:${focus}`;
     if (deepLinkHandled.current === token) return;
     deepLinkHandled.current = token;
 
@@ -287,7 +291,7 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
       setActiveTab("places");
     } else if (tab === "days") {
       setActiveTab("days");
-    } else if (tab === "trip") {
+    } else if (tab === "trip" || focus === "destination") {
       setActiveTab("trip");
     }
 
@@ -295,6 +299,14 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
     if (photo) {
       setFocusPhotoId(null);
       queueMicrotask(() => setFocusPhotoId(photo));
+    }
+    if (focus === "destination") {
+      queueMicrotask(() => {
+        document.getElementById("destination-fiche")?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      });
     }
 
     window.history.replaceState({}, "", `/travel/${travelId}`);
@@ -349,6 +361,8 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   const blogCompleteness = blogCompletenessInputFromTravel({
     title: travel.title,
     journalBrief: null,
+    destinationName: travel.destinationName ?? null,
+    destinationThemes: travel.destinationThemes ?? null,
     startDate: travel.startDate,
     endDate: travel.endDate,
     photos: travel.photos,
@@ -391,6 +405,16 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
     }
     if (kind === "trip") {
       applyAddMemory("trip");
+      return;
+    }
+    if (kind === "destination_fiche") {
+      setActiveTab("trip");
+      queueMicrotask(() => {
+        document.getElementById("destination-fiche")?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      });
     }
   };
 
@@ -675,6 +699,15 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
                   travel.startDate ? isoToDateKey(travel.startDate) : undefined
                 }
                 onCreated={() => setRefreshKey((k) => k + 1)}
+              />
+            </div>
+            <div className="mt-6 border-t border-divider pt-4">
+              <DestinationFichePanel
+                travelId={travelId}
+                destinationName={travel.destinationName}
+                destinationThemes={travel.destinationThemes}
+                defaultOpen
+                onSaved={() => setRefreshKey((k) => k + 1)}
               />
             </div>
           </section>

@@ -137,6 +137,8 @@ export async function buildProjectBackup(
       htmlTypePackId: travel.htmlTypePackId,
       reelPresetId: travel.reelPresetId,
       pdfPresetId: travel.pdfPresetId,
+      destinationName: travel.destinationName ?? null,
+      destinationThemes: travel.destinationThemes ?? null,
       travelType: travel.travelType as ProjectBackupManifestV1["travel"]["travelType"],
       creatorAlias: travel.creator?.alias ?? travel.users[0]?.alias ?? null,
       startPhotoId: travel.startPhotoId,
@@ -292,6 +294,8 @@ export async function importProjectBackup(
         htmlTypePackId: manifest.travel.htmlTypePackId,
         reelPresetId: manifest.travel.reelPresetId,
         pdfPresetId: manifest.travel.pdfPresetId,
+        destinationName: manifest.travel.destinationName ?? null,
+        destinationThemes: manifest.travel.destinationThemes ?? null,
         travelType: manifest.travel.travelType as TravelType | null,
       },
     });

@@ -22,6 +22,7 @@
     "test:blog-seed-prompts": "npx --yes tsx scripts/test-blog-seed-prompts.mjs",
     "test:blog-reader-guide": "npx --yes tsx scripts/test-blog-reader-guide.mjs",
     "test:export-audience": "npx --yes tsx scripts/test-export-audience.mjs",
+    "test:destination-fiche": "npx --yes tsx scripts/test-destination-fiche.mjs",
     "build:android": "bash scripts/build-android-apk.sh",
     "cap:sync": "npx cap sync android",
     "deploy:synology": "bash scripts/deploy-synology.sh"
