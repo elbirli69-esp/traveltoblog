@@ -7,10 +7,10 @@ import type { ExportWarning } from "@/lib/export-warnings";
 import {
   DownloadCancelledError,
   downloadFromBase64,
-  openBlobPreview,
   type DownloadResult,
 } from "@/lib/download-blob";
 import { isCapacitorNative } from "@/lib/capacitor-native";
+import HtmlPreviewModal from "@/components/HtmlPreviewModal";
 import {
   THEME_PACK_CATALOG,
   defaultThemePackForTemplate,
@@ -146,6 +146,8 @@ export default function ExportHtmlPanel({
   const [currentStep, setCurrentStep] = useState<ExportPipelineStep | null>(null);
   const [stepMessage, setStepMessage] = useState<string | null>(null);
   const [completedSteps, setCompletedSteps] = useState<ExportPipelineStep[]>([]);
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const busy = loading || previewing || interpreting;
   const progressSteps = useMemo(
@@ -336,10 +338,22 @@ export default function ExportHtmlPanel({
       .catch(() => setWarnings([]));
   }, [travelId, format]);
 
+  useEffect(() => {
+    return () => {
+      if (previewSrc) URL.revokeObjectURL(previewSrc);
+    };
+  }, [previewSrc]);
+
+  const closePreview = useCallback(() => {
+    setPreviewOpen(false);
+  }, []);
+
   const runExport = useCallback(
-    async (mode: "download" | "preview") => {
+    async (mode: "download" | "preview", formatOverride?: ExportFormat) => {
       const isPreview = mode === "preview";
-      const exportFormat: ExportFormat = isPreview ? "html" : format;
+      const exportFormat: ExportFormat = isPreview
+        ? "html"
+        : (formatOverride ?? format);
 
       if (!isPreview && exportFormat === "html" && photoCount >= 25) {
         const ok = window.confirm(
@@ -432,7 +446,14 @@ export default function ExportHtmlPanel({
             );
 
             if (isPreview) {
-              await openBlobPreview(blob);
+              setPreviewSrc((prev) => {
+                if (prev) URL.revokeObjectURL(prev);
+                return URL.createObjectURL(blob);
+              });
+              setPreviewOpen(true);
+              setSuccess(
+                "Vista previa lista. Revisa si se puede compartir; luego exporta el ZIP."
+              );
             } else {
               const filename =
                 event.filename ??
@@ -500,8 +521,10 @@ export default function ExportHtmlPanel({
       brief,
       format,
       includeGpsTrail,
+      includeReaderGuide,
       photoCount,
       progressSteps,
+      publicTitle,
       template,
       themePack,
       travelId,
@@ -869,7 +892,7 @@ export default function ExportHtmlPanel({
           disabled={busy}
           className="btn-secondary flex-1 py-3 text-sm disabled:opacity-50"
         >
-          {previewing ? "Generando vista previa…" : "👁️ Vista previa"}
+          {previewing ? "Generando vista previa…" : "Vista previa a pantalla casi completa"}
         </button>
         <button
           type="button"
@@ -910,6 +933,19 @@ export default function ExportHtmlPanel({
 
       {success && <p className="callout callout-success text-sm">{success}</p>}
       {error && <p className="text-sm text-danger">{error}</p>}
+
+      <HtmlPreviewModal
+        open={previewOpen}
+        src={previewSrc}
+        title="Vista previa del blog"
+        onClose={closePreview}
+        exportBusy={loading}
+        onExportZip={() => {
+          setPreviewOpen(false);
+          setFormat("zip");
+          void runExport("download", "zip");
+        }}
+      />
     </div>
   );
 }
