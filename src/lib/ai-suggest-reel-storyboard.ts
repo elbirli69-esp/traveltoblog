@@ -6,6 +6,7 @@
 import { createAiClient, getAiConfig } from "@/lib/ai";
 import { clampNoteText } from "@/lib/ai-suggest-photo-note";
 import { buildTravelBlogVoiceBlock } from "@/lib/ai-blog-voice";
+import type { DestinationFiche } from "@/lib/destination-fiche";
 import { computeReelPhotoPriority } from "@/lib/highlight-score";
 import { pickDiverseExportPhotos } from "@/lib/export-photo-pick";
 import {
@@ -277,7 +278,9 @@ function extractJsonObject(text: string): unknown | null {
   }
 }
 
-export function buildStoryboardSystemPrompt(): string {
+export function buildStoryboardSystemPrompt(
+  destination?: DestinationFiche | null
+): string {
   return [
     "Eres un montador y copywriter de Reels para un blog de viaje.",
     "El usuario te da una idea narrativa (campo «semilla») de lo que quiere contar.",
@@ -287,7 +290,7 @@ export function buildStoryboardSystemPrompt(): string {
     "Captions en español, cortos (≤90 caracteres), pensados para enganchar a quien ve el Reel / lee el blog.",
     "Si hay caption en el candidato, reutilízalo o enriquécelo con una curiosidad breve del lugar/destino si hay ancla.",
     "Si no hay caption pero sí lugar, caption = lugar + micro-curiosidad o gancho alineado con la semilla.",
-    buildTravelBlogVoiceBlock({ compact: true }),
+    buildTravelBlogVoiceBlock({ compact: true, destination }),
     "interpretation: una frase sobre cómo el montaje sirve al relato de blog / semilla.",
   ].join(" ");
 }
@@ -300,11 +303,20 @@ export function buildStoryboardUserPrompt(input: {
   dayKey: string | null;
   brief: string | null;
   candidates: StoryboardCandidate[];
+  destination?: DestinationFiche | null;
 }): string {
   return JSON.stringify(
     {
       semilla: input.userSeed,
       viaje: input.travelTitle,
+      ficha_destino:
+        input.destination &&
+        (input.destination.name || input.destination.themes.length > 0)
+          ? {
+              nombre: input.destination.name,
+              temas: input.destination.themes,
+            }
+          : null,
       duracion_s: input.durationSeconds,
       max_frames: input.maxFrames,
       dia: input.dayKey,
@@ -354,6 +366,7 @@ export async function suggestReelStoryboard(options: {
   brief?: string | null;
   userSeed: string;
   candidates: StoryboardCandidate[];
+  destination?: DestinationFiche | null;
 }): Promise<SuggestReelStoryboardResult> {
   const durationSeconds = parseReelDuration(options.durationSeconds);
   const userSeed = normalizeReelStoryboardSeed(options.userSeed);
@@ -426,7 +439,7 @@ export async function suggestReelStoryboard(options: {
     const completion = await ai.chat.completions.create({
       model,
       messages: [
-        { role: "system", content: buildStoryboardSystemPrompt() },
+        { role: "system", content: buildStoryboardSystemPrompt(options.destination) },
         {
           role: "user",
           content: buildStoryboardUserPrompt({
@@ -437,6 +450,7 @@ export async function suggestReelStoryboard(options: {
             dayKey: options.dayKey ?? null,
             brief: options.brief?.trim() || null,
             candidates: options.candidates,
+            destination: options.destination ?? null,
           }),
         },
       ],

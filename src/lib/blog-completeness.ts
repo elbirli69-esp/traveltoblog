@@ -24,7 +24,8 @@ export type BlogGapActionKind =
   | "trip"
   | "photos_notes"
   | "photos_highlight"
-  | "journal_brief";
+  | "journal_brief"
+  | "destination_fiche";
 
 export type BlogGap = {
   code: BlogGapCode;
@@ -42,6 +43,9 @@ export type BlogGap = {
 export type BlogCompletenessInput = {
   title: string;
   journalBrief: string | null | undefined;
+  /** Optional destination fiche (B5). */
+  destinationName?: string | null;
+  destinationThemes?: string[] | null;
   startDate: string | null;
   endDate: string | null;
   photos: Array<{
@@ -246,9 +250,13 @@ export function buildBlogCompleteness(
     });
   }
 
-  // destination_context
+  // destination_context — skip when fiche names the destination
   const title = input.title.trim();
+  const hasFiche =
+    Boolean(input.destinationName?.trim()) ||
+    (input.destinationThemes?.length ?? 0) > 0;
   if (
+    !hasFiche &&
     (GENERIC_TITLE.test(title) || title.length < 4) &&
     placeCount === 0 &&
     selected.length >= 3
@@ -256,10 +264,24 @@ export function buildBlogCompleteness(
     candidates.push({
       code: "destination_context",
       message:
-        "El título es genérico y no hay lugares. Nombra el destino o marca sitios para que la IA aporte historia local con ancla.",
-      actionLabel: "Añadir lugar",
-      actionKind: "place",
+        "El título es genérico y no hay lugares. Completa la ficha destino (nombre + 1–2 temas) o marca sitios para anclar historia local.",
+      actionLabel: "Ficha destino",
+      actionKind: "destination_fiche",
       weight: 50,
+    });
+  } else if (
+    !hasFiche &&
+    (GENERIC_TITLE.test(title) || title.length < 8) &&
+    placeCount < 2 &&
+    selected.length >= 5
+  ) {
+    candidates.push({
+      code: "destination_context",
+      message:
+        "Añade una ficha destino ligera (ciudad + temas como historia o comida) para curiosidades de blog más coherentes.",
+      actionLabel: "Ficha destino",
+      actionKind: "destination_fiche",
+      weight: 42,
     });
   }
 

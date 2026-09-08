@@ -86,6 +86,10 @@ export default function JournalWorkspace({
     }
     if (kind === "trip") {
       goTravel({ add: "trip" });
+      return;
+    }
+    if (kind === "destination_fiche") {
+      goTravel({ tab: "trip", focus: "destination" });
     }
   };
 

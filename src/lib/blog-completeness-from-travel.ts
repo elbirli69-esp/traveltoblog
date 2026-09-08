@@ -1,9 +1,12 @@
 import type { BlogCompletenessInput } from "@/lib/blog-completeness";
+import { normalizeDestinationThemes } from "@/lib/destination-fiche";
 
 /** Build completeness input from travel payload shapes used in UI. */
 export function blogCompletenessInputFromTravel(travel: {
   title: string;
   journalBrief?: string | null;
+  destinationName?: string | null;
+  destinationThemes?: string | string[] | null;
   startDate: string | null;
   endDate: string | null;
   photos: Array<{
@@ -59,6 +62,10 @@ export function blogCompletenessInputFromTravel(travel: {
   return {
     title: travel.title,
     journalBrief: travel.journalBrief ?? null,
+    destinationName: travel.destinationName ?? null,
+    destinationThemes: normalizeDestinationThemes(
+      travel.destinationThemes ?? []
+    ),
     startDate: travel.startDate,
     endDate: travel.endDate,
     photos: travel.photos.map((p) => ({

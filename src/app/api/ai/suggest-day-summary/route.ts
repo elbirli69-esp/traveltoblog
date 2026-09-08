@@ -10,6 +10,7 @@ import {
   parseDayKey,
   suggestDaySummary,
 } from "@/lib/ai-suggest-day-summary";
+import { destinationFicheFromTravel } from "@/lib/destination-fiche";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -60,6 +61,8 @@ export async function POST(request: NextRequest) {
       select: {
         title: true,
         journalBrief: true,
+        destinationName: true,
+        destinationThemes: true,
         photos: {
           select: {
             exifDateTime: true,
@@ -109,6 +112,7 @@ export async function POST(request: NextRequest) {
       places: collected.places,
       noteBullets: collected.noteBullets,
       journalBrief: travel.journalBrief,
+      destination: destinationFicheFromTravel(travel),
     });
 
     const sources = {

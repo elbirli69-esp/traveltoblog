@@ -73,22 +73,44 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { startDate, endDate, title } = body as {
+    const {
+      startDate,
+      endDate,
+      title,
+      destinationName,
+      destinationThemes,
+    } = body as {
       startDate?: string | null;
       endDate?: string | null;
       title?: string;
+      destinationName?: string | null;
+      destinationThemes?: string[] | string | null;
     };
 
     const data: {
       startDate?: Date | null;
       endDate?: Date | null;
       title?: string;
+      destinationName?: string | null;
+      destinationThemes?: string | null;
       updatedAt: Date;
     } = { updatedAt: new Date() };
 
     if (title !== undefined) data.title = title.trim();
     if (startDate !== undefined) data.startDate = startDate ? new Date(startDate) : null;
     if (endDate !== undefined) data.endDate = endDate ? new Date(endDate) : null;
+    if (destinationName !== undefined) {
+      const name =
+        typeof destinationName === "string" ? destinationName.trim() : "";
+      data.destinationName = name ? name.slice(0, 120) : null;
+    }
+    if (destinationThemes !== undefined) {
+      const { normalizeDestinationThemes, serializeDestinationThemes } =
+        await import("@/lib/destination-fiche");
+      data.destinationThemes = serializeDestinationThemes(
+        normalizeDestinationThemes(destinationThemes)
+      );
+    }
 
     const travel = await prisma.travel.update({
       where: { id },

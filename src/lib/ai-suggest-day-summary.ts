@@ -7,6 +7,7 @@
 import { createAiClient, getAiConfig } from "@/lib/ai";
 import { clampNoteText } from "@/lib/ai-suggest-photo-note";
 import { buildTravelBlogVoiceBlock } from "@/lib/ai-blog-voice";
+import type { DestinationFiche } from "@/lib/destination-fiche";
 import { placeLabel } from "@/lib/places";
 import { formatDateKey, isoToDateKey } from "@/lib/travel-dates";
 import type { PlaceType } from "@prisma/client";
@@ -31,6 +32,7 @@ export type DaySummaryContext = {
   places: Array<{ name: string; type: string; tipoLabel: string }>;
   bullets: string[];
   journalBrief: string | null;
+  destination?: DestinationFiche | null;
 };
 
 export type DaySummarySources = {
@@ -75,6 +77,7 @@ export function buildDaySummaryContext(input: {
   places: Array<{ name: string; type: string }>;
   noteBullets: string[];
   journalBrief: string | null | undefined;
+  destination?: DestinationFiche | null;
 }): DaySummaryContext {
   const brief = input.journalBrief?.trim() ?? "";
   return {
@@ -101,6 +104,7 @@ export function buildDaySummaryContext(input: {
         ? brief
         : `${brief.slice(0, BRIEF_MAX - 1).trimEnd()}…`
       : null,
+    destination: input.destination ?? null,
   };
 }
 
@@ -242,15 +246,15 @@ export function heuristicDaySummary(ctx: DaySummaryContext): string {
   return core;
 }
 
-export function buildDaySummarySystemPrompt(): string {
+export function buildDaySummarySystemPrompt(destination?: DestinationFiche | null): string {
   return [
     "Eres un redactor de blog de viaje.",
     "El usuario te da una idea breve del día (campo «semilla»).",
     "COMPLEMENTA y COMPLETA esa semilla en un resumen corto en español (2–4 frases, máximo ~420 caracteres), listo para una entrada de blog.",
     "Usa la semilla como hilo conductor. Integra lugares, notas, fotos y brief_viaje del JSON.",
-    "Si hay lugares listados, menciónalos y añade 1 curiosidad histórica/cultural o de costumbres ligada a ellos o al destino del título del viaje (p. ej. Krakow: historia, tradiciones, gente local).",
+    "Si hay lugares listados, menciónalos y añade 1 curiosidad histórica/cultural o de costumbres ligada a ellos o al destino del título / ficha_destino.",
     "Si hay notas, intégralas sin copiarlas todas literalmente.",
-    buildTravelBlogVoiceBlock({ compact: false }),
+    buildTravelBlogVoiceBlock({ compact: false, destination }),
     "Si la semilla ya es completa, púlila con suavidad y una pincelada de contexto local; no la sustituyas por otra historia.",
     "Sin título ni prefijo «Resumen:». Solo el párrafo.",
   ].join(" ");
@@ -261,6 +265,14 @@ export function buildDaySummaryUserPrompt(ctx: DaySummaryContext): string {
     {
       semilla: ctx.userSeed,
       viaje: ctx.travelTitle,
+      ficha_destino:
+        ctx.destination &&
+        (ctx.destination.name || ctx.destination.themes.length > 0)
+          ? {
+              nombre: ctx.destination.name,
+              temas: ctx.destination.themes,
+            }
+          : null,
       dia: ctx.dayLabel,
       dayKey: ctx.dayKey,
       autor: ctx.authorAlias,
@@ -358,7 +370,7 @@ export async function suggestDaySummary(options: {
     const completion = await ai.chat.completions.create({
       model,
       messages: [
-        { role: "system", content: buildDaySummarySystemPrompt() },
+        { role: "system", content: buildDaySummarySystemPrompt(context.destination) },
         { role: "user", content: buildDaySummaryUserPrompt(context) },
       ],
       temperature: 0.25,
