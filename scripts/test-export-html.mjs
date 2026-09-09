@@ -164,6 +164,7 @@ if (flightsIdx >= 0 && mapIdx >= 0) {
 }
 assert.ok(mapIdx >= 0 && timelineIdx >= 0 && mapIdx < timelineIdx, "INTERNATIONAL: map before timeline");
 assert.ok(international.includes("El viaje"), "unified story nav/title");
+assert.ok(international.includes("Saltar al día") || international.includes("mag-toc"), "day chronicle keeps day-jump TOC");
 assert.ok(!international.includes('href="#historia"'), "no separate crónica nav");
 assert.ok(!international.includes("Crónica del viaje"), "no separate journal section");
 assert.ok(international.includes("Llegamos") || international.includes("story-day-prose") || international.includes("story-intro"), "day prose interleaved or present");
@@ -186,6 +187,8 @@ assert.ok(blogArticle.includes('id="cronica"'), "blog source uses article sectio
 assert.ok(blogArticle.includes("Si vas") || blogArticle.includes("Paseo continuo"), "blog prose in article");
 assert.ok(blogArticle.includes('id="cronologia"') || blogArticle.includes("Itinerario"), "keeps timeline as recorrido");
 assert.ok(!/<div class="story-day-prose/.test(blogArticle), "blog mode does not interleave day prose");
+assert.ok(!blogArticle.includes("Saltar al día"), "blog HTML has no day-jump TOC");
+assert.ok(!blogArticle.includes('class="mag-toc'), "blog HTML omits mag-toc nav");
 
 const galleryIdx = international.indexOf('id="galeria"');
 const guideIdx = international.indexOf('id="guia"');

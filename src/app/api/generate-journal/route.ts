@@ -50,12 +50,14 @@ async function persistGeneratedJournal(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { travelId, stream, style, brief, kind: rawKind } = body as {
+    const { travelId, stream, style, brief, kind: rawKind, mode: rawMode } = body as {
       travelId?: string;
       stream?: boolean;
       style?: JournalStyle;
       brief?: string | null;
       kind?: JournalKind;
+      /** refine = edit existing; fresh = generate from scratch (overwrites). */
+      mode?: "refine" | "fresh";
     };
     const journalStyle = parseJournalStyle(style);
     const kind = parseJournalKind(rawKind);
@@ -113,10 +115,15 @@ export async function POST(request: NextRequest) {
       travel.journalBrief = journalBrief;
     }
 
-    const existingMarkdown =
+    const storedMarkdown =
       kind === "blog"
         ? travel.journalBlogMarkdown?.trim() || null
         : travel.journalMarkdown?.trim() || null;
+    // Default: refine when text exists; fresh only when explicitly requested or empty.
+    const mode: "refine" | "fresh" =
+      rawMode === "fresh" || !storedMarkdown ? "fresh" : "refine";
+    const existingMarkdown = mode === "refine" ? storedMarkdown : null;
+    const previousForPersist = storedMarkdown;
     const ctx = buildEnhancedJournalContext(
       travel,
       travel.users,
@@ -139,17 +146,25 @@ export async function POST(request: NextRequest) {
               existingMarkdown,
               kind,
             });
-            await persistGeneratedJournal(travelId, kind, markdown, existingMarkdown);
+            await persistGeneratedJournal(
+              travelId,
+              kind,
+              markdown,
+              previousForPersist
+            );
           } catch (error) {
             console.error("Journal pipeline stream", error);
-            if (existingMarkdown) {
+            if (storedMarkdown) {
+              // Never wipe an existing chronicle on failure (refine or fresh).
               send({
                 step: "error",
                 status: "error",
                 message:
                   error instanceof Error
                     ? error.message
-                    : "No se pudo refinar la crónica; se mantiene el texto actual.",
+                    : mode === "refine"
+                      ? "No se pudo refinar la crónica; se mantiene el texto actual."
+                      : "No se pudo generar de nuevo; se mantiene el texto actual.",
               });
             } else if (isAiUnreachableError(error)) {
               try {
@@ -196,12 +211,13 @@ export async function POST(request: NextRequest) {
       kind,
     });
 
-    await persistGeneratedJournal(travelId, kind, markdown, existingMarkdown);
+    await persistGeneratedJournal(travelId, kind, markdown, previousForPersist);
 
     return NextResponse.json({
       markdown,
-      refined: Boolean(existingMarkdown),
+      refined: mode === "refine",
       kind,
+      mode,
     });
   } catch (error) {
     console.error("POST /api/generate-journal", error);

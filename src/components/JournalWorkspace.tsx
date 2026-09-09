@@ -159,15 +159,21 @@ export default function JournalWorkspace({
 
       <section className="surface mb-8 p-6">
         <h2 className="heading-section mb-2 text-accent-cyan">
-          {kind === "blog" ? "Generar artículo blog" : "Generar crónica por días"}
+          {activeMarkdown
+            ? kind === "blog"
+              ? "Actualizar artículo blog"
+              : "Actualizar crónica por días"
+            : kind === "blog"
+              ? "Generar artículo blog"
+              : "Generar crónica por días"}
         </h2>
         <p className="mb-4 text-sm text-fg-secondary">
           {activeMarkdown
             ? kind === "blog"
-              ? "Refina el artículo blog: conserva tus ediciones e incorpora notas y fotos nuevas."
-              : "Refina la crónica por días: conserva tus ediciones e incorpora notas y fotos nuevas."
+              ? "Puedes refinar el artículo (conserva ediciones) o generar uno nuevo desde cero con estructura temática."
+              : "Puedes refinar la crónica (conserva ediciones) o generar una nueva desde cero."
             : kind === "blog"
-              ? "Artículo continuo con tips «Si vas» — pensado para quien planea un viaje similar."
+              ? "Artículo temático con tips «Si vas» — pensado para quien planea un viaje similar."
               : "Añade indicaciones si quieres, elige el estilo y genera (introducción, días, leyendas y conclusión)."}
         </p>
         <BlogCompletenessPanel
