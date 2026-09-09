@@ -49,7 +49,7 @@ export const TYPOLOGY_PROFILES: Record<TravelType, TypologyProfile> = {
     description: "Cronología densa de lugares, mapa de POIs",
     sectionOrder: ["hero", "timeline", "map", "gallery", "play"],
     mapConfig: {
-      showRoute: false,
+      showRoute: true,
       showDaySidebar: true,
       clusterBy: "day",
       emphasis: "pois",
@@ -76,9 +76,10 @@ export const TYPOLOGY_PROFILES: Record<TravelType, TypologyProfile> = {
     description: "Tres actos: ida, destino y vuelta",
     sectionOrder: ["hero", "flights", "map", "timeline", "gallery", "play"],
     mapConfig: {
-      showRoute: false,
-      showDaySidebar: false,
-      clusterBy: "none",
+      // Flights live on their own canvas; destination map still shows local trayectos.
+      showRoute: true,
+      showDaySidebar: true,
+      clusterBy: "day",
       emphasis: "flights",
     },
     playProfile: { unit: "day", mapBehavior: "jump", showScrubber: true },
@@ -89,7 +90,7 @@ export const TYPOLOGY_PROFILES: Record<TravelType, TypologyProfile> = {
     description: "Días en la misma zona, galería protagonista",
     sectionOrder: ["hero", "gallery", "timeline", "map", "play"],
     mapConfig: {
-      showRoute: false,
+      showRoute: true,
       showDaySidebar: true,
       clusterBy: "day",
       emphasis: "pois",
@@ -116,7 +117,7 @@ export const TYPOLOGY_PROFILES: Record<TravelType, TypologyProfile> = {
     description: "Ritmo lento, cronología por semanas",
     sectionOrder: ["hero", "timeline", "gallery", "map", "play"],
     mapConfig: {
-      showRoute: false,
+      showRoute: true,
       showDaySidebar: true,
       clusterBy: "day",
       emphasis: "pois",

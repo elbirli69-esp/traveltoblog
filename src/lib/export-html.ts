@@ -1396,6 +1396,9 @@ function buildMapScript(
   }
 ): string {
   const dualMaps = Boolean(options?.dualMaps);
+  // showRoute only gates the naive chronological fallback polyline.
+  // Computed roadSegments (Mapbox / day runs) always render — otherwise
+  // INTERNATIONAL / CITY_BREAK / etc. wiped destination + day-map trayectos.
   const showRoute = options?.showRoute !== false;
   const flightPoints = options?.flightPoints ?? [];
   const flightOnlyLegs = options?.flightLegs ?? routeSegments.flightLegs;
@@ -1404,13 +1407,12 @@ function buildMapScript(
     : points;
   const localSegments: LeafletRouteSegments = dualMaps
     ? {
-        roadSegments: showRoute ? routeSegments.roadSegments : [],
+        roadSegments: routeSegments.roadSegments,
         flightLegs: [],
         dayLegend: routeSegments.dayLegend,
       }
     : {
         ...routeSegments,
-        roadSegments: showRoute ? routeSegments.roadSegments : [],
       };
 
   const data = JSON.stringify(localPoints);
