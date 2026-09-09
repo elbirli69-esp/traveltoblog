@@ -127,8 +127,10 @@ function journalKindPromptAddon(kind: JournalKind): string {
 
 FORMATO ARTÍCULO BLOG PROFESIONAL (prioridad alta):
 - El lector objetivo es alguien que piensa hacer un viaje similar.
-- Estructura TEMÁTICA (no cronológica): agrupa experiencias por tipo de actividad.
-  Ejemplo Cracovia: free tours; lo visto en la ciudad; Auschwitz+Birkenau; minas de sal (Bochnia/Wieliczka).
+- Estructura TEMÁTICA (no cronológica): agrupa por tipo de experiencia.
+  Ejemplo Cracovia: free tours; ciudad; comida (si hay RESTAURANT/CAFE); Auschwitz+Birkenau; minas de sal.
+- Usa el campo type de cada lugar (RESTAURANT, CAFE, MUSEUM, PARK, BEACH, VIEWPOINT…)
+  para repartir secciones cuando encaje; las excursiones fuera van aparte aunque el type sea MUSEUM/OTHER.
 - PROHIBIDO estructurar por días del calendario (ni ### fechas ni «Día 1 / Día 2» ni un párrafo por jornada en orden).
 - Cada sección ## debe tener un título temático claro y prosa que mezcle lo vivido
   con contexto útil para el lector.
@@ -734,8 +736,10 @@ ${VOICE_RULES}
 ${journalKindPromptAddon("blog")}
 
 REGLAS:
-- 3 a 6 secciones. Títulos concretos (p. ej. «Free tours por el casco», «Pasear Cracovia», «Auschwitz y Birkenau», «Minas de sal de Bochnia»), nunca «Día 1» ni fechas.
-- Ejemplo Cracovia: (1) free tours / rutas guiadas, (2) ciudad y lo visto en el casco, (3) cada excursión fuera (Auschwitz+Birkenau, Bochnia/Wieliczka) en su propia sección si hay datos.
+- 3 a 6 secciones. Títulos concretos (p. ej. «Free tours por el casco», «Pasear Cracovia», «Comer en Cracovia», «Auschwitz y Birkenau», «Minas de sal de Bochnia»), nunca «Día 1» ni fechas.
+- Usa el campo type de cada lugar para repartir temas: RESTAURANT/CAFE → comida; MUSEUM → cultura/museos; PARK/BEACH/VIEWPOINT → naturaleza; HOTEL/TRANSPORT solo si aportan al relato.
+- Excursiones fuera de la ciudad: aunque el type sea MUSEUM u OTHER, si el nombre/notas indican salida (Auschwitz, Bochnia, Wieliczka…), sección propia de excursión.
+- Ejemplo Cracovia: (1) free tours, (2) ciudad/casco, (3) comida si hay restaurantes/cafés, (4) cada excursión fuera en su sección.
 - Agrupa por TIPO de experiencia, no por orden del calendario. Si dos días tuvieron free tour, van en la MISMA sección de tours.
 - Cada summary sintetiza notas_dia, comentarios de foto y lugares de ese tema; sin citas literales ni «el lunes… / el martes…» como estructura.
 - placeHints: nombres de lugares del contexto que caen en esa sección (pueden ser []).
@@ -788,65 +792,84 @@ REGLAS:
   return buildLocalBlogSections(ctx);
 }
 
-/** Offline / fallback thematic outline from places + day notes. */
+/** Offline / fallback thematic outline from places + day notes + PlaceType. */
 export function buildLocalBlogSections(
   ctx: EnhancedJournalContext
 ): BlogSectionRow[] {
+  type PlaceRow = EnhancedJournalContext["places"][number];
+
   const excursionRe =
     /auschwitz|birkenau|bochnia|sal|mina|excursion|excursión|wieliczka|zakopane|visita guiada fuera/i;
   const tourRe = /tour|free\s*tour|visita guiada|gu[ií]a/i;
 
+  const FOOD_TYPES = new Set(["RESTAURANT", "CAFE"]);
+  const CULTURE_TYPES = new Set(["MUSEUM"]);
+  const NATURE_TYPES = new Set(["PARK", "BEACH", "VIEWPOINT"]);
+  const SKIP_THEME_TYPES = new Set(["HOTEL", "TRANSPORT"]);
+
+  const dayBlob = (d: EnhancedDayBlock) =>
+    [...d.dayNotes.map((n) => n.text), ...d.places.map((p) => p.name)].join(" ");
+
+  const dayKeysMatching = (re: RegExp) =>
+    ctx.days.filter((d) => re.test(dayBlob(d))).map((d) => d.date);
+
+  const notesMatching = (re: RegExp) =>
+    ctx.days
+      .filter((d) => re.test(dayBlob(d)))
+      .flatMap((d) => d.dayNotes.map((n) => n.text));
+
   const excursionPlaces = ctx.places.filter((p) =>
     excursionRe.test(`${p.name} ${p.comment ?? ""}`)
   );
-  const tourPlaces = ctx.places.filter(
-    (p) =>
-      !excursionPlaces.includes(p) && tourRe.test(`${p.name} ${p.comment ?? ""}`)
+  const afterExcursion = ctx.places.filter((p) => !excursionPlaces.includes(p));
+  const tourPlaces = afterExcursion.filter((p) =>
+    tourRe.test(`${p.name} ${p.comment ?? ""}`)
   );
-  const cityPlaces = ctx.places.filter(
-    (p) => !excursionPlaces.includes(p) && !tourPlaces.includes(p)
+  const leftover = afterExcursion.filter((p) => !tourPlaces.includes(p));
+
+  const foodPlaces = leftover.filter((p) => FOOD_TYPES.has(p.type));
+  const culturePlaces = leftover.filter((p) => CULTURE_TYPES.has(p.type));
+  const naturePlaces = leftover.filter((p) => NATURE_TYPES.has(p.type));
+  const cityPlaces = leftover.filter(
+    (p) =>
+      !FOOD_TYPES.has(p.type) &&
+      !CULTURE_TYPES.has(p.type) &&
+      !NATURE_TYPES.has(p.type) &&
+      !SKIP_THEME_TYPES.has(p.type)
   );
 
   const sections: BlogSectionRow[] = [];
 
-  if (tourPlaces.length > 0 || ctx.days.some((d) => tourRe.test(d.dayNotes.map((n) => n.text).join(" ")))) {
-    const notes = ctx.days
-      .filter((d) =>
-        tourRe.test(
-          [...d.dayNotes.map((n) => n.text), ...d.places.map((p) => p.name)].join(
-            " "
-          )
-        )
-      )
-      .flatMap((d) => d.dayNotes.map((n) => n.text));
+  const pushNamed = (
+    title: string,
+    places: PlaceRow[],
+    summaryFallback: string,
+    re?: RegExp
+  ) => {
+    const notes = re ? notesMatching(re) : [];
     sections.push({
-      title: "Tours y rutas por la ciudad",
-      summary:
-        notes.join(" ") ||
-        `Recorridos guiados y free tours entre ${tourPlaces.map((p) => p.name).join(", ") || "los puntos clave del destino"}.`,
-      placeHints: tourPlaces.map((p) => p.name),
-      dayKeys: ctx.days
-        .filter((d) =>
-          tourRe.test(
-            [...d.dayNotes.map((n) => n.text), ...d.places.map((p) => p.name)].join(
-              " "
-            )
-          )
-        )
-        .map((d) => d.date),
+      title,
+      summary: notes.join(" ") || summaryFallback,
+      placeHints: places.map((p) => p.name),
+      dayKeys: re ? dayKeysMatching(re) : [],
     });
+  };
+
+  if (
+    tourPlaces.length > 0 ||
+    ctx.days.some((d) => tourRe.test(d.dayNotes.map((n) => n.text).join(" ")))
+  ) {
+    pushNamed(
+      "Tours y rutas por la ciudad",
+      tourPlaces,
+      `Recorridos guiados y free tours entre ${tourPlaces.map((p) => p.name).join(", ") || "los puntos clave del destino"}.`,
+      tourRe
+    );
   }
 
   if (cityPlaces.length > 0 || ctx.days.length > 0) {
     const cityNotes = ctx.days
-      .filter(
-        (d) =>
-          !excursionRe.test(
-            [...d.dayNotes.map((n) => n.text), ...d.places.map((p) => p.name)].join(
-              " "
-            )
-          )
-      )
+      .filter((d) => !excursionRe.test(dayBlob(d)))
       .flatMap((d) => d.dayNotes.map((n) => n.text));
     sections.push({
       title: `Descubrir ${ctx.destination?.name ?? ctx.title}`,
@@ -854,23 +877,60 @@ export function buildLocalBlogSections(
         cityNotes.slice(0, 6).join(" ") ||
         `Paseos por la ciudad${cityPlaces.length ? `: ${cityPlaces.map((p) => p.name).join(", ")}` : ""}.`,
       placeHints: cityPlaces.map((p) => p.name),
-      // Only days that are not clearly excursion-only — avoids dumping the whole trip chronologically.
       dayKeys: ctx.days
-        .filter(
-          (d) =>
-            !excursionRe.test(
-              [...d.dayNotes.map((n) => n.text), ...d.places.map((p) => p.name)].join(
-                " "
-              )
-            )
-        )
+        .filter((d) => !excursionRe.test(dayBlob(d)))
         .map((d) => d.date),
     });
   }
 
+  if (foodPlaces.length > 0) {
+    const nameRe = new RegExp(
+      foodPlaces
+        .map((p) => p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("|"),
+      "i"
+    );
+    pushNamed(
+      `Comer en ${ctx.destination?.name ?? ctx.title}`,
+      foodPlaces,
+      `Mesas y cafés: ${foodPlaces.map((p) => p.name).join(", ")}.`,
+      nameRe
+    );
+  }
+
+  if (culturePlaces.length > 0) {
+    const nameRe = new RegExp(
+      culturePlaces
+        .map((p) => p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("|"),
+      "i"
+    );
+    pushNamed(
+      "Museos y cultura",
+      culturePlaces,
+      `Paradas culturales: ${culturePlaces.map((p) => p.name).join(", ")}.`,
+      nameRe
+    );
+  }
+
+  if (naturePlaces.length > 0) {
+    const nameRe = new RegExp(
+      naturePlaces
+        .map((p) => p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("|"),
+      "i"
+    );
+    pushNamed(
+      "Naturaleza y miradores",
+      naturePlaces,
+      `Aire libre: ${naturePlaces.map((p) => p.name).join(", ")}.`,
+      nameRe
+    );
+  }
+
   if (excursionPlaces.length > 0) {
     // Prefer one section per major site when names differ (Auschwitz vs Bochnia).
-    const byCluster = new Map<string, typeof excursionPlaces>();
+    const byCluster = new Map<string, PlaceRow[]>();
     for (const p of excursionPlaces) {
       const key = /auschwitz|birkenau/i.test(p.name)
         ? "auschwitz"
@@ -887,15 +947,7 @@ export function buildLocalBlogSections(
         names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"),
         "i"
       );
-      const dayKeys = ctx.days
-        .filter((d) =>
-          nameRe.test(
-            [...d.dayNotes.map((n) => n.text), ...d.places.map((p) => p.name)].join(
-              " "
-            )
-          )
-        )
-        .map((d) => d.date);
+      const dayKeys = dayKeysMatching(nameRe);
       sections.push({
         title:
           group.length === 1

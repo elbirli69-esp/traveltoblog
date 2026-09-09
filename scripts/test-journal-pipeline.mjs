@@ -131,7 +131,10 @@ assert.ok(!localBlog.includes("### "), "local blog has no day headers");
 const themed = buildLocalBlogSections({
   ...ctx,
   places: [
-    { name: "Rynek", type: "LANDMARK", comment: null, alias: "Ada" },
+    { name: "Rynek", type: "OTHER", comment: null, alias: "Ada" },
+    { name: "Milkbar Tomasza", type: "RESTAURANT", comment: null, alias: "Ada" },
+    { name: "Café Noworolski", type: "CAFE", comment: null, alias: "Irene" },
+    { name: "Museo Schindler", type: "MUSEUM", comment: null, alias: "Ada" },
     { name: "Auschwitz", type: "MUSEUM", comment: "excursión", alias: "Ada" },
     { name: "Bochnia", type: "OTHER", comment: "minas de sal", alias: "Ada" },
   ],
@@ -145,8 +148,22 @@ assert.ok(
   "local sections separate Bochnia from Auschwitz"
 );
 assert.ok(
-  themed.some((s) => /descubrir|rynek|ciudad/i.test(s.title)),
+  themed.some((s) => /descubrir|ciudad/i.test(s.title)),
   "local sections include city theme"
+);
+assert.ok(
+  themed.some((s) => /comer/i.test(s.title)),
+  "PlaceType RESTAURANT/CAFE → food section"
+);
+assert.ok(
+  themed.some((s) => /museos|cultura/i.test(s.title)),
+  "PlaceType MUSEUM (in-city) → culture section"
+);
+assert.ok(
+  !themed.some(
+    (s) => /museos|cultura/i.test(s.title) && /auschwitz/i.test(s.placeHints?.join(" ") ?? "")
+  ),
+  "Auschwitz stays in excursion, not city museums"
 );
 const resolved = resolveExportJournalMarkdown({
   journalMarkdown: markdown,
