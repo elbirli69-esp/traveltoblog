@@ -125,12 +125,16 @@ function journalKindPromptAddon(kind: JournalKind): string {
   if (kind !== "blog") return "";
   return `
 
-FORMATO ARTÍCULO BLOG (prioridad alta):
+FORMATO ARTÍCULO BLOG PROFESIONAL (prioridad alta):
 - El lector objetivo es alguien que piensa hacer un viaje similar.
-- Prioriza ritmo del destino, qué merece la pena y tips prácticos anclados a lo vivido.
-- NO estructures por encabezados de fecha (### día); el ensamblado final será un artículo continuo.
-- Intro: gancho del destino + por qué merece la pena (con hechos del viaje).
-- Conclusión: cierra con «si vas» — 1-2 consejos útiles sin inventar horarios ni sitios no documentados.`;
+- Estructura TEMÁTICA (no cronológica): agrupa por tipo de experiencia.
+  Ejemplo Cracovia: free tours; ciudad; comida (si hay RESTAURANT/CAFE); Auschwitz+Birkenau; minas de sal.
+- Usa el campo type de cada lugar (RESTAURANT, CAFE, MUSEUM, PARK, BEACH, VIEWPOINT…)
+  para repartir secciones cuando encaje; las excursiones fuera van aparte aunque el type sea MUSEUM/OTHER.
+- PROHIBIDO estructurar por días del calendario (ni ### fechas ni «Día 1 / Día 2» ni un párrafo por jornada en orden).
+- Cada sección ## debe tener un título temático claro y prosa que mezcle lo vivido
+  con contexto útil para el lector.
+- Intro: gancho del destino. Cierre «Si vas»: tips prácticos anclados a lo documentado.`;
 }
 
 interface JournalPromptConfig {
@@ -253,6 +257,15 @@ Sin encabezados. Respeta indicaciones_usuario.`,
 interface DaySummaryRow {
   date: string;
   summary: string;
+}
+
+export interface BlogSectionRow {
+  title: string;
+  summary: string;
+  /** Place names that belong in this section (for photo attachment). */
+  placeHints?: string[];
+  /** Optional day keys that feed this theme. */
+  dayKeys?: string[];
 }
 
 interface PhotoCaptionRow {
@@ -455,8 +468,10 @@ function getRefineSystemPrompt(
   kind: JournalKind = "day"
 ): { system: string; temperature: number } {
   const structureDay = `- Mantén el título (# …), la sección «El viaje día a día» con capítulos ### por fecha, anexos (Lugares / Transporte / Notas) y conclusión.`;
-  const structureBlog = `- Mantén estructura de ARTÍCULO: título (# …), prosa continua bajo «## El viaje» (SIN ### por fecha), anexos (Lugares / Transporte / Notas) y cierre «## Si vas».
-- Si la crónica actual está troceada por días (### fechas), fusiónala en prosa continua bajo «## El viaje».
+  const structureBlog = `- Mantén estructura de ARTÍCULO TEMÁTICO (no diario): título (# …), secciones ## con títulos de tema
+  (tours, ciudad, gastronomía, excursiones…), anexos (Lugares / Transporte / Notas) y cierre «## Si vas».
+- Si la crónica actual está troceada por días (### fechas o párrafos «Día N»), reorganízala en secciones temáticas.
+- PROHIBIDO dejar capítulos por fecha.
 - El tono debe servir a alguien que planea un viaje similar (tips anclados a lo vivido).`;
 
   const base = `Eres un editor de crónicas de viaje colaborativas pensadas para un BLOG.
@@ -702,6 +717,272 @@ export async function generateDaySummaries(
   }));
 }
 
+/**
+ * Thematic sections for a professional travel-blog article (not day chapters).
+ */
+export async function generateBlogSections(
+  ai: OpenAI,
+  model: string,
+  ctx: EnhancedJournalContext,
+  style: JournalStyle = "narrative"
+): Promise<BlogSectionRow[]> {
+  const prompts = getJournalPromptConfig(style);
+  const system = `Eres editor de un blog de viajes profesional.
+Debes proponer la estructura TEMÁTICA del artículo (no un diario por días).
+Responde SOLO un JSON array:
+[{"title":"Título de sección","summary":"1-3 párrafos markdown","placeHints":["Lugar A"],"dayKeys":["YYYY-MM-DD"]}].
+
+${VOICE_RULES}
+${journalKindPromptAddon("blog")}
+
+REGLAS:
+- 3 a 6 secciones. Títulos concretos (p. ej. «Free tours por el casco», «Pasear Cracovia», «Comer en Cracovia», «Auschwitz y Birkenau», «Minas de sal de Bochnia»), nunca «Día 1» ni fechas.
+- Usa el campo type de cada lugar para repartir temas: RESTAURANT/CAFE → comida; MUSEUM → cultura/museos; PARK/BEACH/VIEWPOINT → naturaleza; HOTEL/TRANSPORT solo si aportan al relato.
+- Excursiones fuera de la ciudad: aunque el type sea MUSEUM u OTHER, si el nombre/notas indican salida (Auschwitz, Bochnia, Wieliczka…), sección propia de excursión.
+- Ejemplo Cracovia: (1) free tours, (2) ciudad/casco, (3) comida si hay restaurantes/cafés, (4) cada excursión fuera en su sección.
+- Agrupa por TIPO de experiencia, no por orden del calendario. Si dos días tuvieron free tour, van en la MISMA sección de tours.
+- Cada summary sintetiza notas_dia, comentarios de foto y lugares de ese tema; sin citas literales ni «el lunes… / el martes…» como estructura.
+- placeHints: nombres de lugares del contexto que caen en esa sección (pueden ser []).
+- dayKeys: días cuyas notas alimentan el tema (pueden ser []; no uses dayKeys para forzar un capítulo por día).
+- No inventes visitas no documentadas. Sí puedes añadir 1 curiosidad anclada a un lugar nombrado.
+- Respeta indicaciones_usuario.`;
+
+  const user = JSON.stringify(
+    {
+      titulo: ctx.title,
+      destino: ctx.destination,
+      indicaciones_usuario: ctx.brief,
+      lugares: ctx.places,
+      dias: ctx.days.map((d) => ({
+        date: d.date,
+        notas_dia: d.dayNotes,
+        lugares_del_dia: d.places,
+        fotos: d.photos.map((p) => ({
+          autor: p.author,
+          comentarios: p.comments,
+          lugar: p.placeName ?? null,
+        })),
+      })),
+    },
+    null,
+    2
+  );
+
+  const raw = await callAi(
+    ai,
+    model,
+    system + briefBlock(ctx.brief) + destinationFichePromptAddon(ctx.destination),
+    user,
+    prompts.days.temperature
+  );
+  const parsed = extractJsonArray<BlogSectionRow>(raw)
+    .map((row) => ({
+      title: (row.title ?? "").trim(),
+      summary: sanitizeDaySummaryProse(row.summary ?? ""),
+      placeHints: Array.isArray(row.placeHints)
+        ? row.placeHints.map((h) => String(h).trim()).filter(Boolean)
+        : [],
+      dayKeys: Array.isArray(row.dayKeys)
+        ? row.dayKeys.map((h) => String(h).trim()).filter(Boolean)
+        : [],
+    }))
+    .filter((row) => row.title && row.summary);
+
+  if (parsed.length > 0) return parsed;
+  return buildLocalBlogSections(ctx);
+}
+
+/** Offline / fallback thematic outline from places + day notes + PlaceType. */
+export function buildLocalBlogSections(
+  ctx: EnhancedJournalContext
+): BlogSectionRow[] {
+  type PlaceRow = EnhancedJournalContext["places"][number];
+
+  const excursionRe =
+    /auschwitz|birkenau|bochnia|sal|mina|excursion|excursión|wieliczka|zakopane|visita guiada fuera/i;
+  const tourRe = /tour|free\s*tour|visita guiada|gu[ií]a/i;
+
+  const FOOD_TYPES = new Set(["RESTAURANT", "CAFE"]);
+  const CULTURE_TYPES = new Set(["MUSEUM"]);
+  const NATURE_TYPES = new Set(["PARK", "BEACH", "VIEWPOINT"]);
+  const SKIP_THEME_TYPES = new Set(["HOTEL", "TRANSPORT"]);
+
+  const dayBlob = (d: EnhancedDayBlock) =>
+    [...d.dayNotes.map((n) => n.text), ...d.places.map((p) => p.name)].join(" ");
+
+  const dayKeysMatching = (re: RegExp) =>
+    ctx.days.filter((d) => re.test(dayBlob(d))).map((d) => d.date);
+
+  const notesMatching = (re: RegExp) =>
+    ctx.days
+      .filter((d) => re.test(dayBlob(d)))
+      .flatMap((d) => d.dayNotes.map((n) => n.text));
+
+  const excursionPlaces = ctx.places.filter((p) =>
+    excursionRe.test(`${p.name} ${p.comment ?? ""}`)
+  );
+  const afterExcursion = ctx.places.filter((p) => !excursionPlaces.includes(p));
+  const tourPlaces = afterExcursion.filter((p) =>
+    tourRe.test(`${p.name} ${p.comment ?? ""}`)
+  );
+  const leftover = afterExcursion.filter((p) => !tourPlaces.includes(p));
+
+  const foodPlaces = leftover.filter((p) => FOOD_TYPES.has(p.type));
+  const culturePlaces = leftover.filter((p) => CULTURE_TYPES.has(p.type));
+  const naturePlaces = leftover.filter((p) => NATURE_TYPES.has(p.type));
+  const cityPlaces = leftover.filter(
+    (p) =>
+      !FOOD_TYPES.has(p.type) &&
+      !CULTURE_TYPES.has(p.type) &&
+      !NATURE_TYPES.has(p.type) &&
+      !SKIP_THEME_TYPES.has(p.type)
+  );
+
+  const sections: BlogSectionRow[] = [];
+
+  const pushNamed = (
+    title: string,
+    places: PlaceRow[],
+    summaryFallback: string,
+    re?: RegExp
+  ) => {
+    const notes = re ? notesMatching(re) : [];
+    sections.push({
+      title,
+      summary: notes.join(" ") || summaryFallback,
+      placeHints: places.map((p) => p.name),
+      dayKeys: re ? dayKeysMatching(re) : [],
+    });
+  };
+
+  if (
+    tourPlaces.length > 0 ||
+    ctx.days.some((d) => tourRe.test(d.dayNotes.map((n) => n.text).join(" ")))
+  ) {
+    pushNamed(
+      "Tours y rutas por la ciudad",
+      tourPlaces,
+      `Recorridos guiados y free tours entre ${tourPlaces.map((p) => p.name).join(", ") || "los puntos clave del destino"}.`,
+      tourRe
+    );
+  }
+
+  if (cityPlaces.length > 0 || ctx.days.length > 0) {
+    const cityNotes = ctx.days
+      .filter((d) => !excursionRe.test(dayBlob(d)))
+      .flatMap((d) => d.dayNotes.map((n) => n.text));
+    sections.push({
+      title: `Descubrir ${ctx.destination?.name ?? ctx.title}`,
+      summary:
+        cityNotes.slice(0, 6).join(" ") ||
+        `Paseos por la ciudad${cityPlaces.length ? `: ${cityPlaces.map((p) => p.name).join(", ")}` : ""}.`,
+      placeHints: cityPlaces.map((p) => p.name),
+      dayKeys: ctx.days
+        .filter((d) => !excursionRe.test(dayBlob(d)))
+        .map((d) => d.date),
+    });
+  }
+
+  if (foodPlaces.length > 0) {
+    const nameRe = new RegExp(
+      foodPlaces
+        .map((p) => p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("|"),
+      "i"
+    );
+    pushNamed(
+      `Comer en ${ctx.destination?.name ?? ctx.title}`,
+      foodPlaces,
+      `Mesas y cafés: ${foodPlaces.map((p) => p.name).join(", ")}.`,
+      nameRe
+    );
+  }
+
+  if (culturePlaces.length > 0) {
+    const nameRe = new RegExp(
+      culturePlaces
+        .map((p) => p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("|"),
+      "i"
+    );
+    pushNamed(
+      "Museos y cultura",
+      culturePlaces,
+      `Paradas culturales: ${culturePlaces.map((p) => p.name).join(", ")}.`,
+      nameRe
+    );
+  }
+
+  if (naturePlaces.length > 0) {
+    const nameRe = new RegExp(
+      naturePlaces
+        .map((p) => p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("|"),
+      "i"
+    );
+    pushNamed(
+      "Naturaleza y miradores",
+      naturePlaces,
+      `Aire libre: ${naturePlaces.map((p) => p.name).join(", ")}.`,
+      nameRe
+    );
+  }
+
+  if (excursionPlaces.length > 0) {
+    // Prefer one section per major site when names differ (Auschwitz vs Bochnia).
+    const byCluster = new Map<string, PlaceRow[]>();
+    for (const p of excursionPlaces) {
+      const key = /auschwitz|birkenau/i.test(p.name)
+        ? "auschwitz"
+        : /bochnia|wieliczka|sal|mina/i.test(`${p.name} ${p.comment ?? ""}`)
+          ? "salt"
+          : p.name.toLowerCase();
+      const list = byCluster.get(key) ?? [];
+      list.push(p);
+      byCluster.set(key, list);
+    }
+    for (const group of byCluster.values()) {
+      const names = group.map((p) => p.name);
+      const nameRe = new RegExp(
+        names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"),
+        "i"
+      );
+      const dayKeys = dayKeysMatching(nameRe);
+      sections.push({
+        title:
+          group.length === 1
+            ? `Excursión: ${group[0]!.name}`
+            : `Excursión: ${names.join(" · ")}`,
+        summary:
+          ctx.days
+            .filter((d) => dayKeys.includes(d.date))
+            .flatMap((d) => d.dayNotes.map((n) => n.text))
+            .join(" ") ||
+          `Salida fuera de la ciudad a ${names.join(" y ")}.`,
+        placeHints: names,
+        dayKeys,
+      });
+    }
+  }
+
+  if (sections.length === 0) {
+    sections.push({
+      title: `El viaje a ${ctx.title}`,
+      summary: ctx.days
+        .map((d) => d.dayNotes.map((n) => n.text).join(" "))
+        .filter(Boolean)
+        .join("\n\n") || "Relato del viaje a partir de notas y fotos.",
+      placeHints: ctx.places.map((p) => p.name),
+      dayKeys: ctx.days.map((d) => d.date),
+    });
+  }
+
+  return sections.map((s) => ({
+    ...s,
+    summary: sanitizeDaySummaryProse(s.summary),
+  }));
+}
+
 export async function generatePhotoCaptions(
   ai: OpenAI,
   model: string,
@@ -753,7 +1034,8 @@ export async function generateConclusion(
   intro: string,
   daySummaries: DaySummaryRow[],
   style: JournalStyle = "narrative",
-  kind: JournalKind = "day"
+  kind: JournalKind = "day",
+  blogSections: BlogSectionRow[] = []
 ): Promise<string> {
   const prompts = getJournalPromptConfig(style);
   const user = JSON.stringify(
@@ -764,6 +1046,10 @@ export async function generateConclusion(
       dias_resumen: daySummaries.map((d) => ({
         date: d.date,
         preview: d.summary.slice(0, 200),
+      })),
+      secciones_blog: blogSections.map((s) => ({
+        title: s.title,
+        preview: s.summary.slice(0, 200),
       })),
       lugares: ctx.places.length,
       indicaciones_usuario: ctx.brief,
@@ -883,18 +1169,47 @@ function appendJournalMetaSections(
 }
 
 /**
- * Continuous blog article: no ### day headers — prose flows under «El viaje»,
- * closing under «Si vas» for readers planning a similar trip.
+ * Continuous blog article with thematic ## sections (not day ### chapters).
  */
 export function assembleBlogJournalMarkdown(
   ctx: EnhancedJournalContext,
   intro: string,
-  daySummaries: DaySummaryRow[],
+  sections: BlogSectionRow[],
   captions: PhotoCaptionRow[],
   conclusion: string
 ): string {
   const captionByUrl = new Map(captions.map((c) => [c.url, c.caption]));
-  const summaryByDate = new Map(daySummaries.map((d) => [d.date, d.summary]));
+  const usedPhotoUrls = new Set<string>();
+
+  const allPhotos = ctx.days.flatMap((d) =>
+    d.photos.map((p) => ({ ...p, dayKey: d.date }))
+  );
+
+  const pickPhotosForSection = (section: BlogSectionRow) => {
+    const hints = (section.placeHints ?? []).map((h) => h.toLowerCase());
+    const days = new Set(section.dayKeys ?? []);
+    const matched = allPhotos.filter((p) => {
+      if (usedPhotoUrls.has(p.url)) return false;
+      const place = (p.placeName ?? "").toLowerCase();
+      const placeHit =
+        hints.length > 0 &&
+        hints.some((h) => place.includes(h) || h.includes(place));
+      const dayHit = days.size > 0 && days.has(p.dayKey);
+      return placeHit || (dayHit && hints.length === 0);
+    });
+    // If hints matched nothing, fall back to dayKeys only.
+    const pool =
+      matched.length > 0
+        ? matched
+        : allPhotos.filter(
+            (p) =>
+              !usedPhotoUrls.has(p.url) &&
+              days.size > 0 &&
+              days.has(p.dayKey)
+          );
+    for (const p of pool) usedPhotoUrls.add(p.url);
+    return pool;
+  };
 
   const lines: string[] = [
     `# ${ctx.title}`,
@@ -903,36 +1218,20 @@ export function assembleBlogJournalMarkdown(
     "",
     "---",
     "",
-    "## El viaje",
-    "",
   ];
 
-  const daysToRender =
-    ctx.days.length > 0
-      ? ctx.days
-      : daySummaries.map((d) => ({
-          date: d.date,
-          dayNotes: [],
-          photos: [] as EnhancedDayPhoto[],
-          places: [] as EnhancedDayBlock["places"],
-        }));
+  const sectionsToRender =
+    sections.length > 0
+      ? sections
+      : buildLocalBlogSections(ctx);
 
-  for (const day of daysToRender) {
-    const summary =
-      summaryByDate.get(day.date) ??
-      (day.dayNotes.map((n) => n.text).join(" ") || "");
-    const prose = sanitizeDaySummaryProse(summary.trim());
-    if (prose) {
-      lines.push(prose, "");
-    }
+  for (const section of sectionsToRender) {
+    lines.push(`## ${section.title.trim()}`, "");
+    const prose = sanitizeDaySummaryProse(section.summary.trim());
+    if (prose) lines.push(prose, "");
 
-    const sortedPhotos = [...day.photos].sort((a, b) => {
-      const ta = a.exifDateTime ? new Date(a.exifDateTime).getTime() : 0;
-      const tb = b.exifDateTime ? new Date(b.exifDateTime).getTime() : 0;
-      return ta - tb;
-    });
-
-    for (const photo of sortedPhotos) {
+    const photos = pickPhotosForSection(section);
+    for (const photo of photos) {
       const defaultCap =
         photo.comments.join(" · ") ||
         (photo.isTransportStart
@@ -941,7 +1240,34 @@ export function assembleBlogJournalMarkdown(
             ? "Regreso — fin del viaje"
             : "Momento del viaje");
       const caption = captionByUrl.get(photo.url) ?? defaultCap;
-      lines.push(`![${caption.replace(/[\[\]]/g, "")}](${photo.url})`, "", `*${photo.author}*`, "");
+      lines.push(
+        `![${caption.replace(/[\[\]]/g, "")}](${photo.url})`,
+        "",
+        `*${photo.author}*`,
+        ""
+      );
+    }
+  }
+
+  // Leftover photos (not matched to a theme) under Momentos.
+  const leftovers = allPhotos.filter((p) => !usedPhotoUrls.has(p.url));
+  if (leftovers.length > 0) {
+    lines.push("## Momentos", "");
+    for (const photo of leftovers) {
+      const defaultCap =
+        photo.comments.join(" · ") ||
+        (photo.isTransportStart
+          ? "Salida — inicio del viaje"
+          : photo.isTransportEnd
+            ? "Regreso — fin del viaje"
+            : "Momento del viaje");
+      const caption = captionByUrl.get(photo.url) ?? defaultCap;
+      lines.push(
+        `![${caption.replace(/[\[\]]/g, "")}](${photo.url})`,
+        "",
+        `*${photo.author}*`,
+        ""
+      );
     }
   }
 
@@ -956,11 +1282,19 @@ export function assembleJournalByKind(
   intro: string,
   daySummaries: DaySummaryRow[],
   captions: PhotoCaptionRow[],
-  conclusion: string
+  conclusion: string,
+  blogSections?: BlogSectionRow[]
 ): string {
-  return kind === "blog"
-    ? assembleBlogJournalMarkdown(ctx, intro, daySummaries, captions, conclusion)
-    : assembleJournalMarkdown(ctx, intro, daySummaries, captions, conclusion);
+  if (kind === "blog") {
+    return assembleBlogJournalMarkdown(
+      ctx,
+      intro,
+      blogSections ?? buildLocalBlogSections(ctx),
+      captions,
+      conclusion
+    );
+  }
+  return assembleJournalMarkdown(ctx, intro, daySummaries, captions, conclusion);
 }
 
 export type PipelineProgressCallback = (event: JournalPipelineEvent) => void;
@@ -1018,7 +1352,16 @@ export function buildLocalJournalMarkdown(
       ? `Si vas a **${ctx.title}**, reserva tiempo para pasear sin prisa y anota los sitios que más os gustaron. Gracias a ${ctx.participants.join(", ")} por compartir el viaje.`
       : `Fin del relato de **${ctx.title}**. Gracias a todos los participantes por compartir este viaje.`;
 
-  const body = assembleJournalByKind(kind, ctx, intro, daySummaries, captions, conclusion);
+  const blogSections = kind === "blog" ? buildLocalBlogSections(ctx) : undefined;
+  const body = assembleJournalByKind(
+    kind,
+    ctx,
+    intro,
+    daySummaries,
+    captions,
+    conclusion,
+    blogSections
+  );
   return `> ⚠️ *Crónica generada sin IA: el servidor no pudo contactar el servicio de IA (revisa DNS/red del NAS). Puedes volver a generar cuando haya conexión.*\n\n${body}`;
 }
 
@@ -1072,9 +1415,22 @@ export async function runJournalPipeline(
     const intro = await generateIntroduction(ai, model, ctx, style, kind);
     emit({ step: "intro", status: "done" });
 
-    emit({ step: "days", status: "running", message: "Resumiendo cada día…" });
-    const daySummaries = await generateDaySummaries(ai, model, ctx, style, kind);
-    emit({ step: "days", status: "done" });
+    let daySummaries: DaySummaryRow[] = [];
+    let blogSections: BlogSectionRow[] = [];
+
+    if (kind === "blog") {
+      emit({
+        step: "days",
+        status: "running",
+        message: "Organizando secciones temáticas del artículo…",
+      });
+      blogSections = await generateBlogSections(ai, model, ctx, style);
+      emit({ step: "days", status: "done" });
+    } else {
+      emit({ step: "days", status: "running", message: "Resumiendo cada día…" });
+      daySummaries = await generateDaySummaries(ai, model, ctx, style, kind);
+      emit({ step: "days", status: "done" });
+    }
 
     emit({ step: "captions", status: "running", message: "Mejorando leyendas de fotos…" });
     const captions = await generatePhotoCaptions(ai, model, ctx, style, kind);
@@ -1092,7 +1448,8 @@ export async function runJournalPipeline(
       intro,
       daySummaries,
       style,
-      kind
+      kind,
+      blogSections
     );
     emit({ step: "conclusion", status: "done" });
 
@@ -1103,7 +1460,8 @@ export async function runJournalPipeline(
       intro,
       daySummaries,
       captions,
-      conclusion
+      conclusion,
+      blogSections
     );
     emit({ step: "assemble", status: "done" });
 

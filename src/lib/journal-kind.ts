@@ -21,7 +21,7 @@ export const JOURNAL_KIND_LABELS: Record<
   blog: {
     title: "Artículo blog",
     description:
-      "Texto continuo para enviar a alguien que planea un viaje similar.",
+      "Texto temático (tours, ciudad, excursiones…) para enviar a quien planea un viaje similar.",
   },
 };
 

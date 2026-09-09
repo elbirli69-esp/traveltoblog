@@ -184,10 +184,10 @@ export function buildBlogCompleteness(
       code: "personal_thin",
       message:
         photosWithoutNote.length > 0
-          ? `Faltan experiencias personales: ${photosWithoutNote.length} foto${photosWithoutNote.length === 1 ? "" : "s"} sin nota. Cuenta una anécdota o un momento del grupo.`
+          ? `Faltan experiencias personales: ${photosWithoutNote.length} foto${photosWithoutNote.length === 1 ? "" : "s"} sin nota de texto. Cuenta una anécdota o un momento del grupo.`
           : "Las notas son muy breves. Añade alguna anécdota personal para que el blog no sea solo un álbum.",
       actionLabel:
-        photosWithoutNote.length > 0 ? "Fotos sin nota" : "Nota del día",
+        photosWithoutNote.length > 0 ? "Fotos sin nota de texto" : "Nota del día",
       actionKind: photosWithoutNote.length > 0 ? "photos_notes" : "day",
       photoId: firstId,
       dayDate: daysWithPhotosWithoutNote[0],

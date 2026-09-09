@@ -10,6 +10,7 @@ export async function GET(
 ) {
   try {
     const { id: travelId } = await params;
+    const withoutNote = request.nextUrl.searchParams.get("withoutNote") === "1";
     const pageParam = request.nextUrl.searchParams.get("page");
     const focusPhotoId = request.nextUrl.searchParams.get("focusPhotoId");
     let page = Math.max(1, Number(pageParam ?? "1") || 1);
@@ -22,9 +23,16 @@ export async function GET(
       )
     );
 
+    const where = {
+      travelId,
+      ...(withoutNote
+        ? { notes: { none: { type: "PHOTO" as const } } }
+        : {}),
+    };
+
     if (focusPhotoId) {
       const ordered = await prisma.photo.findMany({
-        where: { travelId },
+        where,
         orderBy: { exifDateTime: "asc" },
         select: { id: true },
       });
@@ -37,9 +45,9 @@ export async function GET(
     const skip = (page - 1) * pageSize;
 
     const [total, photos] = await Promise.all([
-      prisma.photo.count({ where: { travelId } }),
+      prisma.photo.count({ where }),
       prisma.photo.findMany({
-        where: { travelId },
+        where,
         include: {
           user: { select: { alias: true } },
           place: { select: { id: true, name: true, type: true } },

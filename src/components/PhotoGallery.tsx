@@ -194,11 +194,16 @@ export default function PhotoGallery({
     nonce: number;
   } | null>(null);
   const [unnotedCursor, setUnnotedCursor] = useState(0);
+  const [showUnnotedOnly, setShowUnnotedOnly] = useState(
+    Boolean(initialUnnotedFilter)
+  );
   const pageRef = useRef(page);
   pageRef.current = page;
   const parentRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadGenRef = useRef(0);
   const unnotedKickoff = useRef(false);
+  const showUnnotedOnlyRef = useRef(showUnnotedOnly);
+  showUnnotedOnlyRef.current = showUnnotedOnly;
 
   /** Soft parent refresh — avoids slamming NAS with full travel reload on every keystroke-save. */
   const scheduleParentRefresh = useCallback(() => {
@@ -249,6 +254,7 @@ export default function PhotoGallery({
           pageSize: String(PHOTOS_PAGE_SIZE),
         });
         if (focusId) params.set("focusPhotoId", focusId);
+        if (showUnnotedOnlyRef.current) params.set("withoutNote", "1");
 
         const res = await fetch(`/api/travels/${travelId}/photos?${params}`);
         if (!res.ok) throw new Error("No se pudieron cargar las fotos");
@@ -270,9 +276,19 @@ export default function PhotoGallery({
     [travelId]
   );
 
+  // Keep filter + API query in sync before any focus load (avoids racing to full gallery).
+  useEffect(() => {
+    if (initialUnnotedFilter) {
+      showUnnotedOnlyRef.current = true;
+      setShowUnnotedOnly(true);
+    } else {
+      unnotedKickoff.current = false;
+    }
+  }, [initialUnnotedFilter]);
+
   useEffect(() => {
     void loadPage(1);
-  }, [loadPage]);
+  }, [loadPage, showUnnotedOnly]);
 
   useEffect(() => {
     if (refreshSignal === 0) return;
@@ -281,7 +297,11 @@ export default function PhotoGallery({
 
   useEffect(() => {
     if (!focusPhotoId) return;
-    void loadPage(page, focusPhotoId).then(() => {
+    if (initialUnnotedFilter || showUnnotedOnlyRef.current) {
+      showUnnotedOnlyRef.current = true;
+      setShowUnnotedOnly(true);
+    }
+    void loadPage(pageRef.current, focusPhotoId).then(() => {
       setExpandedId(focusPhotoId);
       window.setTimeout(() => {
         document
@@ -299,6 +319,8 @@ export default function PhotoGallery({
         unnotedPhotoIds.length;
       const id = unnotedPhotoIds[i]!;
       setUnnotedCursor(i);
+      showUnnotedOnlyRef.current = true;
+      setShowUnnotedOnly(true);
       void loadPage(1, id).then(() => {
         setExpandedId(id);
         window.setTimeout(() => {
@@ -315,8 +337,13 @@ export default function PhotoGallery({
     if (!initialUnnotedFilter || unnotedKickoff.current) return;
     if (unnotedPhotoIds.length === 0) return;
     unnotedKickoff.current = true;
-    focusUnnotedAt(0);
-  }, [initialUnnotedFilter, unnotedPhotoIds, focusUnnotedAt]);
+    const preferred =
+      focusPhotoId && unnotedPhotoIds.includes(focusPhotoId)
+        ? focusPhotoId
+        : unnotedPhotoIds[0]!;
+    const idx = unnotedPhotoIds.indexOf(preferred);
+    focusUnnotedAt(idx >= 0 ? idx : 0);
+  }, [initialUnnotedFilter, unnotedPhotoIds, focusUnnotedAt, focusPhotoId]);
 
   const setTransport = async (
     photo: GalleryPhoto,
@@ -430,10 +457,26 @@ export default function PhotoGallery({
         <div className="callout callout-warning flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm">
             {unnotedPhotoIds.length} foto
-            {unnotedPhotoIds.length === 1 ? "" : "s"} sin nota — ideales para
-            «Completar con IA» o una frase tuya.
+            {unnotedPhotoIds.length === 1 ? "" : "s"} sin{" "}
+            <strong className="font-semibold">nota de texto</strong> (no es el
+            protagonismo 0). Ideales para «Completar con IA» o una frase tuya.
           </p>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={`px-3 py-1.5 text-xs font-semibold ${
+                showUnnotedOnly ? "btn-primary" : "btn-secondary"
+              }`}
+              aria-pressed={showUnnotedOnly}
+              onClick={() => {
+                const next = !showUnnotedOnly;
+                showUnnotedOnlyRef.current = next;
+                setShowUnnotedOnly(next);
+                setExpandedId(null);
+              }}
+            >
+              {showUnnotedOnly ? "Ver todas las fotos" : "Solo sin nota de texto"}
+            </button>
             <button
               type="button"
               className="btn-secondary px-3 py-1.5 text-xs"
@@ -543,9 +586,13 @@ export default function PhotoGallery({
                           {placeName}
                         </span>
                       )}
-                      {photoNotes.length > 0 && (
+                      {photoNotes.length > 0 ? (
                         <span className="tag-mint">
                           {photoNotes.length} nota{photoNotes.length !== 1 ? "s" : ""}
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-200">
+                          Sin nota
                         </span>
                       )}
                     </div>
