@@ -139,7 +139,7 @@ CTA flotante **+ Añadir recuerdo** (`AddMemorySheet`). Viajes pasados: guía pa
 - [x] Storyboard Reel (seed ≥12; IDs validados)
 - [x] Export brief → directivas + match de templates/presets
 - [x] Voz compartida de **blog** + anti-alucinación visual (`ai-blog-voice.ts`)
-- [x] Flag `AI_SUGGESTIONS=0` apaga solo las 3 rutas `/api/ai/suggest-*`
+- [x] Flag `AI_SUGGESTIONS=0` apaga solo las rutas `/api/ai/suggest-*` (foto, lugar, día, reel)
 
 ### Export
 
@@ -163,7 +163,7 @@ CTA flotante **+ Añadir recuerdo** (`AddMemorySheet`). Viajes pasados: guía pa
 | Travels | `/api/travels`, `/api/travels/[id]`, journal, export-prefs, warnings, timeline, photos*, gps-tracks, suggest-type |
 | Join | `/api/join/[code]` |
 | CRUD | `/api/photos`, `/api/notes`, `/api/places`, `/api/gps-tracks/[id]` |
-| IA | `/api/generate-journal`, `/api/ai/suggest-photo-note`, `…/suggest-day-summary`, `…/suggest-reel-storyboard`, `/api/export-brief` |
+| IA | `/api/generate-journal`, `/api/ai/suggest-photo-note`, `…/suggest-place-note`, `…/suggest-day-summary`, `…/suggest-reel-storyboard`, `/api/export-brief` |
 | Export | `/api/export-html`, `export-pdf`, `export-reel`, `export-project`, `import-project` |
 | Maps | `/api/mapbox/directions` |
 | Sync/Share | `/api/sync`, `/api/share-target` |
@@ -188,6 +188,7 @@ Código compartido: `src/lib/ai-blog-voice.ts` → `buildTravelBlogVoiceBlock()`
 | Superficie | Seed | Gate `AI_SUGGESTIONS` | Archivos |
 |------------|------|------------------------|----------|
 | Nota de foto | ≥8 chars + tono | Sí | `ai-suggest-photo-note.ts`, `SuggestPhotoNote.tsx` |
+| Nota de lugar | ≥8 chars + tono + nombre | Sí | `ai-suggest-place-note.ts`, `SuggestPlaceNote.tsx` |
 | Resumen del día | ≥12 chars | Sí | `ai-suggest-day-summary.ts`, `SuggestDaySummary.tsx` |
 | Storyboard Reel | ≥12 chars | Sí | `ai-suggest-reel-storyboard.ts`, `ExportReelPanel.tsx` |
 | Crónica | brief opcional | **No** (solo API key) | `journal-pipeline.ts`, `GenerateJournalButton.tsx` |
@@ -255,6 +256,7 @@ Compila Next en local (standalone), sincroniza al NAS, `docker compose` con `Doc
 ```bash
 npm run test:ai-blog-voice
 npm run test:ai-suggest-photo-note
+npm run test:ai-suggest-place-note
 npm run test:ai-suggest-day-summary
 npm run test:ai-suggest-reel-storyboard
 npx tsx scripts/test-journal-pipeline.mjs
