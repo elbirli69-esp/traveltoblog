@@ -109,6 +109,15 @@ assert.ok(international.includes("story-video") || international.includes("galle
 assert.ok(international.includes("videos/003.mp4"), "video path in export");
 assert.ok(international.includes("Internacional"), "typology label in footer");
 
+// Destination trayectos must survive INTERNATIONAL (was wiped by showRoute:false).
+const roadMatch = international.match(/var roadSegments = (\[[\s\S]*?\]);/);
+assert.ok(roadMatch, "embeds roadSegments for Leaflet");
+const embeddedRoads = JSON.parse(roadMatch[1]);
+assert.ok(
+  embeddedRoads.length > 0,
+  "INTERNATIONAL destination map keeps computed road trayectos"
+);
+
 // INTERNATIONAL section order: flights before map before timeline (play excluded in magazine)
 const flightsIdx = international.indexOf("id=\"vuelos\"");
 const mapIdx = international.indexOf("id=\"mapa\"");
@@ -174,9 +183,13 @@ if (beachMap >= 0) {
 }
 
 const cityProfile = getTypologyProfile("CITY_BREAK");
-assert.equal(cityProfile.mapConfig.showRoute, false);
+assert.equal(cityProfile.mapConfig.showRoute, true);
 assert.equal(cityProfile.mapConfig.emphasis, "pois");
 assert.ok(!cityProfile.sectionOrder.includes("journal"), "typology has no separate journal slot");
+
+const intlProfile = getTypologyProfile("INTERNATIONAL");
+assert.equal(intlProfile.mapConfig.showRoute, true);
+assert.equal(intlProfile.mapConfig.showDaySidebar, true);
 
 const richJournal = `# Krakow
 
