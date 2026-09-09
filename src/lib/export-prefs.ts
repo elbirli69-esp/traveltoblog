@@ -8,6 +8,7 @@ export type TravelExportPrefs = {
   htmlTemplateId?: string | null;
   htmlThemePackId?: string | null;
   htmlTypePackId?: string | null;
+  htmlJournalSource?: string | null;
   reelPresetId?: string | null;
   pdfPresetId?: string | null;
 };

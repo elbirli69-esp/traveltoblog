@@ -7,6 +7,7 @@ import {
   type JournalPipelineEvent,
   type JournalStyle,
 } from "@/lib/journal-pipeline";
+import type { JournalKind } from "@/lib/journal-kind";
 import {
   activeJournalIntentions,
   JOURNAL_INTENTION_CHIPS,
@@ -35,11 +36,13 @@ export default function GenerateJournalButton({
   hasExistingJournal = false,
   hasPreviousJournal = false,
   initialBrief = "",
+  kind = "day",
 }: {
   travelId: string;
   hasExistingJournal?: boolean;
   hasPreviousJournal?: boolean;
   initialBrief?: string;
+  kind?: JournalKind;
 }) {
   const router = useRouter();
   const [style, setStyle] = useState<JournalStyle>("narrative");
@@ -66,7 +69,9 @@ export default function GenerateJournalButton({
   const handleGenerate = async () => {
     if (hasExistingJournal) {
       const ok = confirm(
-        "La IA refinará la crónica actual: conservará tus ediciones e incorporará notas/fotos nuevas y tus indicaciones. Se guarda una copia para poder deshacer. ¿Continuar?"
+        kind === "blog"
+          ? "La IA refinará el artículo blog actual: conservará tus ediciones e incorporará notas/fotos nuevas y tus indicaciones. Se guarda una copia para poder deshacer. ¿Continuar?"
+          : "La IA refinará la crónica actual: conservará tus ediciones e incorporará notas/fotos nuevas y tus indicaciones. Se guarda una copia para poder deshacer. ¿Continuar?"
       );
       if (!ok) return;
     }
@@ -87,6 +92,7 @@ export default function GenerateJournalButton({
           stream: true,
           style,
           brief: brief.trim() || null,
+          kind,
         }),
       });
 
@@ -159,6 +165,8 @@ export default function GenerateJournalButton({
     try {
       const res = await fetch(`/api/travels/${travelId}/journal/restore-previous`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -261,11 +269,19 @@ export default function GenerateJournalButton({
       >
         {loading
           ? hasExistingJournal
-            ? "Refinando crónica…"
-            : "Generando crónica…"
+            ? kind === "blog"
+              ? "Refinando artículo…"
+              : "Refinando crónica…"
+            : kind === "blog"
+              ? "Generando artículo…"
+              : "Generando crónica…"
           : hasExistingJournal
-            ? "✨ Refinar crónica con IA"
-            : "✨ Generar diario con IA"}
+            ? kind === "blog"
+              ? "✨ Refinar artículo blog con IA"
+              : "✨ Refinar crónica con IA"
+            : kind === "blog"
+              ? "✨ Generar artículo blog con IA"
+              : "✨ Generar diario con IA"}
       </button>
 
       {hasExistingJournal && (

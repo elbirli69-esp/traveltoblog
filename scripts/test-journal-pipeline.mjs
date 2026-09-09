@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  assembleBlogJournalMarkdown,
   assembleJournalMarkdown,
   buildLocalJournalMarkdown,
   journalPipelineVoiceRules,
@@ -7,6 +8,7 @@ import {
   sanitizeDaySummaryProse,
   sanitizeJournalDayProse,
 } from "../src/lib/journal-pipeline.ts";
+import { resolveExportJournalMarkdown } from "../src/lib/journal-kind.ts";
 import { SYSTEM_PROMPT } from "../src/lib/journal.ts";
 
 assert.match(journalPipelineVoiceRules(), /BLOG/i);
@@ -93,5 +95,33 @@ assert.ok(!markdown.includes('Ada: "Qué frío"'), "no author:quote dump");
 const local = buildLocalJournalMarkdown(ctx);
 assert.match(local, /sin IA/i);
 assert.match(local, /Test Trip/);
+
+const blog = assembleBlogJournalMarkdown(
+  ctx,
+  "Gancho del destino.",
+  [
+    {
+      date: "2026-08-01",
+      summary: "Paseo por el casco antiguo.",
+    },
+  ],
+  [{ url: "/uploads/a.jpg", caption: "Oleaje suave" }],
+  "Reserva tiempo para perderte por las calles."
+);
+assert.match(blog, /## El viaje/);
+assert.match(blog, /## Si vas/);
+assert.ok(!blog.includes("### "), "blog has no day ### headers");
+assert.ok(!blog.includes("día a día"), "blog is not day-diary section");
+
+const localBlog = buildLocalJournalMarkdown(ctx, "blog");
+assert.match(localBlog, /## Si vas/);
+
+const resolved = resolveExportJournalMarkdown({
+  journalMarkdown: markdown,
+  journalBlogMarkdown: blog,
+  htmlJournalSource: "blog",
+});
+assert.equal(resolved.source, "blog");
+assert.match(resolved.markdown, /Si vas/);
 
 console.log("journal-pipeline assemble/local ok");

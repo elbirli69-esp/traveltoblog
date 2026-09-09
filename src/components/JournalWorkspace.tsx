@@ -2,12 +2,17 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import BlogCompletenessPanel from "@/components/BlogCompletenessPanel";
 import GenerateJournalButton from "@/components/GenerateJournalButton";
 import JournalEditor from "@/components/JournalEditor";
 import JournalReadinessChecklist from "@/components/JournalReadinessChecklist";
 import type { BlogCompletenessInput, BlogGapActionKind } from "@/lib/blog-completeness";
 import type { ReadinessActionKind } from "@/lib/journal-readiness";
+import {
+  JOURNAL_KIND_LABELS,
+  type JournalKind,
+} from "@/lib/journal-kind";
 
 interface JournalWorkspaceProps {
   travelId: string;
@@ -17,6 +22,9 @@ interface JournalWorkspaceProps {
   journalMarkdown: string | null;
   journalGeneratedAt: string | null;
   journalMarkdownPrevious?: string | null;
+  journalBlogMarkdown?: string | null;
+  journalBlogGeneratedAt?: string | null;
+  journalBlogMarkdownPrevious?: string | null;
   journalBrief?: string | null;
   photos: {
     exifDateTime: string | null;
@@ -36,6 +44,9 @@ export default function JournalWorkspace({
   journalMarkdown,
   journalGeneratedAt,
   journalMarkdownPrevious = null,
+  journalBlogMarkdown = null,
+  journalBlogGeneratedAt = null,
+  journalBlogMarkdownPrevious = null,
   journalBrief = null,
   photos,
   dayNotes,
@@ -43,52 +54,61 @@ export default function JournalWorkspace({
   blogCompleteness,
 }: JournalWorkspaceProps) {
   const router = useRouter();
+  const [kind, setKind] = useState<JournalKind>(
+    journalBlogMarkdown && !journalMarkdown ? "blog" : "day"
+  );
+
+  const activeMarkdown = kind === "blog" ? journalBlogMarkdown : journalMarkdown;
+  const activeGeneratedAt =
+    kind === "blog" ? journalBlogGeneratedAt : journalGeneratedAt;
+  const activePrevious =
+    kind === "blog" ? journalBlogMarkdownPrevious : journalMarkdownPrevious;
 
   const goTravel = (query: Record<string, string>) => {
     const params = new URLSearchParams(query);
     router.push(`/travel/${travelId}?${params.toString()}`);
   };
 
-  const handleReadinessFix = (kind: ReadinessActionKind, dayDate?: string) => {
-    const params: Record<string, string> = { add: kind };
+  const handleReadinessFix = (kindAction: ReadinessActionKind, dayDate?: string) => {
+    const params: Record<string, string> = { add: kindAction };
     if (dayDate) params.date = dayDate;
     goTravel(params);
   };
 
   const handleBlogFix = (
-    kind: BlogGapActionKind,
+    gapKind: BlogGapActionKind,
     opts?: { dayDate?: string; photoId?: string }
   ) => {
-    if (kind === "journal_brief") {
+    if (gapKind === "journal_brief") {
       document.getElementById("journal-brief")?.focus();
       return;
     }
-    if (kind === "photos_notes" || kind === "photos_highlight") {
+    if (gapKind === "photos_notes" || gapKind === "photos_highlight") {
       const q: Record<string, string> = { tab: "photos" };
       if (opts?.photoId) q.photo = opts.photoId;
-      if (kind === "photos_notes") q.unnoted = "1";
+      if (gapKind === "photos_notes") q.unnoted = "1";
       goTravel(q);
       return;
     }
-    if (kind === "place" || kind === "place_food") {
+    if (gapKind === "place" || gapKind === "place_food") {
       goTravel({
         add: "place",
-        ...(kind === "place_food" ? { placeType: "RESTAURANT" } : {}),
+        ...(gapKind === "place_food" ? { placeType: "RESTAURANT" } : {}),
       });
       return;
     }
-    if (kind === "day") {
+    if (gapKind === "day") {
       goTravel({
         add: "day",
         ...(opts?.dayDate ? { date: opts.dayDate } : {}),
       });
       return;
     }
-    if (kind === "trip") {
+    if (gapKind === "trip") {
       goTravel({ add: "trip" });
       return;
     }
-    if (kind === "destination_fiche") {
+    if (gapKind === "destination_fiche") {
       goTravel({ tab: "trip", focus: "destination" });
     }
   };
@@ -98,18 +118,57 @@ export default function JournalWorkspace({
       <header className="mb-6 border-b border-[var(--border)] pb-6">
         <h1 className="heading-page">{title}</h1>
         <p className="mt-2 text-sm text-fg-secondary">
-          Genera y edita la crónica con IA. Puedes dejar indicaciones libres (tono, anécdotas,
-          énfasis) y refinarla en varias pasadas. La IA enriquecerá con historia y costumbres
-          del destino ancladas a vuestros lugares — sin inventar visitas.
+          Genera y edita dos crónicas independientes: por días (diario/recuerdo) o artículo
+          blog (para compartir con quien planea un viaje similar). El export HTML elige cuál
+          usar.
         </p>
       </header>
 
+      <div
+        className="mb-6 flex flex-wrap gap-2"
+        role="tablist"
+        aria-label="Tipo de crónica"
+      >
+        {(Object.keys(JOURNAL_KIND_LABELS) as JournalKind[]).map((id) => {
+          const meta = JOURNAL_KIND_LABELS[id];
+          const selected = kind === id;
+          const hasText =
+            id === "blog" ? Boolean(journalBlogMarkdown) : Boolean(journalMarkdown);
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => setKind(id)}
+              className={`option-radio max-w-xs text-left ${
+                selected ? "option-radio-active" : ""
+              }`}
+            >
+              <span className="block text-sm font-semibold text-fg">
+                {meta.title}
+                {hasText ? (
+                  <span className="ml-1.5 text-xs font-normal text-accent-cyan">· lista</span>
+                ) : null}
+              </span>
+              <span className="mt-0.5 block text-xs text-fg-secondary">{meta.description}</span>
+            </button>
+          );
+        })}
+      </div>
+
       <section className="surface mb-8 p-6">
-        <h2 className="heading-section mb-2 text-accent-cyan">Generar crónica</h2>
+        <h2 className="heading-section mb-2 text-accent-cyan">
+          {kind === "blog" ? "Generar artículo blog" : "Generar crónica por días"}
+        </h2>
         <p className="mb-4 text-sm text-fg-secondary">
-          {journalMarkdown
-            ? "Refina la crónica existente: conserva tus ediciones, aplica las indicaciones e incorpora notas y fotos nuevas."
-            : "Añade indicaciones si quieres, elige el estilo y genera (introducción, días, leyendas y conclusión)."}
+          {activeMarkdown
+            ? kind === "blog"
+              ? "Refina el artículo blog: conserva tus ediciones e incorpora notas y fotos nuevas."
+              : "Refina la crónica por días: conserva tus ediciones e incorpora notas y fotos nuevas."
+            : kind === "blog"
+              ? "Artículo continuo con tips «Si vas» — pensado para quien planea un viaje similar."
+              : "Añade indicaciones si quieres, elige el estilo y genera (introducción, días, leyendas y conclusión)."}
         </p>
         <BlogCompletenessPanel
           input={blogCompleteness}
@@ -125,17 +184,18 @@ export default function JournalWorkspace({
         />
         <GenerateJournalButton
           travelId={travelId}
-          hasExistingJournal={Boolean(journalMarkdown)}
-          hasPreviousJournal={Boolean(journalMarkdownPrevious)}
+          kind={kind}
+          hasExistingJournal={Boolean(activeMarkdown)}
+          hasPreviousJournal={Boolean(activePrevious)}
           initialBrief={journalBrief ?? ""}
         />
       </section>
 
-      {journalMarkdown ? (
+      {activeMarkdown ? (
         <section className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-fg">
-              Editar crónica
+              {kind === "blog" ? "Editar artículo blog" : "Editar crónica por días"}
             </h2>
             <Link
               href={`/travel/${travelId}/export`}
@@ -146,13 +206,15 @@ export default function JournalWorkspace({
           </div>
           <JournalEditor
             travelId={travelId}
-            initialMarkdown={journalMarkdown}
-            generatedAt={journalGeneratedAt}
+            kind={kind}
+            initialMarkdown={activeMarkdown}
+            generatedAt={activeGeneratedAt}
           />
         </section>
       ) : (
-        <p className="surface-inset px-4 py-8 text-center text-sm text-fg-secondary">
-          Aún no hay crónica. Completa el checklist si quieres y pulsa «Generar diario con IA».
+        <p className="text-sm text-fg-secondary">
+          Aún no hay texto en esta pestaña. Genera con IA o cambia a la otra crónica si ya
+          existe.
         </p>
       )}
     </>

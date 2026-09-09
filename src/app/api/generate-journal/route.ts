@@ -9,6 +9,7 @@ import {
   type JournalPipelineEvent,
   type JournalStyle,
 } from "@/lib/journal-pipeline";
+import { parseJournalKind, type JournalKind } from "@/lib/journal-kind";
 
 function parseJournalStyle(value: unknown): JournalStyle {
   return value === "factual" ? "factual" : "narrative";
@@ -16,9 +17,24 @@ function parseJournalStyle(value: unknown): JournalStyle {
 
 async function persistGeneratedJournal(
   travelId: string,
+  kind: JournalKind,
   markdown: string,
   previousMarkdown: string | null
 ) {
+  if (kind === "blog") {
+    await prisma.travel.update({
+      where: { id: travelId },
+      data: {
+        journalBlogMarkdown: markdown,
+        journalBlogGeneratedAt: new Date(),
+        ...(previousMarkdown?.trim()
+          ? { journalBlogMarkdownPrevious: previousMarkdown }
+          : {}),
+      },
+    });
+    return;
+  }
+
   await prisma.travel.update({
     where: { id: travelId },
     data: {
@@ -34,13 +50,15 @@ async function persistGeneratedJournal(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { travelId, stream, style, brief } = body as {
+    const { travelId, stream, style, brief, kind: rawKind } = body as {
       travelId?: string;
       stream?: boolean;
       style?: JournalStyle;
       brief?: string | null;
+      kind?: JournalKind;
     };
     const journalStyle = parseJournalStyle(style);
+    const kind = parseJournalKind(rawKind);
     const journalBrief =
       typeof brief === "string" ? brief.trim().slice(0, 4000) || null : undefined;
 
@@ -95,7 +113,10 @@ export async function POST(request: NextRequest) {
       travel.journalBrief = journalBrief;
     }
 
-    const existingMarkdown = travel.journalMarkdown?.trim() || null;
+    const existingMarkdown =
+      kind === "blog"
+        ? travel.journalBlogMarkdown?.trim() || null
+        : travel.journalMarkdown?.trim() || null;
     const ctx = buildEnhancedJournalContext(
       travel,
       travel.users,
@@ -116,8 +137,9 @@ export async function POST(request: NextRequest) {
           try {
             const markdown = await runJournalPipeline(ctx, send, journalStyle, {
               existingMarkdown,
+              kind,
             });
-            await persistGeneratedJournal(travelId, markdown, existingMarkdown);
+            await persistGeneratedJournal(travelId, kind, markdown, existingMarkdown);
           } catch (error) {
             console.error("Journal pipeline stream", error);
             if (existingMarkdown) {
@@ -131,8 +153,8 @@ export async function POST(request: NextRequest) {
               });
             } else if (isAiUnreachableError(error)) {
               try {
-                const markdown = buildLocalJournalMarkdown(ctx);
-                await persistGeneratedJournal(travelId, markdown, null);
+                const markdown = buildLocalJournalMarkdown(ctx, kind);
+                await persistGeneratedJournal(travelId, kind, markdown, null);
                 send({
                   step: "complete",
                   status: "done",
@@ -171,13 +193,15 @@ export async function POST(request: NextRequest) {
 
     const markdown = await runJournalPipeline(ctx, undefined, journalStyle, {
       existingMarkdown,
+      kind,
     });
 
-    await persistGeneratedJournal(travelId, markdown, existingMarkdown);
+    await persistGeneratedJournal(travelId, kind, markdown, existingMarkdown);
 
     return NextResponse.json({
       markdown,
       refined: Boolean(existingMarkdown),
+      kind,
     });
   } catch (error) {
     console.error("POST /api/generate-journal", error);

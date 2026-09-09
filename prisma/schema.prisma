@@ -36,8 +36,15 @@ model Travel {
   journalGeneratedAt DateTime?
   /// Previous journalMarkdown before last AI generate/refine (one-level undo)
   journalMarkdownPrevious String?
+  /// Blog-style chronicle (continuous article for sharing), separate from day-by-day
+  journalBlogMarkdown String?
+  journalBlogGeneratedAt DateTime?
+  /// Previous journalBlogMarkdown before last AI generate/refine
+  journalBlogMarkdownPrevious String?
   /// Free-text brief: anecdotes, emphasis, tone for AI journal generation
   journalBrief String?
+  /// Which chronicle HTML export uses: "day" | "blog" (null = day)
+  htmlJournalSource String?
   /// Optional canonical destination for blog voice (e.g. "Cracovia, Polonia")
   destinationName String?
   /// Optional JSON string[] of up to 3 editorial themes (historia, comida, barrios…)

@@ -20,6 +20,8 @@ interface ExportFormatTabsProps {
   travelId: string;
   travelTitle: string;
   hasJournal: boolean;
+  hasDayJournal?: boolean;
+  hasBlogJournal?: boolean;
   hasGpsPhotos: boolean;
   photoCount: number;
   /** All media files (selected + unselected) for backup sizing hints */
@@ -74,6 +76,8 @@ export default function ExportFormatTabs({
   travelId,
   travelTitle,
   hasJournal,
+  hasDayJournal = false,
+  hasBlogJournal = false,
   hasGpsPhotos,
   photoCount,
   allPhotoCount,
@@ -119,6 +123,8 @@ export default function ExportFormatTabs({
           <ExportHtmlPanel
             travelId={travelId}
             hasJournal={hasJournal}
+            hasDayJournal={hasDayJournal}
+            hasBlogJournal={hasBlogJournal}
             hasGpsPhotos={hasGpsPhotos}
             photoCount={photoCount}
           />

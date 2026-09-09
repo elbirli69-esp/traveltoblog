@@ -25,6 +25,11 @@ import {
   fetchTravelExportPrefs,
   saveTravelExportPrefs,
 } from "@/lib/export-prefs";
+import {
+  JOURNAL_KIND_LABELS,
+  parseHtmlJournalSource,
+  type HtmlJournalSource,
+} from "@/lib/journal-kind";
 
 export type ExportTemplateId = "magazine" | "visual-journey" | "editorial-clean" | "dark-photo-journey";
 export type ExportFormat = "zip" | "html";
@@ -89,6 +94,8 @@ interface TypologyOption {
 interface ExportHtmlPanelProps {
   travelId: string;
   hasJournal?: boolean;
+  hasDayJournal?: boolean;
+  hasBlogJournal?: boolean;
   hasGpsPhotos?: boolean;
   photoCount?: number;
 }
@@ -105,12 +112,17 @@ function blobFromBase64(base64: string, contentType: string): Blob {
 export default function ExportHtmlPanel({
   travelId,
   hasJournal = false,
+  hasDayJournal = false,
+  hasBlogJournal = false,
   hasGpsPhotos = false,
   photoCount = 0,
 }: ExportHtmlPanelProps) {
   const [template, setTemplate] = useState<ExportTemplateId>("magazine");
   const [themePack, setThemePack] = useState<ThemePackId>("light-paper");
   const [typePack, setTypePack] = useState<TypePackId>("serif-editorial");
+  const [journalSource, setJournalSource] = useState<HtmlJournalSource>(
+    hasBlogJournal && !hasDayJournal ? "blog" : "day"
+  );
   const [packSuggestion, setPackSuggestion] = useState<{
     themePack: ThemePackId | null;
     typePack: TypePackId | null;
@@ -169,6 +181,9 @@ export default function ExportHtmlPanel({
       if (prefs.htmlTypePackId) {
         setTypePack(prefs.htmlTypePackId as TypePackId);
       }
+      if (prefs.htmlJournalSource) {
+        setJournalSource(parseHtmlJournalSource(prefs.htmlJournalSource));
+      }
       if (prefs.exportBriefCache) {
         try {
           const cache = JSON.parse(prefs.exportBriefCache) as {
@@ -197,6 +212,7 @@ export default function ExportHtmlPanel({
       htmlTemplateId?: string | null;
       htmlThemePackId?: string | null;
       htmlTypePackId?: string | null;
+      htmlJournalSource?: string | null;
       exportBriefCache?: string | null;
     }) => {
       void saveTravelExportPrefs(travelId, patch);
@@ -397,6 +413,7 @@ export default function ExportHtmlPanel({
             brief: brief.trim() || undefined,
             themePack,
             typePack,
+            journalSource,
           }),
         });
 
@@ -588,6 +605,44 @@ export default function ExportHtmlPanel({
               <p className="text-sm text-fg-secondary">{t.description}</p>
             </button>
           ))}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="mb-3 text-sm font-semibold text-fg-secondary">Crónica a usar</h3>
+        <p className="mb-2 text-xs text-fg-secondary">
+          Elige qué texto generado en Crónica monta este HTML. Puedes tener las dos y
+          exportar cada una por separado.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {(["day", "blog"] as HtmlJournalSource[]).map((id) => {
+            const meta = JOURNAL_KIND_LABELS[id];
+            const available = id === "blog" ? hasBlogJournal : hasDayJournal;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  setJournalSource(id);
+                  persistHtmlPrefs({ htmlJournalSource: id });
+                }}
+                disabled={busy}
+                className={`select-card text-left ${
+                  journalSource === id ? "select-card-active" : ""
+                }`}
+              >
+                <p className="text-sm font-semibold text-fg">
+                  {meta.title}
+                  {!available ? (
+                    <span className="ml-1.5 text-xs font-normal text-amber-200">
+                      · sin generar
+                    </span>
+                  ) : null}
+                </p>
+                <p className="mt-0.5 text-xs text-fg-secondary">{meta.description}</p>
+              </button>
+            );
+          })}
         </div>
       </div>
 

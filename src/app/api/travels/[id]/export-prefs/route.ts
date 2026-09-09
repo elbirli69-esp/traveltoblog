@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { parseHtmlJournalSource } from "@/lib/journal-kind";
 
 export type TravelExportPrefs = {
   exportBrief: string | null;
@@ -7,6 +8,7 @@ export type TravelExportPrefs = {
   htmlTemplateId: string | null;
   htmlThemePackId: string | null;
   htmlTypePackId: string | null;
+  htmlJournalSource: string | null;
   reelPresetId: string | null;
   pdfPresetId: string | null;
 };
@@ -17,6 +19,7 @@ const SELECT = {
   htmlTemplateId: true,
   htmlThemePackId: true,
   htmlTypePackId: true,
+  htmlJournalSource: true,
   reelPresetId: true,
   pdfPresetId: true,
 } as const;
@@ -88,6 +91,13 @@ export async function PATCH(
     if (htmlThemePackId !== undefined) data.htmlThemePackId = htmlThemePackId;
     const htmlTypePackId = asOptionalId(body.htmlTypePackId);
     if (htmlTypePackId !== undefined) data.htmlTypePackId = htmlTypePackId;
+    if (body.htmlJournalSource !== undefined) {
+      if (body.htmlJournalSource === null || body.htmlJournalSource === "") {
+        data.htmlJournalSource = null;
+      } else {
+        data.htmlJournalSource = parseHtmlJournalSource(body.htmlJournalSource);
+      }
+    }
     const reelPresetId = asOptionalId(body.reelPresetId);
     if (reelPresetId !== undefined) data.reelPresetId = reelPresetId;
     const pdfPresetId = asOptionalId(body.pdfPresetId);

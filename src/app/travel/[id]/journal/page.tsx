@@ -22,6 +22,9 @@ export default async function JournalPage({
       journalMarkdown: true,
       journalGeneratedAt: true,
       journalMarkdownPrevious: true,
+      journalBlogMarkdown: true,
+      journalBlogGeneratedAt: true,
+      journalBlogMarkdownPrevious: true,
       journalBrief: true,
       destinationName: true,
       destinationThemes: true,
@@ -112,6 +115,9 @@ export default async function JournalPage({
         journalMarkdown={travel.journalMarkdown}
         journalGeneratedAt={travel.journalGeneratedAt?.toISOString() ?? null}
         journalMarkdownPrevious={travel.journalMarkdownPrevious}
+        journalBlogMarkdown={travel.journalBlogMarkdown}
+        journalBlogGeneratedAt={travel.journalBlogGeneratedAt?.toISOString() ?? null}
+        journalBlogMarkdownPrevious={travel.journalBlogMarkdownPrevious}
         journalBrief={travel.journalBrief}
         photos={travel.photos.map((p) => ({
           exifDateTime: p.exifDateTime?.toISOString() ?? null,

@@ -43,6 +43,10 @@ import {
   resolveDayNarrativeHtml,
 } from "@/lib/export/journal-prose";
 import {
+  parseHtmlJournalSource,
+  type HtmlJournalSource,
+} from "@/lib/journal-kind";
+import {
   buildClosingSectionHtml,
   buildHeadMeta,
   buildMagazineHero,
@@ -146,8 +150,16 @@ export interface ExportPhoto {
 export interface ExportContext {
   travel: Pick<
     Travel,
-    "id" | "title" | "startDate" | "endDate" | "journalMarkdown" | "travelType"
-  >;
+    | "id"
+    | "title"
+    | "startDate"
+    | "endDate"
+    | "journalMarkdown"
+    | "travelType"
+  > & {
+    journalBlogMarkdown?: string | null;
+    htmlJournalSource?: string | null;
+  };
   users: User[];
   photos: ExportPhoto[];
   /** All travel photos with GPS for the interactive map (may exceed `photos` when only a subset is exported). */
@@ -178,6 +190,8 @@ export interface ExportContext {
   publicTitle?: string | null;
   /** Magazine reader guide “Si vais…” (default true when places exist). */
   includeReaderGuide?: boolean;
+  /** Override which chronicle to mount (default: travel.htmlJournalSource). */
+  journalSource?: HtmlJournalSource | null;
 }
 
 export function getExportMapPhotos(ctx: ExportContext): ExportPhoto[] {
@@ -1938,7 +1952,25 @@ export function buildExportHtml(ctx: ExportContext): string {
   );
   const profile = getTypologyProfile(resolvedType);
   const timelineEvents = buildExportTimelineEvents(ctx);
-  const markdown = travel.journalMarkdown ?? buildFallbackMarkdown(travel, users, photos);
+  const preferredSource = parseHtmlJournalSource(
+    ctx.journalSource ?? travel.htmlJournalSource
+  );
+  const blogMd = travel.journalBlogMarkdown?.trim() || null;
+  const dayMd = travel.journalMarkdown?.trim() || null;
+  const resolvedSource: HtmlJournalSource =
+    preferredSource === "blog" && blogMd
+      ? "blog"
+      : preferredSource === "blog" && !blogMd && dayMd
+        ? "day"
+        : preferredSource === "day"
+          ? "day"
+          : blogMd && !dayMd
+            ? "blog"
+            : "day";
+  const activeJournalMarkdown =
+    resolvedSource === "blog" ? blogMd : dayMd;
+  const markdown =
+    activeJournalMarkdown ?? buildFallbackMarkdown(travel, users, photos);
   const mapPhotos = getExportMapPhotos(ctx);
   const mapPoints = mergeMapPoints(mapPhotos, places);
   const routeSegments = resolveLeafletRouteSegments(ctx, mapPhotos, places);
@@ -1971,12 +2003,14 @@ export function buildExportHtml(ctx: ExportContext): string {
   const coverPhoto = pickCoverPhoto(photos);
   const notes = ctx.notes ?? [];
   const tripNote = findTripNote(notes);
-  const deck = extractDeck(travel.journalMarkdown, tripNote);
-  const hasJournalArticle = Boolean(travel.journalMarkdown?.trim());
+  const deck = extractDeck(activeJournalMarkdown, tripNote);
+  const hasJournalArticle = Boolean(activeJournalMarkdown);
   const hasGuide = isMagazine && places.length > 0;
-  const useUnifiedStory = isMagazine || isVisual;
+  // Blog chronicle → article section + lighter timeline; day chronicle → unified story.
+  const useBlogArticleLayout = resolvedSource === "blog" && hasJournalArticle;
+  const useUnifiedStory = (isMagazine || isVisual) && !useBlogArticleLayout;
   const storyProse = useUnifiedStory
-    ? extractJournalStoryProse(travel.journalMarkdown)
+    ? extractJournalStoryProse(activeJournalMarkdown)
     : null;
   const dayProseByKey = new Map<string, string>();
   if (storyProse?.hasProse) {
@@ -2028,7 +2062,13 @@ export function buildExportHtml(ctx: ExportContext): string {
           clampProseHtml(html, htmlDir.proseDensity, htmlDir.proseDensity === "low" ? 1 : 99)
         ),
       }
-    : { excludeJournalChunks: hasJournalArticle };
+    : useBlogArticleLayout
+      ? {
+          excludeJournalChunks: true,
+          title: "Recorrido",
+          eyebrow: "Itinerario",
+        }
+      : { excludeJournalChunks: hasJournalArticle };
   const dayCount = timelineEvents.filter((e) => e.kind === "day-boundary").length;
   const distanceKm = estimateRouteKm(photos);
   const travelers = users.map((u) => u.alias).join(", ");
@@ -2169,21 +2209,32 @@ ${buildTocHtml(timelineEvents)}`
     : "";
   const playBlock = profile.playProfile.showScrubber && !isMagazine ? buildPlayModeSectionHtml() : "";
 
-  // Magazine: El viaje → Galería → Guía → Cierre (gallery right after timeline by default).
   const magazineSectionOrder = (() => {
     const base = profile.sectionOrder.filter(
       (id) => id !== "hero" && id !== "play"
     );
     const withoutGallery = base.filter((id) => id !== "gallery");
-    const timelineIdx = withoutGallery.indexOf("timeline");
+    const withJournal =
+      useBlogArticleLayout && !withoutGallery.includes("journal")
+        ? (() => {
+            const timelineIdx = withoutGallery.indexOf("timeline");
+            if (timelineIdx < 0) return ["journal" as const, ...withoutGallery];
+            return [
+              ...withoutGallery.slice(0, timelineIdx),
+              "journal" as const,
+              ...withoutGallery.slice(timelineIdx),
+            ];
+          })()
+        : withoutGallery;
+    const timelineIdx = withJournal.indexOf("timeline");
     if (timelineIdx >= 0) {
       return [
-        ...withoutGallery.slice(0, timelineIdx + 1),
+        ...withJournal.slice(0, timelineIdx + 1),
         "gallery" as const,
-        ...withoutGallery.slice(timelineIdx + 1),
+        ...withJournal.slice(timelineIdx + 1),
       ];
     }
-    return galleryBlock ? [...withoutGallery, "gallery" as const] : withoutGallery;
+    return galleryBlock ? [...withJournal, "gallery" as const] : withJournal;
   })();
 
   const sectionBlocks: Record<string, string> = {
@@ -2193,11 +2244,13 @@ ${buildTocHtml(timelineEvents)}`
     map: mapBlock,
     timeline: timelineBlock,
     gallery: galleryBlock,
-    // Magazine/visual: crónica lives inside timeline (El viaje). Editorial keeps article.
+    // Day chronicle: prose inside timeline. Blog chronicle: dedicated article section.
     journal:
       useUnifiedStory || !hasJournalArticle
         ? ""
-        : `<section class="journal-section reveal visible"><h2 class="section-title">Crónica del viaje</h2><article${storyAnchor}>${contentHtml}</article></section>`,
+        : `<section class="journal-section reveal visible" id="cronica"><h2 class="section-title">${
+            useBlogArticleLayout ? "Crónica" : "Crónica del viaje"
+          }</h2><article${storyAnchor}>${contentHtml}</article></section>`,
     play: playBlock,
     guide: calloutsBlock,
     closing: closingBlock,
@@ -2205,7 +2258,19 @@ ${buildTocHtml(timelineEvents)}`
 
   const rawSectionOrder = isMagazine
     ? [...magazineSectionOrder, "guide", "closing"]
-    : profile.sectionOrder;
+    : useBlogArticleLayout &&
+        !(profile.sectionOrder as string[]).includes("journal")
+      ? (() => {
+          const base = [...profile.sectionOrder];
+          const timelineIdx = base.indexOf("timeline");
+          if (timelineIdx < 0) return ["journal" as const, ...base];
+          return [
+            ...base.slice(0, timelineIdx),
+            "journal" as const,
+            ...base.slice(timelineIdx),
+          ];
+        })()
+      : profile.sectionOrder;
   const sectionOrder = applyHtmlSectionOrderBias(
     rawSectionOrder,
     htmlDir.preferSectionOrder,
