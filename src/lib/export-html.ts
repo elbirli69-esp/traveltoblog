@@ -294,6 +294,10 @@ export interface ExportPlace {
   highlightScore?: number;
 }
 
+function isTransportPlaceType(type: string | null | undefined): boolean {
+  return type === "TRANSPORT";
+}
+
 export interface ExportNote {
   id: string;
   type: string;
@@ -360,7 +364,7 @@ export function buildPlaceMapPoints(
   photos: ExportPhoto[] = []
 ): MapPoint[] {
   return places
-    .filter((p) => isValidGps(p.latitude, p.longitude))
+    .filter((p) => isValidGps(p.latitude, p.longitude) && !isTransportPlaceType(p.type))
     .map((p) => {
       const linked = photosForPlace(p, photos);
       const photoPaths = linked.slice(0, 4).map((photo) => photo.thumbPath);
@@ -423,7 +427,7 @@ function buildExportRouteNodes(
         isTransportEnd: p.isTransportEnd,
       })),
       places
-        .filter((p) => isValidGps(p.latitude, p.longitude))
+        .filter((p) => isValidGps(p.latitude, p.longitude) && !isTransportPlaceType(p.type))
         .map((p) => ({
           latitude: p.latitude,
           longitude: p.longitude,

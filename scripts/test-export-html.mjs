@@ -94,6 +94,16 @@ const international = buildExportHtml({
       alias: "Ana",
       visitedAt: new Date("2024-06-02T11:00:00Z"),
     },
+    {
+      id: "pl-airport",
+      name: "Barajas",
+      type: "TRANSPORT",
+      latitude: 40.4719,
+      longitude: -3.5626,
+      comment: null,
+      alias: "Ana",
+      visitedAt: new Date("2024-06-01T07:30:00Z"),
+    },
   ],
   template: "magazine",
   typology: "INTERNATIONAL",
@@ -116,6 +126,13 @@ const embeddedRoads = JSON.parse(roadMatch[1]);
 assert.ok(
   embeddedRoads.length > 0,
   "INTERNATIONAL destination map keeps computed road trayectos"
+);
+const pointsMatch = international.match(/var rawPoints = (\[[\s\S]*?\]);/);
+assert.ok(pointsMatch, "embeds destination map points");
+const embeddedPoints = JSON.parse(pointsMatch[1]);
+assert.ok(
+  !embeddedPoints.some((point) => point.kind === "place" && point.placeType === "TRANSPORT"),
+  "destination map excludes transport places that would widen the zoom"
 );
 
 // INTERNATIONAL section order: flights before map before timeline (play excluded in magazine)

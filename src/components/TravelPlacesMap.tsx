@@ -123,6 +123,7 @@ export default function TravelPlacesMap({
 
   const { outbound, inbound } = resolveFlightLegs(photos);
   const routePhotos = photoGpsPoints(photos);
+  const localPlaces = places.filter((place) => place.type !== "TRANSPORT");
 
   useEffect(() => {
     let cancelled = false;
@@ -135,7 +136,7 @@ export default function TravelPlacesMap({
           isTransportStart: photo.isTransportStart,
           isTransportEnd: photo.isTransportEnd,
         })),
-        places.map((place) => ({
+        localPlaces.map((place) => ({
           latitude: place.latitude,
           longitude: place.longitude,
           visitedAt: place.visitedAt ?? null,
@@ -160,14 +161,14 @@ export default function TravelPlacesMap({
     return () => {
       cancelled = true;
     };
-  }, [photos, places]);
+  }, [photos, localPlaces]);
 
   useEffect(() => {
-    if (places.length !== placesCountRef.current) {
-      placesCountRef.current = places.length;
+    if (localPlaces.length !== placesCountRef.current) {
+      placesCountRef.current = localPlaces.length;
       skipAutoFitRef.current = false;
     }
-  }, [places.length]);
+  }, [localPlaces.length]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -468,7 +469,7 @@ export default function TravelPlacesMap({
       if (outbound?.hasGps) addFlight(outbound, FLIGHT_OUT_EMOJI);
       if (inbound?.hasGps) addFlight(inbound, FLIGHT_IN_EMOJI);
 
-      for (const place of showLocal ? places : []) {
+      for (const place of showLocal ? localPlaces : []) {
         bounds.push([place.longitude, place.latitude]);
         const isSelected = place.id === selectedPlaceId;
         const el = createEmojiMarkerElement(placeEmoji(place.type), isSelected ? 30 : 24);
@@ -532,7 +533,7 @@ export default function TravelPlacesMap({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    places,
+    localPlaces,
     photos,
     selectedPlaceId,
     selectedPhotoId,
