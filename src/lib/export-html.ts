@@ -2009,6 +2009,9 @@ export function buildExportHtml(ctx: ExportContext): string {
   // Blog chronicle → article section + lighter timeline; day chronicle → unified story.
   const useBlogArticleLayout = resolvedSource === "blog" && hasJournalArticle;
   const useUnifiedStory = (isMagazine || isVisual) && !useBlogArticleLayout;
+  const mapLeadResolved = useBlogArticleLayout
+    ? mapLead.replace(/Pulsa un día o «Lugares»/gi, "Pulsa «Lugares»")
+    : mapLead;
   const storyProse = useUnifiedStory
     ? extractJournalStoryProse(activeJournalMarkdown)
     : null;
@@ -2104,7 +2107,10 @@ export function buildExportHtml(ctx: ExportContext): string {
         coverPhotoPath: heroPhotoPath,
         heroGradient,
       })}
-${buildTocHtml(timelineEvents)}`
+${
+  // Blog article is thematic — day-jump TOC ("Saltar al día") does not apply.
+  useBlogArticleLayout ? "" : buildTocHtml(timelineEvents)
+}`
     : isVisual
       ? `<header class="hero"${heroPhotoPath ? ` data-export-hero="${escapeHtml(heroPhotoPath)}" data-export-hero-gradient="${escapeHtml(heroGradient)}" style="background-image:${heroGradient}, url('${escapeHtml(heroPhotoPath).replace(/'/g, "%27")}');background-size:cover;background-position:center"` : ""}>
       <div class="hero-content reveal">
@@ -2123,8 +2129,10 @@ ${buildTocHtml(timelineEvents)}`
       <p class="meta">${escapeHtml(dateRange)} · ${users.map((u) => escapeHtml(u.alias)).join(", ")} · ${escapeHtml(profile.label)}</p>
     </header>`;
   const localMapLead = dualMaps
-    ? "Recorrido en destino — sin el zoom de los vuelos. Pulsa un día o «Lugares» para acercarte."
-    : mapLead;
+    ? useBlogArticleLayout
+      ? "Recorrido en destino — sin el zoom de los vuelos. Pulsa «Lugares» para acercarte."
+      : "Recorrido en destino — sin el zoom de los vuelos. Pulsa un día o «Lugares» para acercarte."
+    : mapLeadResolved;
   const flightMapLead =
     "Trayecto aéreo de ida y vuelta — contexto del destino del viaje.";
   const useExplorerMap =

@@ -66,6 +66,8 @@ export default function GenerateJournalButton({
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
   const [canUndo, setCanUndo] = useState(hasPreviousJournal);
 
+  const [activeMode, setActiveMode] = useState<"refine" | "fresh" | null>(null);
+
   useEffect(() => {
     setCanUndo(hasPreviousJournal);
   }, [hasPreviousJournal]);
@@ -74,14 +76,15 @@ export default function GenerateJournalButton({
     setBrief(initialBrief);
   }, [initialBrief]);
 
-  const stepLabels = hasExistingJournal
-    ? REFINE_STEP_LABELS
-    : kind === "blog"
-      ? GENERATE_STEP_LABELS_BLOG
-      : GENERATE_STEP_LABELS;
+  const stepLabels =
+    activeMode === "refine"
+      ? REFINE_STEP_LABELS
+      : kind === "blog"
+        ? GENERATE_STEP_LABELS_BLOG
+        : GENERATE_STEP_LABELS;
 
-  const handleGenerate = async () => {
-    if (hasExistingJournal) {
+  const handleGenerate = async (mode: "refine" | "fresh") => {
+    if (mode === "refine" && hasExistingJournal) {
       const ok = confirm(
         kind === "blog"
           ? "La IA refinará el artículo blog actual: conservará tus ediciones e incorporará notas/fotos nuevas y tus indicaciones. Se guarda una copia para poder deshacer. ¿Continuar?"
@@ -89,7 +92,16 @@ export default function GenerateJournalButton({
       );
       if (!ok) return;
     }
+    if (mode === "fresh" && hasExistingJournal) {
+      const ok = confirm(
+        kind === "blog"
+          ? "Se generará un artículo blog NUEVO desde cero (estructura temática nueva). El texto actual se guarda para poder deshacer. ¿Continuar?"
+          : "Se generará una crónica NUEVA desde cero. El texto actual se guarda para poder deshacer. ¿Continuar?"
+      );
+      if (!ok) return;
+    }
 
+    setActiveMode(mode);
     setLoading(true);
     setError(null);
     setWarning(null);
@@ -107,6 +119,7 @@ export default function GenerateJournalButton({
           style,
           brief: brief.trim() || null,
           kind,
+          mode,
         }),
       });
 
@@ -164,6 +177,7 @@ export default function GenerateJournalButton({
       setError(err instanceof Error ? err.message : "Error al generar");
     } finally {
       setLoading(false);
+      setActiveMode(null);
       setCurrentStep(null);
     }
   };
@@ -275,33 +289,61 @@ export default function GenerateJournalButton({
         })}
       </fieldset>
 
-      <button
-        type="button"
-        onClick={() => void handleGenerate()}
-        disabled={loading || undoBusy}
-        className="btn-primary w-full py-3 text-sm disabled:opacity-50"
-      >
-        {loading
-          ? hasExistingJournal
+      {hasExistingJournal ? (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => void handleGenerate("refine")}
+            disabled={loading || undoBusy}
+            className="btn-primary flex-1 py-3 text-sm disabled:opacity-50"
+          >
+            {loading && activeMode === "refine"
+              ? kind === "blog"
+                ? "Refinando artículo…"
+                : "Refinando crónica…"
+              : kind === "blog"
+                ? "✨ Refinar artículo blog"
+                : "✨ Refinar crónica"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleGenerate("fresh")}
+            disabled={loading || undoBusy}
+            className="btn-secondary flex-1 py-3 text-sm disabled:opacity-50"
+          >
+            {loading && activeMode === "fresh"
+              ? kind === "blog"
+                ? "Generando artículo nuevo…"
+                : "Generando crónica nueva…"
+              : kind === "blog"
+                ? "Generar artículo de nuevo"
+                : "Generar crónica de nuevo"}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void handleGenerate("fresh")}
+          disabled={loading || undoBusy}
+          className="btn-primary w-full py-3 text-sm disabled:opacity-50"
+        >
+          {loading
             ? kind === "blog"
-              ? "Refinando artículo…"
-              : "Refinando crónica…"
-            : kind === "blog"
               ? "Generando artículo…"
               : "Generando crónica…"
-          : hasExistingJournal
-            ? kind === "blog"
-              ? "✨ Refinar artículo blog con IA"
-              : "✨ Refinar crónica con IA"
             : kind === "blog"
               ? "✨ Generar artículo blog con IA"
               : "✨ Generar diario con IA"}
-      </button>
+        </button>
+      )}
 
       {hasExistingJournal && (
         <p className="text-xs text-fg-secondary">
-          Cada refinamiento parte del texto actual (incluidas tus ediciones), aplica las
-          indicaciones e incorpora material nuevo. Se guarda una copia para deshacer.
+          <strong className="font-semibold text-fg">Refinar</strong> parte del texto
+          actual e incorpora material nuevo.{" "}
+          <strong className="font-semibold text-fg">Generar de nuevo</strong> crea
+          otra crónica desde cero (misma IA + notas/fotos). En ambos casos se guarda
+          copia para deshacer.
         </p>
       )}
 
