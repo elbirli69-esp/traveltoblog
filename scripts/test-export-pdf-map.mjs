@@ -96,6 +96,7 @@ assert.ok(url.includes("path-6"), "road path overlay");
 assert.ok(url.includes("path-4"), "flight path overlay");
 assert.ok(url.includes("818cf8"), "flight color");
 assert.ok(url.includes("/auto/"), "auto viewport");
+assert.ok(url.includes("padding="), "static map requests padding for context");
 
 const res = await fetch(url);
 assert.equal(res.status, 200, "mapbox static returns 200");
