@@ -26,6 +26,7 @@ export interface HtmlStaticMapPhotoInput {
 export interface HtmlStaticMapPlaceInput {
   id?: string;
   name: string;
+  type?: string;
   latitude: number;
   longitude: number;
   visitedAt?: Date | string | null;
@@ -67,6 +68,7 @@ function toPdfPlaces(places: HtmlStaticMapPlaceInput[]): PdfMapPlaceInput[] {
           ? place.visitedAt
           : new Date(place.visitedAt),
     name: place.name,
+    type: place.type,
   }));
 }
 

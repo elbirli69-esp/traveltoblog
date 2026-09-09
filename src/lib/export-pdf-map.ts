@@ -24,6 +24,11 @@ export interface PdfMapPlaceInput {
   longitude: number;
   visitedAt: Date | null;
   name?: string;
+  type?: string;
+}
+
+function isTransportPlaceType(type: string | null | undefined): boolean {
+  return type === "TRANSPORT";
 }
 
 export interface PdfMapBuildResult {
@@ -58,11 +63,13 @@ export function buildPdfRouteNodes(
       isTransportStart: photo.isTransportStart,
       isTransportEnd: photo.isTransportEnd,
     })),
-    places.map((place) => ({
-      latitude: place.latitude,
-      longitude: place.longitude,
-      visitedAt: place.visitedAt,
-    }))
+    places
+      .filter((place) => !isTransportPlaceType(place.type))
+      .map((place) => ({
+        latitude: place.latitude,
+        longitude: place.longitude,
+        visitedAt: place.visitedAt,
+      }))
   );
 }
 
@@ -147,7 +154,9 @@ function localMarkerWaypoints(
         p.longitude != null
     )
     .map((p) => ({ lng: p.longitude!, lat: p.latitude! }));
-  const placePts = places.map((p) => ({ lng: p.longitude, lat: p.latitude }));
+  const placePts = places
+    .filter((p) => !isTransportPlaceType(p.type))
+    .map((p) => ({ lng: p.longitude, lat: p.latitude }));
   return simplifyWaypoints([...photoPts, ...placePts], 8);
 }
 
