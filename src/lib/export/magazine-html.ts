@@ -133,14 +133,14 @@ export function buildPlaceCalloutsHtml(places: MagazinePlace[]): string {
   const sections = CALLOUT_TYPES.filter((type) => grouped.has(type))
     .map((type) => {
       const items = [...grouped.get(type)!].sort((a, b) =>
-        compareHighlightScore(a.highlightScore ?? 5, b.highlightScore ?? 5)
+        compareHighlightScore(a.highlightScore ?? 0, b.highlightScore ?? 0)
       );
       const emoji = PLACE_TYPE_EMOJI[type];
       const label = PLACE_TYPE_LABELS[type];
       const cards = items
         .map((p) => {
           const note = p.comment?.trim();
-          const score = p.highlightScore ?? 5;
+          const score = p.highlightScore ?? 0;
           const tierClass = exportHighlightClass(score, "mag-callout-card");
           const scoreBadge =
             score >= 8

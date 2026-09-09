@@ -103,7 +103,7 @@ export function buildStoryboardCandidates(
                 : p.exifDateTime.toISOString()
             );
       const priority = computeReelPhotoPriority({
-        highlightScore: p.highlightScore ?? 5,
+        highlightScore: p.highlightScore ?? 0,
         hasCaption: Boolean(caption),
         placeName: p.placeName,
         placeHighlightScore: p.placeHighlightScore,
@@ -112,7 +112,7 @@ export function buildStoryboardCandidates(
         photoId: p.id,
         dayKey: day,
         placeName: p.placeName?.trim() || null,
-        highlightScore: p.highlightScore ?? 5,
+        highlightScore: p.highlightScore ?? 0,
         isTransportStart: Boolean(p.isTransportStart),
         isTransportEnd: Boolean(p.isTransportEnd),
         existingCaption: caption ? clampNoteText(caption, 80) : null,

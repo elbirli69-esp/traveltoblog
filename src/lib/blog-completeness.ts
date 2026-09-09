@@ -238,7 +238,7 @@ export function buildBlogCompleteness(
   }
 
   // cover_story: no elevated highlights
-  const highlighted = selected.filter((p) => (p.highlightScore ?? 5) >= 7);
+  const highlighted = selected.filter((p) => (p.highlightScore ?? 0) >= 7);
   if (selected.length >= 8 && highlighted.length < 2) {
     candidates.push({
       code: "cover_story",

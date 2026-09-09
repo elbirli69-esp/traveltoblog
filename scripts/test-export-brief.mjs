@@ -32,7 +32,7 @@ const photos = Array.from({ length: 28 }, (_, i) => ({
   placeComment: i % 3 === 0 ? `Nota del sitio ${i}` : null,
   placeType: i % 3 === 0 ? "CAFE" : null,
   comments: i % 4 === 0 ? [`Comentario foto ${i}`] : [],
-  highlightScore: i % 5 === 0 ? 9 : 5,
+  highlightScore: i % 5 === 0 ? 9 : 0,
   latitude: 38.7 + i * 0.01,
   longitude: -9.1 + i * 0.01,
 }));

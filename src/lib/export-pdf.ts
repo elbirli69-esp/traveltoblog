@@ -142,7 +142,7 @@ export async function preparePdfAssets(
     pickDiverseExportPhotos(
       selectedRaw.map((p) => ({
         id: p.id,
-        highlightScore: p.highlightScore ?? 5,
+        highlightScore: p.highlightScore ?? 0,
         placeName: p.place?.name ?? null,
         placeId: p.placeId ?? null,
         latitude: p.latitude,
@@ -181,7 +181,7 @@ export async function preparePdfAssets(
       exifDateTime: photo.exifDateTime,
       alias: photo.user.alias,
       placeName: photo.place?.name ?? null,
-      highlightScore: photo.highlightScore ?? 5,
+      highlightScore: photo.highlightScore ?? 0,
       notes: photo.notes.map((n) => n.text),
       isTransportStart: photo.isTransportStart,
       isTransportEnd: photo.isTransportEnd,

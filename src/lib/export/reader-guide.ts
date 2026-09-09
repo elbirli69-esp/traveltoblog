@@ -51,7 +51,7 @@ export function selectReaderGuideItems(
     const tipA = Boolean(a.comment?.trim());
     const tipB = Boolean(b.comment?.trim());
     if (tipA !== tipB) return tipA ? -1 : 1;
-    return compareHighlightScore(a.highlightScore ?? 5, b.highlightScore ?? 5);
+    return compareHighlightScore(a.highlightScore ?? 0, b.highlightScore ?? 0);
   });
 
   return ranked.slice(0, maxItems).map((p) => {
@@ -63,7 +63,7 @@ export function selectReaderGuideItems(
       typeLabel,
       emoji,
       tip,
-      highlightScore: p.highlightScore ?? 5,
+      highlightScore: p.highlightScore ?? 0,
       alias: p.alias?.trim() || "",
     };
   });

@@ -350,6 +350,8 @@ if [[ "${MIGRATE_DB:-}" == "1" ]]; then
   if "${SSH_CMD[@]}" "$SSH_TARGET" "test -f ${REMOTE_DIR}/travel.db.migrate"; then
     "${SSH_CMD[@]}" "$SSH_TARGET" "cat ${REMOTE_DIR}/travel.db.migrate" > /tmp/traveltoblog-migrate.db
     if DATABASE_URL="file:/tmp/traveltoblog-migrate.db" npx prisma db push --skip-generate; then
+      # Old Photo/Place default was 5 (neutral); new default is 0 (unscored).
+      DATABASE_URL="file:/tmp/traveltoblog-migrate.db" npx --yes tsx scripts/migrate-highlight-score-default.ts || true
       cat /tmp/traveltoblog-migrate.db | "${SSH_CMD[@]}" "$SSH_TARGET" "cat > ${REMOTE_DIR}/travel.db.migrate"
       "${SSH_CMD[@]}" "$SSH_TARGET" bash -s <<MIGRATE
 set -euo pipefail

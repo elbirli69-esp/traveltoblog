@@ -378,7 +378,7 @@ export async function importProjectBackup(
           longitude: p.longitude,
           comment: p.comment,
           visitedAt: parseDate(p.visitedAt),
-          highlightScore: p.highlightScore ?? 5,
+          highlightScore: p.highlightScore ?? 0,
           localId: createLocalId(),
         },
       });
@@ -420,7 +420,7 @@ export async function importProjectBackup(
           longitude: p.longitude,
           placeId: p.placeId ? placeMap.get(p.placeId) ?? null : null,
           selected: p.selected ?? true,
-          highlightScore: p.highlightScore ?? 5,
+          highlightScore: p.highlightScore ?? 0,
           isTransportStart: p.isTransportStart ?? false,
           isTransportEnd: p.isTransportEnd ?? false,
           localId,

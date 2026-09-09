@@ -30,7 +30,7 @@ test("selectReaderGuideItems prefers tips then highlight, caps at 5", () => {
 test("selectReaderGuideItems never invents places", () => {
   assert.deepEqual(selectReaderGuideItems([]), []);
   const one = selectReaderGuideItems([
-    { name: "Solo", type: "OTHER", comment: null, highlightScore: 5 },
+    { name: "Solo", type: "OTHER", comment: null, highlightScore: 0 },
   ]);
   assert.equal(one.length, 1);
   assert.equal(one[0].name, "Solo");

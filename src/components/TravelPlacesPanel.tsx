@@ -859,7 +859,7 @@ export default function TravelPlacesPanel({
                 <span className="mr-2 text-lg">{placeEmoji(place.type)}</span>
                 <span className="font-medium text-fg">{place.name}</span>
                 <span className="ml-2 text-xs text-fg-tertiary">{placeLabel(place.type)}</span>
-                {(place.highlightScore ?? 5) !== 5 && (
+                {(place.highlightScore ?? 0) !== 0 && (
                   <span className="ml-2 rounded-full bg-[var(--surface-inset)] px-1.5 py-0.5 text-[10px] font-bold text-accent-mint">
                     {place.highlightScore}/10
                   </span>
@@ -913,7 +913,7 @@ export default function TravelPlacesPanel({
             </p>
           </div>
           <HighlightScoreControl
-            value={selectedPlace.highlightScore ?? 5}
+            value={selectedPlace.highlightScore ?? 0}
             onChange={(highlightScore) => {
               // Optimistic: parent list may refresh; control keeps draft until release.
               void (async () => {

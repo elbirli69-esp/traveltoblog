@@ -145,7 +145,7 @@ function pickHeroPhoto(photos: PdfPhotoAsset[], coverPhotoId?: string | null): P
     if (chosen) return chosen;
   }
   const sorted = [...photos].sort(
-    (a, b) => (b.highlightScore ?? 5) - (a.highlightScore ?? 5)
+    (a, b) => (b.highlightScore ?? 0) - (a.highlightScore ?? 0)
   );
   return sorted[0] ?? photos[0]!;
 }
@@ -163,7 +163,7 @@ function groupPhotosByDay(photos: PdfPhotoAsset[]): Map<string, PdfPhotoAsset[]>
 
 function isLowScore(photo: PdfPhotoAsset): boolean {
   // Pack mid-tier shots into mosaics; reserve full-bleed/featured for true highlights.
-  return (photo.highlightScore ?? 5) < 8;
+  return (photo.highlightScore ?? 0) < 8;
 }
 
 /**
@@ -289,7 +289,7 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
     let i = 0;
     while (i < dayPhotos.length) {
       const photo = dayPhotos[i]!;
-      const score = photo.highlightScore ?? 5;
+      const score = photo.highlightScore ?? 0;
       const isFirstOfDay = i === 0;
       const next = dayPhotos[i + 1];
 
@@ -311,7 +311,7 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
       if (
         next &&
         score < pairScoreCap &&
-        (next.highlightScore ?? 5) < pairScoreCap
+        (next.highlightScore ?? 0) < pairScoreCap
       ) {
         push({ kind: "pair", photos: [photo, next] });
         i += 2;

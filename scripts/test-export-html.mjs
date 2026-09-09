@@ -26,7 +26,7 @@ const photos = [
     alias: "Ana",
     isTransportStart: true,
     isTransportEnd: false,
-    highlightScore: 5,
+    highlightScore: 0,
   },
   {
     id: "p1",
@@ -73,7 +73,7 @@ const photos = [
     alias: "Ana",
     isTransportStart: false,
     isTransportEnd: true,
-    highlightScore: 5,
+    highlightScore: 0,
   },
 ];
 

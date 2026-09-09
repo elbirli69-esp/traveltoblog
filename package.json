@@ -11,6 +11,8 @@
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate-place-notes": "prisma db push && npx --yes tsx scripts/migrate-place-comments.ts",
+    "db:migrate-highlight-default": "npx --yes tsx scripts/migrate-highlight-score-default.ts",
+    "test:highlight-score": "npx --yes tsx scripts/test-highlight-score.mjs",
     "db:studio": "prisma studio",
     "test:timeline": "npx --yes tsx scripts/test-timeline.mjs",
     "test:project-backup": "npx --yes tsx scripts/test-project-backup.mjs",

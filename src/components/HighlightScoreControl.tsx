@@ -41,7 +41,7 @@ export default function HighlightScoreControl({
   };
 
   const score = draft;
-  const neutral = score === HIGHLIGHT_SCORE_DEFAULT;
+  const unscored = score === HIGHLIGHT_SCORE_DEFAULT;
 
   return (
     <div className={compact ? "space-y-1" : "space-y-1.5"}>
@@ -57,8 +57,8 @@ export default function HighlightScoreControl({
           }`}
         >
           {score}/10
-          {neutral && (
-            <span className="ml-1 font-normal text-fg-tertiary">(neutro)</span>
+          {unscored && (
+            <span className="ml-1 font-normal text-fg-tertiary">(sin puntuar)</span>
           )}
         </span>
       </div>
@@ -104,8 +104,8 @@ export default function HighlightScoreControl({
         aria-label={label}
       />
       <p className="text-[11px] leading-snug text-fg-tertiary">
-        No es la nota de texto de la foto. 5 = neutro. Más alto: más peso en el
-        Reel y más protagonismo en el HTML. 0 = al final por si acaso.
+        No es la nota de texto de la foto. 0 = sin puntuar. 5 = media. Más alto:
+        más peso en el Reel y más protagonismo en el HTML/PDF.
       </p>
     </div>
   );
