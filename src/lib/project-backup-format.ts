@@ -16,12 +16,16 @@ export type ProjectBackupManifestV1 = {
     journalMarkdown: string | null;
     journalGeneratedAt: string | null;
     journalMarkdownPrevious: string | null;
+    journalBlogMarkdown?: string | null;
+    journalBlogGeneratedAt?: string | null;
+    journalBlogMarkdownPrevious?: string | null;
     journalBrief: string | null;
     exportBrief: string | null;
     exportBriefCache: string | null;
     htmlTemplateId: string | null;
     htmlThemePackId: string | null;
     htmlTypePackId: string | null;
+    htmlJournalSource?: string | null;
     reelPresetId: string | null;
     pdfPresetId: string | null;
     /** Optional B5 destination fiche (older backups omit these). */

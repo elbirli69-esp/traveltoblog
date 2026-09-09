@@ -9,6 +9,7 @@ import {
   type DestinationFiche,
 } from "@/lib/destination-fiche";
 import { resolveFlightLegs } from "@/lib/flights";
+import type { JournalKind } from "@/lib/journal-kind";
 import { placeEmoji, placeLabel } from "@/lib/places";
 import { formatDateKey, isoToDateKey, resolveTravelDayRange } from "@/lib/travel-dates";
 
@@ -119,6 +120,19 @@ const DAY_SYNTHESIS_RULES = `SÍNTESIS (importante — el export HTML ya muestra
 export function journalPipelineVoiceRules(): string {
   return VOICE_RULES;
 }
+
+function journalKindPromptAddon(kind: JournalKind): string {
+  if (kind !== "blog") return "";
+  return `
+
+FORMATO ARTÍCULO BLOG (prioridad alta):
+- El lector objetivo es alguien que piensa hacer un viaje similar.
+- Prioriza ritmo del destino, qué merece la pena y tips prácticos anclados a lo vivido.
+- NO estructures por encabezados de fecha (### día); el ensamblado final será un artículo continuo.
+- Intro: gancho del destino + por qué merece la pena (con hechos del viaje).
+- Conclusión: cierra con «si vas» — 1-2 consejos útiles sin inventar horarios ni sitios no documentados.`;
+}
+
 interface JournalPromptConfig {
   intro: { system: string; temperature: number };
   days: { system: string; temperature: number };
@@ -138,8 +152,15 @@ Incorpóralas con naturalidad. No inventes nada fuera de estas indicaciones y de
 }
 
 /** Exported for regression tests — must not recurse. */
-export function journalPromptContextAddon(ctx: EnhancedJournalContext): string {
-  return briefBlock(ctx.brief) + destinationFichePromptAddon(ctx.destination);
+export function journalPromptContextAddon(
+  ctx: EnhancedJournalContext,
+  kind: JournalKind = "day"
+): string {
+  return (
+    briefBlock(ctx.brief) +
+    destinationFichePromptAddon(ctx.destination) +
+    journalKindPromptAddon(kind)
+  );
 }
 
 function getJournalPromptConfig(style: JournalStyle): JournalPromptConfig {
@@ -423,29 +444,40 @@ function extractJsonArray<T>(text: string): T[] {
 export interface JournalPipelineOptions {
   /** When set, refine this markdown instead of generating from scratch. */
   existingMarkdown?: string | null;
+  /** day = diario por fechas; blog = artículo continuo. */
+  kind?: JournalKind;
 }
 
 const MAX_EXISTING_MARKDOWN_CHARS = 60_000;
 
-function getRefineSystemPrompt(style: JournalStyle): { system: string; temperature: number } {
+function getRefineSystemPrompt(
+  style: JournalStyle,
+  kind: JournalKind = "day"
+): { system: string; temperature: number } {
+  const structureDay = `- Mantén el título (# …), la sección «El viaje día a día» con capítulos ### por fecha, anexos (Lugares / Transporte / Notas) y conclusión.`;
+  const structureBlog = `- Mantén estructura de ARTÍCULO: título (# …), prosa continua bajo «## El viaje» (SIN ### por fecha), anexos (Lugares / Transporte / Notas) y cierre «## Si vas».
+- Si la crónica actual está troceada por días (### fechas), fusiónala en prosa continua bajo «## El viaje».
+- El tono debe servir a alguien que planea un viaje similar (tips anclados a lo vivido).`;
+
   const base = `Eres un editor de crónicas de viaje colaborativas pensadas para un BLOG.
 Te dan la crónica Markdown YA ESCRITA (puede incluir ediciones humanas) y el contexto actualizado del viaje (notas, fotos, lugares, vuelos) más indicaciones_usuario si existen.
 
 Tu tarea: devolver UNA única crónica Markdown completa REFINADA.
 
 ${VOICE_RULES}
+${journalKindPromptAddon(kind)}
 
 REGLAS DE REFINAMIENTO:
-- Parte de la crónica existente: conserva el tono, la estructura y las formulaciones que ya funcionan.
+- Parte de la crónica existente: conserva el tono, la estructura pedida y las formulaciones que ya funcionan.
 - Incorpora notas, fotos o lugares NUEVOS que falten en el texto — como SÍNTESIS, no como citas pegadas.
-- En los párrafos de cada día: resume lugares y hechos; añade curiosidades históricas/culturales ancladas a lugares o al destino del título cuando falten y aporten al lector.
+- En los párrafos del cuerpo: resume lugares y hechos; añade curiosidades históricas/culturales ancladas a lugares o al destino del título cuando falten y aporten al lector.
 - PROHIBIDO blockquotes (>) y comillas con el texto casi literal de notas/comentarios (esas citas viven en el recorrido del export).
 - Si la crónica actual tiene citas literales de notas, reescríbelas como prosa resumida.
 - Corrige solo lo contradictorio, vacío o claramente peor que el contexto nuevo.
 - NO tires el texto para reescribirlo de cero si no hace falta.
 - PRESERVA todas las imágenes Markdown existentes (![alt](url)) y sus URLs; puedes mejorar el alt/caption con micro-contexto del lugar.
 - Añade imágenes de fotos nuevas del contexto si aún no están en la crónica, con caption breve.
-- Mantén el título (# …), secciones por día y conclusión.
+${kind === "blog" ? structureBlog : structureDay}
 - Respeta indicaciones_usuario con prioridad alta.
 - Si las indicaciones piden tips: asegura al menos un consejo práctico anclado a un lugar/día del contexto (en cuerpo o cierre).
 - Responde SOLO con el Markdown final, sin explicaciones ni fences \`\`\`.`;
@@ -565,13 +597,14 @@ export async function refineJournalMarkdown(
   model: string,
   ctx: EnhancedJournalContext,
   existingMarkdown: string,
-  style: JournalStyle = "narrative"
+  style: JournalStyle = "narrative",
+  kind: JournalKind = "day"
 ): Promise<string> {
-  const { system, temperature } = getRefineSystemPrompt(style);
+  const { system, temperature } = getRefineSystemPrompt(style, kind);
   const raw = await callAi(
     ai,
     model,
-    system + journalPromptContextAddon(ctx),
+    system + journalPromptContextAddon(ctx, kind),
     buildRefineUserPayload(ctx, existingMarkdown),
     temperature
   );
@@ -579,14 +612,15 @@ export async function refineJournalMarkdown(
   if (!refined || refined.length < 40) {
     throw new Error("La IA devolvió una crónica vacía al refinar");
   }
-  return sanitizeJournalDayProse(refined);
+  return kind === "blog" ? refined : sanitizeJournalDayProse(refined);
 }
 
 export async function generateIntroduction(
   ai: OpenAI,
   model: string,
   ctx: EnhancedJournalContext,
-  style: JournalStyle = "narrative"
+  style: JournalStyle = "narrative",
+  kind: JournalKind = "day"
 ): Promise<string> {
   const prompts = getJournalPromptConfig(style);
   const user = JSON.stringify(
@@ -605,7 +639,7 @@ export async function generateIntroduction(
   return callAi(
     ai,
     model,
-    prompts.intro.system + journalPromptContextAddon(ctx),
+    prompts.intro.system + journalPromptContextAddon(ctx, kind),
     user,
     prompts.intro.temperature
   );
@@ -615,7 +649,8 @@ export async function generateDaySummaries(
   ai: OpenAI,
   model: string,
   ctx: EnhancedJournalContext,
-  style: JournalStyle = "narrative"
+  style: JournalStyle = "narrative",
+  kind: JournalKind = "day"
 ): Promise<DaySummaryRow[]> {
   if (ctx.days.length === 0) return [];
 
@@ -643,7 +678,7 @@ export async function generateDaySummaries(
   const raw = await callAi(
     ai,
     model,
-    prompts.days.system + journalPromptContextAddon(ctx),
+    prompts.days.system + journalPromptContextAddon(ctx, kind),
     user,
     prompts.days.temperature
   );
@@ -671,7 +706,8 @@ export async function generatePhotoCaptions(
   ai: OpenAI,
   model: string,
   ctx: EnhancedJournalContext,
-  style: JournalStyle = "narrative"
+  style: JournalStyle = "narrative",
+  kind: JournalKind = "day"
 ): Promise<PhotoCaptionRow[]> {
   const allPhotos = ctx.days.flatMap((d) =>
     d.photos.map((p) => ({
@@ -694,7 +730,7 @@ export async function generatePhotoCaptions(
   const raw = await callAi(
     ai,
     model,
-    prompts.captions.system + journalPromptContextAddon(ctx),
+    prompts.captions.system + journalPromptContextAddon(ctx, kind),
     user,
     prompts.captions.temperature
   );
@@ -716,7 +752,8 @@ export async function generateConclusion(
   ctx: EnhancedJournalContext,
   intro: string,
   daySummaries: DaySummaryRow[],
-  style: JournalStyle = "narrative"
+  style: JournalStyle = "narrative",
+  kind: JournalKind = "day"
 ): Promise<string> {
   const prompts = getJournalPromptConfig(style);
   const user = JSON.stringify(
@@ -737,7 +774,7 @@ export async function generateConclusion(
   return callAi(
     ai,
     model,
-    prompts.conclusion.system + journalPromptContextAddon(ctx),
+    prompts.conclusion.system + journalPromptContextAddon(ctx, kind),
     user,
     prompts.conclusion.temperature
   );
@@ -801,6 +838,15 @@ export function assembleJournalMarkdown(
     }
   }
 
+  appendJournalMetaSections(lines, ctx);
+  lines.push("---", "", conclusion.trim());
+  return lines.join("\n");
+}
+
+function appendJournalMetaSections(
+  lines: string[],
+  ctx: EnhancedJournalContext
+): void {
   if (ctx.places.length > 0) {
     lines.push("---", "", "## Lugares del recorrido", "");
     for (const place of ctx.places) {
@@ -834,9 +880,87 @@ export function assembleJournalMarkdown(
       lines.push(`**${note.author}:** ${note.text}`, "");
     }
   }
+}
 
-  lines.push("---", "", conclusion.trim());
+/**
+ * Continuous blog article: no ### day headers — prose flows under «El viaje»,
+ * closing under «Si vas» for readers planning a similar trip.
+ */
+export function assembleBlogJournalMarkdown(
+  ctx: EnhancedJournalContext,
+  intro: string,
+  daySummaries: DaySummaryRow[],
+  captions: PhotoCaptionRow[],
+  conclusion: string
+): string {
+  const captionByUrl = new Map(captions.map((c) => [c.url, c.caption]));
+  const summaryByDate = new Map(daySummaries.map((d) => [d.date, d.summary]));
+
+  const lines: string[] = [
+    `# ${ctx.title}`,
+    "",
+    intro.trim(),
+    "",
+    "---",
+    "",
+    "## El viaje",
+    "",
+  ];
+
+  const daysToRender =
+    ctx.days.length > 0
+      ? ctx.days
+      : daySummaries.map((d) => ({
+          date: d.date,
+          dayNotes: [],
+          photos: [] as EnhancedDayPhoto[],
+          places: [] as EnhancedDayBlock["places"],
+        }));
+
+  for (const day of daysToRender) {
+    const summary =
+      summaryByDate.get(day.date) ??
+      (day.dayNotes.map((n) => n.text).join(" ") || "");
+    const prose = sanitizeDaySummaryProse(summary.trim());
+    if (prose) {
+      lines.push(prose, "");
+    }
+
+    const sortedPhotos = [...day.photos].sort((a, b) => {
+      const ta = a.exifDateTime ? new Date(a.exifDateTime).getTime() : 0;
+      const tb = b.exifDateTime ? new Date(b.exifDateTime).getTime() : 0;
+      return ta - tb;
+    });
+
+    for (const photo of sortedPhotos) {
+      const defaultCap =
+        photo.comments.join(" · ") ||
+        (photo.isTransportStart
+          ? "Salida — inicio del viaje"
+          : photo.isTransportEnd
+            ? "Regreso — fin del viaje"
+            : "Momento del viaje");
+      const caption = captionByUrl.get(photo.url) ?? defaultCap;
+      lines.push(`![${caption.replace(/[\[\]]/g, "")}](${photo.url})`, "", `*${photo.author}*`, "");
+    }
+  }
+
+  appendJournalMetaSections(lines, ctx);
+  lines.push("---", "", "## Si vas", "", conclusion.trim());
   return lines.join("\n");
+}
+
+export function assembleJournalByKind(
+  kind: JournalKind,
+  ctx: EnhancedJournalContext,
+  intro: string,
+  daySummaries: DaySummaryRow[],
+  captions: PhotoCaptionRow[],
+  conclusion: string
+): string {
+  return kind === "blog"
+    ? assembleBlogJournalMarkdown(ctx, intro, daySummaries, captions, conclusion)
+    : assembleJournalMarkdown(ctx, intro, daySummaries, captions, conclusion);
 }
 
 export type PipelineProgressCallback = (event: JournalPipelineEvent) => void;
@@ -860,8 +984,14 @@ export function isAiUnreachableError(error: unknown): boolean {
 }
 
 /** Template journal when DeepSeek API is unreachable (e.g. NAS DNS issues). */
-export function buildLocalJournalMarkdown(ctx: EnhancedJournalContext): string {
-  const intro = `Diario colaborativo del viaje **${ctx.title}**, con la participación de ${ctx.participants.join(", ")}.`;
+export function buildLocalJournalMarkdown(
+  ctx: EnhancedJournalContext,
+  kind: JournalKind = "day"
+): string {
+  const intro =
+    kind === "blog"
+      ? `Guía vivida de **${ctx.title}**, contada por ${ctx.participants.join(", ")} — útil si estás pensando en un viaje parecido.`
+      : `Diario colaborativo del viaje **${ctx.title}**, con la participación de ${ctx.participants.join(", ")}.`;
 
   const daySummaries: DaySummaryRow[] = ctx.days.map((d) => ({
     date: d.date,
@@ -883,9 +1013,12 @@ export function buildLocalJournalMarkdown(ctx: EnhancedJournalContext): string {
     }))
   );
 
-  const conclusion = `Fin del relato de **${ctx.title}**. Gracias a todos los participantes por compartir este viaje.`;
+  const conclusion =
+    kind === "blog"
+      ? `Si vas a **${ctx.title}**, reserva tiempo para pasear sin prisa y anota los sitios que más os gustaron. Gracias a ${ctx.participants.join(", ")} por compartir el viaje.`
+      : `Fin del relato de **${ctx.title}**. Gracias a todos los participantes por compartir este viaje.`;
 
-  const body = assembleJournalMarkdown(ctx, intro, daySummaries, captions, conclusion);
+  const body = assembleJournalByKind(kind, ctx, intro, daySummaries, captions, conclusion);
   return `> ⚠️ *Crónica generada sin IA: el servidor no pudo contactar el servicio de IA (revisa DNS/red del NAS). Puedes volver a generar cuando haya conexión.*\n\n${body}`;
 }
 
@@ -897,6 +1030,7 @@ export async function runJournalPipeline(
 ): Promise<string> {
   const emit = (event: JournalPipelineEvent) => onProgress?.(event);
   const existingMarkdown = options.existingMarkdown?.trim() || null;
+  const kind: JournalKind = options.kind === "blog" ? "blog" : "day";
 
   try {
     const ai = createAiClient();
@@ -908,43 +1042,69 @@ export async function runJournalPipeline(
       emit({
         step: "refine",
         status: "running",
-        message: "Refinando la crónica existente…",
+        message:
+          kind === "blog"
+            ? "Refinando el artículo blog…"
+            : "Refinando la crónica existente…",
       });
       const markdown = await refineJournalMarkdown(
         ai,
         model,
         ctx,
         existingMarkdown,
-        style
+        style,
+        kind
       );
       emit({ step: "refine", status: "done" });
       emit({
         step: "complete",
         status: "done",
         markdown,
-        message: "Crónica refinada a partir del texto anterior",
+        message:
+          kind === "blog"
+            ? "Artículo blog refinado"
+            : "Crónica refinada a partir del texto anterior",
       });
       return markdown;
     }
 
     emit({ step: "intro", status: "running", message: "Escribiendo introducción…" });
-    const intro = await generateIntroduction(ai, model, ctx, style);
+    const intro = await generateIntroduction(ai, model, ctx, style, kind);
     emit({ step: "intro", status: "done" });
 
     emit({ step: "days", status: "running", message: "Resumiendo cada día…" });
-    const daySummaries = await generateDaySummaries(ai, model, ctx, style);
+    const daySummaries = await generateDaySummaries(ai, model, ctx, style, kind);
     emit({ step: "days", status: "done" });
 
     emit({ step: "captions", status: "running", message: "Mejorando leyendas de fotos…" });
-    const captions = await generatePhotoCaptions(ai, model, ctx, style);
+    const captions = await generatePhotoCaptions(ai, model, ctx, style, kind);
     emit({ step: "captions", status: "done" });
 
-    emit({ step: "conclusion", status: "running", message: "Cerrando el relato…" });
-    const conclusion = await generateConclusion(ai, model, ctx, intro, daySummaries, style);
+    emit({
+      step: "conclusion",
+      status: "running",
+      message: kind === "blog" ? "Escribiendo el cierre «Si vas»…" : "Cerrando el relato…",
+    });
+    const conclusion = await generateConclusion(
+      ai,
+      model,
+      ctx,
+      intro,
+      daySummaries,
+      style,
+      kind
+    );
     emit({ step: "conclusion", status: "done" });
 
     emit({ step: "assemble", status: "running", message: "Ensamblando artículo…" });
-    const markdown = assembleJournalMarkdown(ctx, intro, daySummaries, captions, conclusion);
+    const markdown = assembleJournalByKind(
+      kind,
+      ctx,
+      intro,
+      daySummaries,
+      captions,
+      conclusion
+    );
     emit({ step: "assemble", status: "done" });
 
     emit({ step: "complete", status: "done", markdown });
@@ -971,7 +1131,7 @@ export async function runJournalPipeline(
     emit({ step: "conclusion", status: "done" });
     emit({ step: "assemble", status: "running", message: "Ensamblando artículo…" });
 
-    const markdown = buildLocalJournalMarkdown(ctx);
+    const markdown = buildLocalJournalMarkdown(ctx, kind);
     emit({ step: "assemble", status: "done" });
     emit({
       step: "complete",

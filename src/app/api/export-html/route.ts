@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
       typePack: typePackRaw,
       publicTitle = "",
       includeReaderGuide = true,
+      journalSource,
     } = body as {
       travelId?: string;
       template?: ExportTemplateId;
@@ -98,6 +99,7 @@ export async function POST(request: NextRequest) {
       typePack?: string;
       publicTitle?: string;
       includeReaderGuide?: boolean;
+      journalSource?: "day" | "blog";
     };
 
     if (!travelId) {
@@ -151,7 +153,9 @@ export async function POST(request: NextRequest) {
         ? await interpretExportBrief(briefText, {
             target: "html",
             photoCount: travel.photos.filter((p) => p.selected).length || travel.photos.length,
-            hasJournal: Boolean(travel.journalMarkdown?.trim()),
+            hasJournal: Boolean(
+              travel.journalMarkdown?.trim() || travel.journalBlogMarkdown?.trim()
+            ),
             travelTitle: travel.title,
           })
         : null;
@@ -238,6 +242,8 @@ export async function POST(request: NextRequest) {
           startDate: travel.startDate,
           endDate: travel.endDate,
           journalMarkdown: travel.journalMarkdown,
+          journalBlogMarkdown: travel.journalBlogMarkdown,
+          htmlJournalSource: travel.htmlJournalSource,
           travelType: travel.travelType,
         },
         users: travel.users,
@@ -258,6 +264,10 @@ export async function POST(request: NextRequest) {
             ? publicTitle.trim().slice(0, 200)
             : null,
         includeReaderGuide: includeReaderGuide !== false,
+        journalSource:
+          journalSource === "blog" || journalSource === "day"
+            ? journalSource
+            : undefined,
       };
 
       const slug = exportSlug(

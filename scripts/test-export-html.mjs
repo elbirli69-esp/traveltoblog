@@ -148,6 +148,25 @@ assert.ok(!international.includes('href="#historia"'), "no separate crónica nav
 assert.ok(!international.includes("Crónica del viaje"), "no separate journal section");
 assert.ok(international.includes("Llegamos") || international.includes("story-day-prose") || international.includes("story-intro"), "day prose interleaved or present");
 
+const blogArticle = buildExportHtml({
+  travel: {
+    ...baseTravel,
+    journalMarkdown: "## Día 1\n\nSolo diario.",
+    journalBlogMarkdown: `# Krakow\n\nGancho.\n\n---\n\n## El viaje\n\nPaseo continuo.\n\n---\n\n## Si vas\n\nTips.`,
+    htmlJournalSource: "blog",
+  },
+  users,
+  photos,
+  places: [],
+  template: "magazine",
+  typology: "CITY_BREAK",
+  journalSource: "blog",
+});
+assert.ok(blogArticle.includes('id="cronica"'), "blog source uses article section");
+assert.ok(blogArticle.includes("Si vas") || blogArticle.includes("Paseo continuo"), "blog prose in article");
+assert.ok(blogArticle.includes('id="cronologia"') || blogArticle.includes("Itinerario"), "keeps timeline as recorrido");
+assert.ok(!/<div class="story-day-prose/.test(blogArticle), "blog mode does not interleave day prose");
+
 const galleryIdx = international.indexOf('id="galeria"');
 const guideIdx = international.indexOf('id="guia"');
 const closingIdx = international.indexOf('id="cierre"');

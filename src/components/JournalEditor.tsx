@@ -3,17 +3,20 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import JournalMarkdown from "@/components/JournalMarkdown";
+import type { JournalKind } from "@/lib/journal-kind";
 
 interface JournalEditorProps {
   travelId: string;
   initialMarkdown: string;
   generatedAt: string | null;
+  kind?: JournalKind;
 }
 
 export default function JournalEditor({
   travelId,
   initialMarkdown,
   generatedAt,
+  kind = "day",
 }: JournalEditorProps) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -47,11 +50,19 @@ export default function JournalEditor({
       const res = await fetch(`/api/travels/${travelId}/journal`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ journalMarkdown: draft }),
+        body: JSON.stringify(
+          kind === "blog"
+            ? { kind: "blog", journalBlogMarkdown: draft }
+            : { kind: "day", journalMarkdown: draft }
+        ),
       });
       if (!res.ok) throw new Error("No se pudo guardar");
       const data = await res.json();
-      setMarkdown(data.travel.journalMarkdown ?? draft);
+      const saved =
+        kind === "blog"
+          ? (data.travel.journalBlogMarkdown ?? draft)
+          : (data.travel.journalMarkdown ?? draft);
+      setMarkdown(saved);
       setEditing(false);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2500);

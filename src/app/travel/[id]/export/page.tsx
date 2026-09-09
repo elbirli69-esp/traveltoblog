@@ -22,6 +22,8 @@ export default async function ExportPage({
       id: true,
       title: true,
       journalMarkdown: true,
+      journalBlogMarkdown: true,
+      htmlJournalSource: true,
       photos: {
         where: { selected: true },
         select: {
@@ -93,7 +95,11 @@ export default async function ExportPage({
       <ExportFormatTabs
         travelId={travel.id}
         travelTitle={travel.title}
-        hasJournal={Boolean(travel.journalMarkdown)}
+        hasJournal={Boolean(
+          travel.journalMarkdown?.trim() || travel.journalBlogMarkdown?.trim()
+        )}
+        hasDayJournal={Boolean(travel.journalMarkdown?.trim())}
+        hasBlogJournal={Boolean(travel.journalBlogMarkdown?.trim())}
         hasGpsPhotos={hasGpsPhotos}
         photoCount={selectedPhotoCount}
         allPhotoCount={allPhotoCount}
