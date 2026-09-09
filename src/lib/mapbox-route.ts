@@ -571,22 +571,26 @@ export function buildMapboxStaticOverlaysSegmented(
     trailPolylines
   );
   const markers = buildRouteMarkerOverlays(markerWaypoints);
-  return markers ? `${markers},${paths}` : paths;
+  if (markers && paths) return `${markers},${paths}`;
+  return markers || paths;
 }
 
 export function buildMapboxStaticUrl(
   stylePath: string,
   overlays: string,
   width: number,
-  height: number
+  height: number,
+  options?: { padding?: number | string }
 ): string | null {
   const token = MAPBOX_TOKEN;
   if (!token) return null;
 
+  const padding =
+    options?.padding == null ? "" : `&padding=${encodeURIComponent(String(options.padding))}`;
   const base =
     `https://api.mapbox.com/styles/v1/${stylePath}/static/` +
     `${overlays}/auto/${width}x${height}@2x` +
-    `?access_token=${encodeURIComponent(token)}&logo=false&attribution=false`;
+    `?access_token=${encodeURIComponent(token)}&logo=false&attribution=false${padding}`;
 
   if (base.length > STATIC_URL_MAX_LEN) return null;
   return base;

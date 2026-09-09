@@ -134,6 +134,26 @@ assert.ok(
   !embeddedPoints.some((point) => point.kind === "place" && point.placeType === "TRANSPORT"),
   "destination map excludes transport places that would widen the zoom"
 );
+assert.ok(
+  !embeddedPoints.some((point) => point.kind === "flight-out" || point.kind === "flight-in"),
+  "destination map excludes flight endpoints"
+);
+assert.ok(international.includes("fitBounds(b, { padding: [72, 96], maxZoom: 6 })"), "flight map has context padding");
+assert.ok(international.includes("mapa-trayecto") || international.includes("map-trayecto"), "flight overview section");
+
+const dayGroupsMatch = international.match(/var dayGroups = (\[[\s\S]*?\]);/);
+assert.ok(dayGroupsMatch, "embeds dayGroups");
+const embeddedDayGroups = JSON.parse(dayGroupsMatch[1]);
+const allGroup = embeddedDayGroups.find((g) => g.id === "all");
+assert.ok(allGroup, "has Todo el viaje group");
+assert.ok(
+  allGroup.bounds[0][0] > 45 && allGroup.bounds[1][0] < 55,
+  "Todo el viaje bounds stay on destination (not Madrid→Krakow)"
+);
+assert.ok(
+  !embeddedDayGroups.some((g) => g.id === "flights"),
+  "destination sidebar omits vuelos when dual maps"
+);
 
 // INTERNATIONAL section order: flights before map before timeline (play excluded in magazine)
 const flightsIdx = international.indexOf("id=\"vuelos\"");

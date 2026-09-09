@@ -90,19 +90,25 @@ export function pdfMapPointsFromPhotosAndPlaces(
   }));
 }
 
+/** Extra edge room so long-haul origin/destination aren't glued to corners. */
+export const MAP_STATIC_PADDING_FLIGHTS = 110;
+export const MAP_STATIC_PADDING_LOCAL = 56;
+
 /** Landscape Mapbox static image with road + flight + optional GPS trail overlays. */
 export function buildPdfMapStaticUrl(
   markerWaypoints: { lng: number; lat: number }[],
   roadPolylines: string[],
   flightPolylines: string[],
   roadColors?: string[],
-  trailPolylines: string[] = []
+  trailPolylines: string[] = [],
+  options?: { padding?: number | string }
 ): string | null {
   if (!MAPBOX_TOKEN) return null;
   if (
     roadPolylines.length === 0 &&
     flightPolylines.length === 0 &&
-    trailPolylines.length === 0
+    trailPolylines.length === 0 &&
+    markerWaypoints.length === 0
   ) {
     return null;
   }
@@ -114,11 +120,13 @@ export function buildPdfMapStaticUrl(
     roadColors,
     trailPolylines
   );
+  if (!overlays) return null;
   return buildMapboxStaticUrl(
     mapboxStylePath(MAPBOX_STYLE_LIGHT),
     overlays,
     MAP_CSS_W,
-    MAP_CSS_H
+    MAP_CSS_H,
+    { padding: options?.padding }
   );
 }
 
@@ -200,12 +208,18 @@ async function renderSegmentedMap(options: {
   routeMode: MapRouteBuildMode;
   dayLegend: PdfMapBuildResult["dayLegend"];
 }): Promise<PdfMapBuildResult | null> {
+  const padding =
+    options.kind === "flights"
+      ? MAP_STATIC_PADDING_FLIGHTS
+      : MAP_STATIC_PADDING_LOCAL;
+
   let url = buildPdfMapStaticUrl(
     options.markerWaypoints,
     options.roadPolylines,
     options.flightPolylines,
     options.roadColors,
-    options.trailPolylines
+    options.trailPolylines,
+    { padding }
   );
 
   if (!url && options.roadPolylines.length > 1) {
@@ -215,7 +229,8 @@ async function renderSegmentedMap(options: {
       [merged],
       options.flightPolylines,
       options.roadColors.slice(0, 1),
-      options.trailPolylines
+      options.trailPolylines,
+      { padding }
     );
   }
 
@@ -261,11 +276,18 @@ export async function fetchPdfDualMapImages(
     8
   );
 
-  // Prefer polyline counts for dual decision (more reliable than decoded geometry).
+  const flightMarkers = flightMarkerWaypoints(photos);
+  const localMarkers = localMarkerWaypoints(photos, places);
+
+  // Match HTML dual decision: flights + any on-trip activity (roads, GPS, or
+  // destination pins). Places/photos alone must not collapse into a combined
+  // arrival map labeled as "en destino".
   const dual =
     Boolean(segmented) &&
     segmented!.flightPolylines.length > 0 &&
-    (segmented!.roadPolylines.length > 0 || trailPolylines.length > 0);
+    (segmented!.roadPolylines.length > 0 ||
+      trailPolylines.length > 0 ||
+      localMarkers.length > 0);
 
   if (!dual) {
     const combined = await renderSegmentedMap({
@@ -283,9 +305,6 @@ export async function fetchPdfDualMapImages(
     });
     return { local: combined, flights: null };
   }
-
-  const flightMarkers = flightMarkerWaypoints(photos);
-  const localMarkers = localMarkerWaypoints(photos, places);
 
   const [flights, local] = await Promise.all([
     renderSegmentedMap({
@@ -305,33 +324,21 @@ export async function fetchPdfDualMapImages(
       workDir,
       filename: "map/local.png",
       kind: "local",
-      markerWaypoints: localMarkers.length > 0 ? localMarkers : allMarkers,
+      // Never fall back to allMarkers — that reintroduces origin airports.
+      markerWaypoints: localMarkers,
       roadPolylines: segmented!.roadPolylines,
       flightPolylines: [],
       roadColors: segmented!.coloredRoads.map((r) => r.color),
       trailPolylines,
-      pointCount: Math.max(localMarkers.length, trailPolylines.length),
+      pointCount: Math.max(localMarkers.length, trailPolylines.length, 1),
       routeMode: segmented!.mode,
       dayLegend: segmented!.dayLegend,
     }),
   ]);
 
-  // If local failed, fall back to combined so PDF still has a map.
+  // If local failed, fall back to local-only (no flights), never combined.
   if (!local && !flights) {
-    const combined = await renderSegmentedMap({
-      workDir,
-      filename: "map/route.png",
-      kind: "combined",
-      markerWaypoints: allMarkers,
-      roadPolylines: segmented!.roadPolylines,
-      flightPolylines: segmented!.flightPolylines,
-      roadColors: segmented!.coloredRoads.map((r) => r.color),
-      trailPolylines,
-      pointCount: Math.max(nodes.length, trailPolylines.length),
-      routeMode: segmented!.mode,
-      dayLegend: segmented!.dayLegend,
-    });
-    return { local: combined, flights: null };
+    return { local: null, flights: null };
   }
 
   return {
@@ -342,12 +349,12 @@ export async function fetchPdfDualMapImages(
         workDir,
         filename: "map/local.png",
         kind: "local",
-        markerWaypoints: allMarkers,
+        markerWaypoints: localMarkers,
         roadPolylines: segmented!.roadPolylines,
         flightPolylines: [],
         roadColors: segmented!.coloredRoads.map((r) => r.color),
         trailPolylines,
-        pointCount: nodes.length,
+        pointCount: Math.max(localMarkers.length, trailPolylines.length, 1),
         routeMode: segmented!.mode,
         dayLegend: segmented!.dayLegend,
       })),
@@ -381,6 +388,8 @@ export async function buildPdfMapStaticUrlFromPhotos(
     markerWaypoints,
     segmented.roadPolylines,
     segmented.flightPolylines,
-    segmented.coloredRoads.map((r) => r.color)
+    segmented.coloredRoads.map((r) => r.color),
+    [],
+    { padding: MAP_STATIC_PADDING_LOCAL }
   );
 }

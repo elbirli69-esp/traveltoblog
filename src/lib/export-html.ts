@@ -1267,6 +1267,11 @@ export function buildMapDayGroups(points: MapPoint[]): ExportMapDayGroup[] {
   return groups;
 }
 
+/** Destination-map pins: exclude flight endpoints so day bounds stay on-trip. */
+export function filterLocalMapPoints(points: MapPoint[]): MapPoint[] {
+  return points.filter((p) => p.kind !== "flight-out" && p.kind !== "flight-in");
+}
+
 function buildMapSidebarHtml(dayGroups: ExportMapDayGroup[]): string {
   const items = dayGroups
     .map(
@@ -1406,9 +1411,7 @@ function buildMapScript(
   const showRoute = options?.showRoute !== false;
   const flightPoints = options?.flightPoints ?? [];
   const flightOnlyLegs = options?.flightLegs ?? routeSegments.flightLegs;
-  const localPoints = dualMaps
-    ? points.filter((p) => p.kind !== "flight-out" && p.kind !== "flight-in")
-    : points;
+  const localPoints = dualMaps ? filterLocalMapPoints(points) : points;
   const localSegments: LeafletRouteSegments = dualMaps
     ? {
         roadSegments: routeSegments.roadSegments,
@@ -1420,10 +1423,10 @@ function buildMapScript(
       };
 
   const data = JSON.stringify(localPoints);
+  // Caller should already pass local-only day groups when dualMaps; filter as a
+  // safety net so "Todo el viaje" never zooms to the arrival span.
   const groupsData = JSON.stringify(
-    dualMaps
-      ? dayGroups.filter((g) => g.id !== "flights")
-      : dayGroups
+    dualMaps ? dayGroups.filter((g) => g.id !== "flights") : dayGroups
   );
   const roadData = JSON.stringify(localSegments.roadSegments);
   const flightData = JSON.stringify(localSegments.flightLegs);
@@ -1525,7 +1528,8 @@ function buildMapScript(
     if (latLngs.length === 1) map.setView(latLngs[0], 5);
     else if (latLngs.length > 1) {
       var b = L.latLngBounds(latLngs);
-      if (b.isValid()) map.fitBounds(b.pad(0.25));
+      // Pixel padding + maxZoom so long-haul origin/destination aren't glued to corners.
+      if (b.isValid()) map.fitBounds(b, { padding: [72, 96], maxZoom: 6 });
     }
   }
 
@@ -1536,6 +1540,7 @@ function buildMapScript(
     });
     var gpsTrails = ${gpsData};
     var dayGroups = ${groupsData};
+    var roadSegments = ${roadData};
     var mapEl = document.getElementById("map");
     if (!mapEl || window.__travelMap) return;
     if (preferStaticOffline(mapEl)) return;
@@ -1582,13 +1587,17 @@ function buildMapScript(
       gpsTrails.forEach(function (trail) {
         (trail.coords || []).forEach(function (c) { latLngs.push(c); });
       });
+      // Include on-trip road geometry so day routes frame the destination map.
+      roadSegments.forEach(function (seg) {
+        (seg.coords || seg || []).forEach(function (c) { latLngs.push(c); });
+      });
       if (!latLngs.length) return;
       if (latLngs.length === 1) {
         map.setView(latLngs[0], 14);
         return;
       }
       bounds = L.latLngBounds(latLngs);
-      if (bounds.isValid()) map.fitBounds(bounds.pad(0.18));
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [48, 48], maxZoom: 14 });
     }
 
     function refreshMap() {
@@ -1609,7 +1618,6 @@ function buildMapScript(
     var photoPoints = points.filter(function (p) { return p.kind === "photo"; });
     fitAllPoints();
 
-    var roadSegments = ${roadData};
     roadSegments.forEach(function (seg) {
       var coords = seg.coords || seg;
       var color = seg.color || "#2dd4bf";
@@ -2035,7 +2043,6 @@ export function buildExportHtml(ctx: ExportContext): string {
     : "";
   const heroPhotoPath = coverPhoto?.localPath ?? null;
 
-  const mapDayGroups = hasMap ? buildMapDayGroups(mapPoints) : [];
   const flightPoints = buildFlightMapPoints(mapPhotos);
   const dualMaps =
     flightPoints.length > 0 &&
@@ -2043,6 +2050,9 @@ export function buildExportHtml(ctx: ExportContext): string {
     (routeSegments.roadSegments.length > 0 ||
       mapPoints.some((p) => p.kind === "photo" || p.kind === "place") ||
       hasGpsTrails);
+  const mapDayGroups = hasMap
+    ? buildMapDayGroups(dualMaps ? filterLocalMapPoints(mapPoints) : mapPoints)
+    : [];
   // Nav is appended after sectionOrder so tabs match body order (Magazine + tipologías).
   const headerBlock = isMagazine
     ? `${buildMagazineHero({
@@ -2082,7 +2092,7 @@ ${buildTocHtml(timelineEvents)}`
   const localMapBlock = hasMap
     ? useExplorerMap
       ? buildFullscreenMapSection(
-          dualMaps ? mapDayGroups.filter((g) => g.id !== "flights") : mapDayGroups,
+          mapDayGroups,
           localMapLead,
           routeSegments.dayLegend,
           hasGpsTrails,
@@ -2643,7 +2653,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "data:image/png;base64,${markerShadow}"
 });`;
 
-  const mapDayGroups = buildMapDayGroups(mapPoints);
   const routeSegments = resolveLeafletRouteSegments(ctx, mapPhotos, ctx.places ?? []);
   const gpsTrails = resolveExportGpsTrails(ctx);
   const flightPoints = buildFlightMapPoints(mapPhotos);
@@ -2653,6 +2662,9 @@ L.Icon.Default.mergeOptions({
     (routeSegments.roadSegments.length > 0 ||
       mapPoints.some((p) => p.kind === "photo" || p.kind === "place") ||
       gpsTrailsHaveGeometry(gpsTrails));
+  const mapDayGroups = buildMapDayGroups(
+    dualMaps ? filterLocalMapPoints(mapPoints) : mapPoints
+  );
   const explicitType =
     ctx.typology && ctx.typology !== "auto"
       ? ctx.typology
