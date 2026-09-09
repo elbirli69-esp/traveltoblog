@@ -2,6 +2,7 @@ import { formatDateKey, isoToDateKey } from "@/lib/travel-dates";
 import { getPdfThemeCss, pageDimensions } from "@/lib/export-pdf-themes";
 import {
   extractDayNarratives,
+  extractJournalMetaSections,
   resolveDayNarrativeHtml,
 } from "@/lib/export/journal-prose";
 import {
@@ -24,6 +25,9 @@ export type PdfPageKind =
   | "featured"
   | "pair"
   | "mosaic"
+  | "section-places"
+  | "section-transport"
+  | "section-notes"
   | "closing";
 
 export interface PdfPlannedPage {
@@ -34,6 +38,7 @@ export interface PdfPlannedPage {
   narrative?: string;
   quote?: string;
   dayTitle?: string;
+  sectionTitle?: string;
 }
 
 function escapeHtml(text: string): string {
@@ -89,7 +94,7 @@ function formatDateRange(start: Date | null, end: Date | null): string {
 }
 
 /** Soft cap for photo notes so captions stay under the image, not a text column. */
-export const PDF_NOTE_MAX_CHARS = 150;
+export const PDF_NOTE_MAX_CHARS = 220;
 
 export function clampPdfNote(
   text: string | null | undefined,
@@ -303,7 +308,12 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
       }
 
       if (isFirstOfDay || score >= bleedScore) {
-        push({ kind: "full-bleed", photos: [photo] });
+        // Long notes need room under the image — featured shrinks the mat.
+        if (photoNoteCaption(photo)) {
+          push({ kind: "featured", photos: [photo] });
+        } else {
+          push({ kind: "full-bleed", photos: [photo] });
+        }
         i += 1;
         continue;
       }
@@ -318,15 +328,30 @@ export function planPdfPages(ctx: PdfExportContext): PdfPlannedPage[] {
         continue;
       }
 
-      // Single photo → full-bleed so it fills the whole page (no empty mat margins).
+      // Single photo → featured when it has a note (fit caption); else full-bleed.
       push({
-        kind: "full-bleed",
+        kind: photoNoteCaption(photo) ? "featured" : "full-bleed",
         photos: [photo],
       });
       i += 1;
     }
 
     dayIndex += 1;
+  }
+
+  const metaSections = extractJournalMetaSections(ctx.travel.journalMarkdown);
+  for (const section of metaSections) {
+    const kind =
+      section.id === "places"
+        ? ("section-places" as const)
+        : section.id === "transport"
+          ? ("section-transport" as const)
+          : ("section-notes" as const);
+    push({
+      kind,
+      sectionTitle: section.title,
+      narrative: section.html,
+    });
   }
 
   push({ kind: "closing" });
@@ -522,8 +547,11 @@ function renderFeatured(
   if (!photo) return "";
   const { width, height } = pageDimensions(format);
   const note = photoNoteCaption(photo);
+  const pageClass = note
+    ? "page page-featured page-featured--noted"
+    : "page page-featured";
   return `
-  <section class="page page-featured" style="width:${width};height:${height}">
+  <section class="${pageClass}" style="width:${width};height:${height}">
     <div class="featured-inner">
       <div class="photo-mat featured-mat">
         <img src="${escapeHtml(photoSrc(photo))}" alt="" />
@@ -547,11 +575,12 @@ function renderPair(
   const [left, right] = page.photos ?? [];
   if (!left || !right) return "";
   const { width, height } = pageDimensions(format);
+  const hasNotes = Boolean(photoNoteCaption(left) || photoNoteCaption(right));
   const cell = (photo: PdfPhotoAsset) => {
     const note = photoNoteCaption(photo);
     return `
     <div class="pair-cell">
-      <div class="photo-mat pair-mat">
+      <div class="photo-mat pair-mat${note ? " pair-mat--noted" : ""}">
         <img src="${escapeHtml(photoSrc(photo))}" alt="" />
       </div>
       <p class="pair-caption">${escapeHtml(photoCaption(photo))}</p>
@@ -560,9 +589,31 @@ function renderPair(
   };
 
   return `
-  <section class="page page-pair" style="width:${width};height:${height}">
+  <section class="page page-pair${hasNotes ? " page-pair--noted" : ""}" style="width:${width};height:${height}">
     ${cell(left)}
     ${cell(right)}
+    ${renderPageFooter(page.pageNumber, totalPages)}
+  </section>`;
+}
+
+function renderMetaSection(
+  page: PdfPlannedPage,
+  format: PdfPageFormat,
+  totalPages: number
+): string {
+  const { width, height } = pageDimensions(format);
+  const title = page.sectionTitle ?? "";
+  return `
+  <section class="page page-section" style="width:${width};height:${height}">
+    <div class="section-inner">
+      <p class="section-eyebrow">Anexo</p>
+      <h2 class="section-title">${escapeHtml(title)}</h2>
+      ${
+        page.narrative
+          ? `<div class="section-body">${page.narrative}</div>`
+          : ""
+      }
+    </div>
     ${renderPageFooter(page.pageNumber, totalPages)}
   </section>`;
 }
@@ -609,6 +660,10 @@ function renderPage(
       return renderFeatured(page, format, totalPages);
     case "pair":
       return renderPair(page, format, totalPages);
+    case "section-places":
+    case "section-transport":
+    case "section-notes":
+      return renderMetaSection(page, format, totalPages);
     case "closing":
       return renderClosing(ctx, page, format, totalPages);
     default:

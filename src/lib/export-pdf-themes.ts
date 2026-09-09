@@ -543,6 +543,17 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       object-fit: cover;
     }
 
+    /* Shrink the mat so caption + long note stay on the same sheet. */
+    .page-featured--noted .featured-inner {
+      vertical-align: top;
+      padding-top: ${bleed + 8}mm;
+    }
+
+    .page-featured--noted .featured-mat img {
+      max-height: ${format === "square" ? "110mm" : "118mm"};
+      height: ${format === "square" ? "110mm" : "118mm"};
+    }
+
     .featured-caption {
       margin-top: 3mm;
       font-size: 8pt;
@@ -554,12 +565,19 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
     .featured-note,
     .featured-byline {
       margin: 2.5mm auto 0;
-      max-width: 140mm;
+      max-width: 160mm;
       font-family: ${t.serif};
       font-size: 11pt;
       font-style: italic;
       color: ${t.text};
       line-height: 1.45;
+    }
+
+    .page-featured--noted .featured-note {
+      font-size: 10pt;
+      line-height: 1.4;
+      max-height: 32mm;
+      overflow: hidden;
     }
 
     .featured-byline {
@@ -595,6 +613,11 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       overflow: hidden;
     }
 
+    .page-pair--noted .pair-mat,
+    .pair-mat--noted {
+      height: ${format === "square" ? "125mm" : "132mm"};
+    }
+
     .pair-mat img {
       position: absolute;
       inset: 0;
@@ -618,11 +641,57 @@ export function getPdfThemeCss(template: PdfTemplate, format: PdfPageFormat): st
       font-size: 9.5pt;
       font-style: italic;
       color: ${t.textMuted};
-      line-height: 1.4;
+      line-height: 1.35;
       max-width: 85mm;
+      max-height: 28mm;
+      overflow: hidden;
       margin-left: auto;
       margin-right: auto;
     }
+
+    /* —— Meta sections (Lugares / Transporte / Notas) —— */
+    .page-section {
+      display: table;
+      background: ${t.pageBg};
+      color: ${t.text};
+    }
+
+    .section-inner {
+      display: table-cell;
+      vertical-align: top;
+      padding: ${bleed + 12}mm ${bleed + 14}mm;
+    }
+
+    .section-eyebrow {
+      font-size: 8pt;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: ${t.textMuted};
+      margin: 0 0 4mm;
+    }
+
+    .section-title {
+      font-family: ${t.serif};
+      font-size: 22pt;
+      font-weight: 400;
+      margin: 0 0 8mm;
+      color: ${t.text};
+    }
+
+    .section-body {
+      font-family: ${t.serif};
+      font-size: 11pt;
+      line-height: 1.55;
+      max-width: ${format === "square" ? "170mm" : "240mm"};
+    }
+
+    .section-body p { margin: 0 0 3mm; }
+    .section-body ul,
+    .section-body ol {
+      margin: 0 0 3mm;
+      padding-left: 5mm;
+    }
+    .section-body li { margin-bottom: 1.5mm; }
 
     /* —— Closing —— */
     .page-closing {

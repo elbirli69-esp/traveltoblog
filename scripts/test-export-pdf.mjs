@@ -11,8 +11,8 @@ import { formatDateKey } from "../src/lib/travel-dates.ts";
 
 assert.equal(clampPdfNote(""), "");
 assert.equal(clampPdfNote("  Hola   mundo  "), "Hola mundo");
-assert.ok(clampPdfNote("x".repeat(200)).endsWith("…"));
-assert.ok(clampPdfNote("x".repeat(200)).length <= 151);
+assert.ok(clampPdfNote("x".repeat(300)).endsWith("…"));
+assert.ok(clampPdfNote("x".repeat(300)).length <= 221);
 
 const basePhoto = {
   url: "/x",
@@ -29,9 +29,10 @@ const basePhoto = {
 };
 
 const longNote =
-  "Esta es una nota muy larga sobre la foto que antes se metía en una columna de crónica y atravesaba varias páginas del álbum impreso sin control visual alguno.";
+  "La noria de madera que repartía agua por toda la mina sigue ahí, pero ya lleva siglos saboreando su trabajo: la sal la ha ido royendo poco a poco hasta dejarla casi como una escultura viva del tiempo bajo tierra y aún hoy se oye el eco del mecanismo en las galerías húmedas.";
+assert.ok(longNote.length > 220, "fixture note exceeds soft cap");
 assert.ok(photoNoteCaption({ ...basePhoto, id: "n", notes: [longNote] }).endsWith("…"));
-assert.ok(photoNoteCaption({ ...basePhoto, id: "n", notes: [longNote] }).length <= 151);
+assert.ok(photoNoteCaption({ ...basePhoto, id: "n", notes: [longNote] }).length <= 221);
 
 const html = buildPrintHtml({
   travel: {
@@ -96,6 +97,12 @@ assert.ok(
   html.includes("featured-note") || html.includes("pair-note") || html.includes("caption-sub"),
   "note near photo"
 );
+assert.ok(
+  html.includes("page-featured--noted") || html.includes("pair-mat--noted") || html.includes("page-pair--noted"),
+  "noted layouts shrink the photo mat"
+);
+assert.ok(html.includes("page-featured--noted"), "noted photo uses featured layout");
+assert.ok(/118mm|110mm/.test(html), "noted featured image height leaves room for caption");
 assert.ok(!html.includes(longNote), "long notes are clamped in output");
 assert.ok(html.includes("…"), "ellipsis for clamped notes");
 
@@ -211,12 +218,20 @@ assert.ok(
   "mosaic pages are full sheets (6 or 8 photos), never a single half-empty row"
 );
 assert.ok(
-  !pages.some((p) => p.kind === "featured"),
-  "single photos become full-bleed, not featured with empty margins"
+  pages
+    .filter((p) => p.kind === "full-bleed" || p.kind === "featured")
+    .every((p) => (p.photos?.length ?? 0) === 1),
+  "solo photo pages are single-image layouts"
 );
 assert.ok(
   pages.filter((p) => p.kind === "featured").every((p) => !p.narrative && !p.quote),
   "featured pages carry no journal narrative"
+);
+assert.ok(
+  pages
+    .filter((p) => p.kind === "featured")
+    .every((p) => Boolean(p.photos?.[0] && (p.photos[0].notes?.length ?? 0) > 0)),
+  "featured is reserved for photos with traveler notes"
 );
 assert.ok(
   pages.some((p) => p.kind === "day-divider" && p.narrative),
@@ -329,6 +344,14 @@ Segundo día en la costa.
 ## Lugares del recorrido
 
 - **Plaza** · *Irene*
+
+## Transporte
+
+- Ida marcada
+
+## Notas del viaje
+
+- Reservar hotel
 `;
 
 const extracted = extractPdfDayNarratives(journalLike);
@@ -338,6 +361,12 @@ assert.ok(extracted.byTitle.get(dayB.toLowerCase())?.includes("Segundo día"));
 assert.ok(!extracted.ordered.join("").includes("Foto de Irene"));
 assert.ok(!extracted.ordered.join("").includes("Foto de Rodri"));
 assert.ok(!extracted.ordered.join("").includes("<img"));
+assert.ok(
+  !extracted.ordered.join("").includes("Lugares del recorrido"),
+  "meta sections stripped from day prose"
+);
+assert.ok(!extracted.ordered.join("").includes("Transporte"));
+assert.ok(!extracted.ordered.join("").includes("Notas del viaje"));
 
 const pollutedPages = planPdfPages({
   travel: {
@@ -378,15 +407,76 @@ const pollutedPages = planPdfPages({
       notes: [],
       exifDateTime: new Date("2024-06-02T12:00:00Z"),
     },
+    {
+      id: "p4",
+      ...basePhoto,
+      filename: "004.jpg",
+      imagePath: "photos/004.jpg",
+      bleedImagePath: "photos/004-bleed.jpg",
+      alias: "Rodri",
+      notes: [],
+      exifDateTime: new Date("2024-06-03T10:00:00Z"),
+    },
+    {
+      id: "p5",
+      ...basePhoto,
+      filename: "005.jpg",
+      imagePath: "photos/005.jpg",
+      bleedImagePath: "photos/005-bleed.jpg",
+      alias: "Rodri",
+      highlightScore: 6,
+      notes: [],
+      exifDateTime: new Date("2024-06-03T12:00:00Z"),
+    },
+    {
+      id: "p6",
+      ...basePhoto,
+      filename: "006.jpg",
+      imagePath: "photos/006.jpg",
+      bleedImagePath: "photos/006-bleed.jpg",
+      alias: "Rodri",
+      highlightScore: 0,
+      notes: [],
+      exifDateTime: new Date("2024-06-03T14:00:00Z"),
+    },
   ],
   notes: [],
   format: "a4-landscape",
   template: "classic",
 });
-const divider = pollutedPages.find((p) => p.kind === "day-divider");
-assert.ok(divider?.narrative?.includes("Plaza del Mercado"), "day prose on divider");
-assert.ok(!divider?.narrative?.includes("Foto de Irene"), "no image alt dump");
-assert.ok(!divider?.narrative?.includes("Lugares del recorrido"), "skip lugares section");
+const dividers = pollutedPages.filter((p) => p.kind === "day-divider");
+assert.ok(dividers.length >= 2, "two day dividers");
+assert.ok(
+  dividers[0]?.narrative?.includes("Plaza del Mercado"),
+  "day prose on first divider"
+);
+const lastDivider = dividers[dividers.length - 1];
+assert.ok(lastDivider?.narrative?.includes("Segundo día"), "last day prose on divider");
+assert.ok(
+  !lastDivider?.narrative?.includes("Lugares del recorrido"),
+  "last day divider excludes lugares"
+);
+assert.ok(!lastDivider?.narrative?.includes("Transporte"), "last day excludes transporte");
+assert.ok(!lastDivider?.narrative?.includes("Notas del viaje"), "last day excludes notas");
+
+const sectionKinds = pollutedPages.map((p) => p.kind);
+const placesIdx = sectionKinds.indexOf("section-places");
+const transportIdx = sectionKinds.indexOf("section-transport");
+const notesIdx = sectionKinds.indexOf("section-notes");
+const closingIdx = sectionKinds.indexOf("closing");
+assert.ok(placesIdx >= 0, "places section page");
+assert.ok(transportIdx >= 0, "transport section page");
+assert.ok(notesIdx >= 0, "notes section page");
+assert.ok(placesIdx < transportIdx && transportIdx < notesIdx, "meta section order");
+assert.ok(notesIdx < closingIdx, "meta sections before branding closing");
+const lastDayPhotoIdx = Math.max(
+  ...pollutedPages.map((p, i) =>
+    p.photos?.some((ph) => ph.exifDateTime?.toISOString().startsWith("2024-06-03"))
+      ? i
+      : -1
+  )
+);
+assert.ok(placesIdx > lastDayPhotoIdx, "places section after last day photos");
 
 const pollutedHtml = buildPrintHtml({
   travel: {
@@ -424,6 +514,11 @@ const pollutedHtml = buildPrintHtml({
 });
 assert.ok(!pollutedHtml.includes("Foto de Irene"), "HTML has no alt-text column");
 assert.ok(pollutedHtml.includes("divider-intro img"), "CSS hides leftover imgs");
+assert.ok(pollutedHtml.includes("page-section"), "meta sections render as own pages");
+assert.ok(pollutedHtml.includes("Lugares del recorrido"), "lugares title on section page");
+assert.ok(pollutedHtml.includes("Transporte"), "transporte title on section page");
+assert.ok(pollutedHtml.includes("Notas del viaje"), "notas title on section page");
+assert.ok(pollutedHtml.includes("Anexo"), "section eyebrow");
 
 
 // Dense mosaic: eight small photos → one 2×4 page

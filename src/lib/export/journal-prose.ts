@@ -38,6 +38,85 @@ const SKIP_H2 =
 
 const META_H2 = /^(lugares(?: del recorrido)?|transporte|notas del viaje)\b/i;
 
+export type JournalMetaSectionId = "places" | "transport" | "notes";
+
+export type JournalMetaSection = {
+  id: JournalMetaSectionId;
+  title: string;
+  html: string;
+};
+
+const META_TITLE_BY_ID: Record<JournalMetaSectionId, string> = {
+  places: "Lugares del recorrido",
+  transport: "Transporte",
+  notes: "Notas del viaje",
+};
+
+function metaSectionIdFromTitle(title: string): JournalMetaSectionId | null {
+  const t = title.trim().toLowerCase();
+  if (/^lugares(?: del recorrido)?\b/.test(t)) return "places";
+  if (/^transporte\b/.test(t)) return "transport";
+  if (/^notas del viaje\b/.test(t)) return "notes";
+  return null;
+}
+
+/**
+ * Pull trailing ## Lugares / Transporte / Notas blocks out of the journal so
+ * PDF can put each on its own page (and day dividers stay day-only).
+ */
+export function extractJournalMetaSections(
+  markdown: string | null
+): JournalMetaSection[] {
+  if (!markdown?.trim()) return [];
+  const sections: JournalMetaSection[] = [];
+  const seen = new Set<JournalMetaSectionId>();
+
+  for (const section of markdown.trim().split(/\n(?=##\s+)/)) {
+    if (!section.trim()) continue;
+    const match = section.match(/^\s*##\s+(.+?)\s*(?:\n|$)/);
+    const title = match?.[1]?.trim() ?? "";
+    const id = metaSectionIdFromTitle(title);
+    if (!id || seen.has(id)) continue;
+    const body = section.replace(/^\s*##\s+.+?(?:\n|$)/, "");
+    const html = markdownToProseHtml(body);
+    if (!html) continue;
+    seen.add(id);
+    sections.push({
+      id,
+      title: META_TITLE_BY_ID[id],
+      html,
+    });
+  }
+
+  return sections;
+}
+
+/** Remove ## Lugares/Transporte/Notas and a trailing --- conclusion from day source. */
+export function stripJournalMetaAndConclusion(markdown: string): string {
+  let raw = markdown
+    .trim()
+    .split(/\n(?=##\s+)/)
+    .filter((section) => {
+      const title =
+        section.match(/^\s*##\s+(.+?)\s*(?:\n|$)/)?.[1]?.trim() ?? "";
+      return !(title && META_H2.test(title));
+    })
+    .join("\n")
+    .trim();
+
+  const hrParts = raw
+    .split(/\n---\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (hrParts.length >= 2) {
+    const last = hrParts[hrParts.length - 1] ?? "";
+    if (last && !/^\s*##\s+/.test(last) && !/^\s*###\s+/.test(last)) {
+      raw = hrParts.slice(0, -1).join("\n\n---\n\n");
+    }
+  }
+  return raw.trim();
+}
+
 export type JournalDayNarratives = {
   byTitle: Map<string, string>;
   ordered: string[];
@@ -49,11 +128,13 @@ export function extractDayNarratives(markdown: string | null): JournalDayNarrati
   const ordered: string[] = [];
   if (!markdown?.trim()) return { byTitle, ordered };
 
-  const raw = markdown.trim();
+  const raw = stripJournalMetaAndConclusion(markdown.trim());
+  if (!raw) return { byTitle, ordered };
   const h3Blocks = raw.split(/\n(?=###\s+)/).filter((s) => /^\s*###\s+/.test(s));
 
   const ingest = (title: string, bodyMarkdown: string) => {
-    const html = markdownToProseHtml(bodyMarkdown);
+    const cleaned = stripJournalMetaAndConclusion(bodyMarkdown);
+    const html = markdownToProseHtml(cleaned);
     if (!html) return;
     if (title) byTitle.set(normalizeNarrativeTitle(title), html);
     ordered.push(html);
