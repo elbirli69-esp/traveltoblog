@@ -50,7 +50,7 @@ export default function BlogCompletenessPanel({
         <p className="text-[11px] opacity-80">
           Completitud {score}/100
           {stats.photosWithoutNote > 0
-            ? ` · ${stats.photosWithoutNote} foto${stats.photosWithoutNote === 1 ? "" : "s"} sin nota`
+            ? ` · ${stats.photosWithoutNote} foto${stats.photosWithoutNote === 1 ? "" : "s"} sin nota de texto`
             : ""}
         </p>
       </div>

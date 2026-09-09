@@ -18,9 +18,19 @@ import {
 const GENERATE_STEP_LABELS: Record<string, string> = {
   context: "Preparando datos",
   intro: "Introducción",
-  days: "Resúmenes por día",
+  days: "Secciones / días",
   captions: "Leyendas de fotos",
   conclusion: "Conclusión",
+  assemble: "Ensamblando artículo",
+  complete: "Listo",
+};
+
+const GENERATE_STEP_LABELS_BLOG: Record<string, string> = {
+  context: "Preparando datos",
+  intro: "Introducción",
+  days: "Secciones temáticas",
+  captions: "Leyendas de fotos",
+  conclusion: "Cierre «Si vas»",
   assemble: "Ensamblando artículo",
   complete: "Listo",
 };
@@ -64,7 +74,11 @@ export default function GenerateJournalButton({
     setBrief(initialBrief);
   }, [initialBrief]);
 
-  const stepLabels = hasExistingJournal ? REFINE_STEP_LABELS : GENERATE_STEP_LABELS;
+  const stepLabels = hasExistingJournal
+    ? REFINE_STEP_LABELS
+    : kind === "blog"
+      ? GENERATE_STEP_LABELS_BLOG
+      : GENERATE_STEP_LABELS;
 
   const handleGenerate = async () => {
     if (hasExistingJournal) {

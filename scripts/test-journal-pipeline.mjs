@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   assembleBlogJournalMarkdown,
   assembleJournalMarkdown,
+  buildLocalBlogSections,
   buildLocalJournalMarkdown,
   journalPipelineVoiceRules,
   journalPromptContextAddon,
@@ -101,21 +102,52 @@ const blog = assembleBlogJournalMarkdown(
   "Gancho del destino.",
   [
     {
-      date: "2026-08-01",
-      summary: "Paseo por el casco antiguo.",
+      title: "Free tours por el casco",
+      summary: "Recorrido por la plaza y el casco antiguo.",
+      placeHints: [],
+      dayKeys: ["2026-08-01"],
+    },
+    {
+      title: "Excursión a las minas",
+      summary: "Visita a las minas de sal.",
+      placeHints: ["Bochnia"],
+      dayKeys: [],
     },
   ],
   [{ url: "/uploads/a.jpg", caption: "Oleaje suave" }],
   "Reserva tiempo para perderte por las calles."
 );
-assert.match(blog, /## El viaje/);
+assert.match(blog, /## Free tours por el casco/);
+assert.match(blog, /## Excursión a las minas/);
 assert.match(blog, /## Si vas/);
 assert.ok(!blog.includes("### "), "blog has no day ### headers");
 assert.ok(!blog.includes("día a día"), "blog is not day-diary section");
+assert.ok(!blog.includes("## El viaje\n"), "blog no longer uses single El viaje dump");
 
 const localBlog = buildLocalJournalMarkdown(ctx, "blog");
 assert.match(localBlog, /## Si vas/);
+assert.ok(!localBlog.includes("### "), "local blog has no day headers");
 
+const themed = buildLocalBlogSections({
+  ...ctx,
+  places: [
+    { name: "Rynek", type: "LANDMARK", comment: null, alias: "Ada" },
+    { name: "Auschwitz", type: "MUSEUM", comment: "excursión", alias: "Ada" },
+    { name: "Bochnia", type: "OTHER", comment: "minas de sal", alias: "Ada" },
+  ],
+});
+assert.ok(
+  themed.some((s) => /auschwitz/i.test(s.title)),
+  "local sections include Auschwitz"
+);
+assert.ok(
+  themed.some((s) => /bochnia/i.test(s.title)),
+  "local sections separate Bochnia from Auschwitz"
+);
+assert.ok(
+  themed.some((s) => /descubrir|rynek|ciudad/i.test(s.title)),
+  "local sections include city theme"
+);
 const resolved = resolveExportJournalMarkdown({
   journalMarkdown: markdown,
   journalBlogMarkdown: blog,

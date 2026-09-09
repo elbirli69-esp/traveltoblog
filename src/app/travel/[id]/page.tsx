@@ -387,8 +387,22 @@ export default function TravelPage({ params }: { params: Promise<{ id: string }>
   ) => {
     if (kind === "photos_notes" || kind === "photos_highlight") {
       setActiveTab("photos");
-      if (kind === "photos_notes") setGalleryUnnotedFilter(true);
-      const id = opts?.photoId ?? unnotedPhotoIds[0] ?? null;
+      const id =
+        kind === "photos_notes"
+          ? opts?.photoId ?? unnotedPhotoIds[0] ?? null
+          : opts?.photoId ?? null;
+      if (kind === "photos_notes") {
+        // Retrigger filter even if it was already on (resets gallery kickoff).
+        setGalleryUnnotedFilter(false);
+        queueMicrotask(() => {
+          setGalleryUnnotedFilter(true);
+          if (id) {
+            setFocusPhotoId(null);
+            queueMicrotask(() => setFocusPhotoId(id));
+          }
+        });
+        return;
+      }
       if (id) {
         setFocusPhotoId(null);
         queueMicrotask(() => setFocusPhotoId(id));
