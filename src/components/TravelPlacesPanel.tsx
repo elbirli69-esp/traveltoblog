@@ -20,6 +20,7 @@ import EmptyMemoryState from "@/components/EmptyMemoryState";
 import { pageSlice, PLACES_PAGE_SIZE, totalPages } from "@/lib/pagination";
 import NoteForm from "@/components/NoteForm";
 import EditableNote from "@/components/EditableNote";
+import SuggestPlaceNote from "@/components/SuggestPlaceNote";
 import MemoryDateTimeField, {
   dateTimeToIso,
   isoToDateAndTime,
@@ -142,6 +143,10 @@ export default function TravelPlacesPanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [placesPage, setPlacesPage] = useState(1);
+  const [notePrefill, setNotePrefill] = useState<{
+    text: string;
+    nonce: number;
+  }>({ text: "", nonce: 0 });
   const panelRef = useRef<HTMLDivElement>(null);
   const formComposeRef = useRef<HTMLDivElement>(null);
   const fromPhoto = Boolean(draft?.linkPhotoId);
@@ -728,6 +733,22 @@ export default function TravelPlacesPanel({
                 placeholder="Escribe tu anécdota, impresión o detalle…"
                 className="form-input input-focus"
               />
+              <SuggestPlaceNote
+                travelId={travelId}
+                placeName={draft.name}
+                placeType={draft.type}
+                initialSeed={draft.comment}
+                lastPlaceNoteText={
+                  places
+                    .flatMap((p) => p.notes ?? [])
+                    .map((n) => n.text.trim())
+                    .filter(Boolean)
+                    .at(-1) ?? null
+                }
+                onApplyDraft={(text) =>
+                  setDraft((prev) => (prev ? { ...prev, comment: text } : prev))
+                }
+              />
             </div>
             <p className="text-xs text-fg-secondary">
               Coordenadas: {draft.lat.toFixed(5)}, {draft.lng.toFixed(5)}
@@ -957,12 +978,33 @@ export default function TravelPlacesPanel({
               )}
             </ul>
           )}
+          <SuggestPlaceNote
+            travelId={travelId}
+            placeId={selectedPlace.id}
+            placeName={selectedPlace.name}
+            placeType={selectedPlace.type}
+            authorAlias={selectedPlace.user.alias}
+            lastPlaceNoteText={
+              placeNotes(selectedPlace)
+                .map((n) => n.text.trim())
+                .filter(Boolean)
+                .at(-1) ?? null
+            }
+            onApplyDraft={(text) =>
+              setNotePrefill((prev) => ({
+                text,
+                nonce: prev.nonce + 1,
+              }))
+            }
+          />
           <NoteForm
             travelId={travelId}
             userId={userId}
             type="PLACE"
             placeId={selectedPlace.id}
             onCreated={onChanged}
+            prefillText={notePrefill.text}
+            prefillNonce={notePrefill.nonce}
           />
           <div className="border-t border-divider pt-3 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">

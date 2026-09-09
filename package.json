@@ -17,6 +17,7 @@
     "test:timeline": "npx --yes tsx scripts/test-timeline.mjs",
     "test:project-backup": "npx --yes tsx scripts/test-project-backup.mjs",
     "test:ai-suggest-photo-note": "npx --yes tsx scripts/test-ai-suggest-photo-note.mjs",
+    "test:ai-suggest-place-note": "npx --yes tsx scripts/test-ai-suggest-place-note.mjs",
     "test:ai-suggest-day-summary": "npx --yes tsx scripts/test-ai-suggest-day-summary.mjs",
     "test:ai-suggest-reel-storyboard": "npx --yes tsx scripts/test-ai-suggest-reel-storyboard.mjs",
     "test:ai-blog-voice": "npx --yes tsx scripts/test-ai-blog-voice.mjs",
