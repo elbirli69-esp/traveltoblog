@@ -47,12 +47,15 @@ export default function GenerateJournalButton({
   hasPreviousJournal = false,
   initialBrief = "",
   kind = "day",
+  availableDays = [],
 }: {
   travelId: string;
   hasExistingJournal?: boolean;
   hasPreviousJournal?: boolean;
   initialBrief?: string;
   kind?: JournalKind;
+  /** Calendar days available for single-day generation (kind=day). */
+  availableDays?: { dayKey: string; label: string }[];
 }) {
   const router = useRouter();
   const [style, setStyle] = useState<JournalStyle>("narrative");
@@ -65,8 +68,8 @@ export default function GenerateJournalButton({
   const [stepMessage, setStepMessage] = useState<string | null>(null);
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
   const [canUndo, setCanUndo] = useState(hasPreviousJournal);
-
   const [activeMode, setActiveMode] = useState<"refine" | "fresh" | null>(null);
+  const [dayScope, setDayScope] = useState<string>("all");
 
   useEffect(() => {
     setCanUndo(hasPreviousJournal);
@@ -84,19 +87,24 @@ export default function GenerateJournalButton({
         : GENERATE_STEP_LABELS;
 
   const handleGenerate = async (mode: "refine" | "fresh") => {
+    const scopedDay = kind === "day" && dayScope !== "all" ? dayScope : null;
     if (mode === "refine" && hasExistingJournal) {
       const ok = confirm(
-        kind === "blog"
-          ? "La IA refinará el artículo blog actual: conservará tus ediciones e incorporará notas/fotos nuevas y tus indicaciones. Se guarda una copia para poder deshacer. ¿Continuar?"
-          : "La IA refinará la crónica actual: conservará tus ediciones e incorporará notas/fotos nuevas y tus indicaciones. Se guarda una copia para poder deshacer. ¿Continuar?"
+        scopedDay
+          ? `La IA refinará solo el día ${scopedDay}: conservará ediciones de ese capítulo e incorporará notas/fotos nuevas. Se guarda copia para deshacer. ¿Continuar?`
+          : kind === "blog"
+            ? "La IA refinará el artículo blog actual: conservará tus ediciones e incorporará notas/fotos nuevas y tus indicaciones. Se guarda una copia para poder deshacer. ¿Continuar?"
+            : "La IA refinará la crónica actual: conservará tus ediciones e incorporará notas/fotos nuevas y tus indicaciones. Se guarda una copia para poder deshacer. ¿Continuar?"
       );
       if (!ok) return;
     }
     if (mode === "fresh" && hasExistingJournal) {
       const ok = confirm(
-        kind === "blog"
-          ? "Se generará un artículo blog NUEVO desde cero (estructura temática nueva). El texto actual se guarda para poder deshacer. ¿Continuar?"
-          : "Se generará una crónica NUEVA desde cero. El texto actual se guarda para poder deshacer. ¿Continuar?"
+        scopedDay
+          ? `Se generará de nuevo el capítulo del ${scopedDay} (el resto de la crónica se conserva). Se guarda copia para deshacer. ¿Continuar?`
+          : kind === "blog"
+            ? "Se generará un artículo blog NUEVO desde cero (estructura temática nueva). El texto actual se guarda para poder deshacer. ¿Continuar?"
+            : "Se generará una crónica NUEVA desde cero. El texto actual se guarda para poder deshacer. ¿Continuar?"
       );
       if (!ok) return;
     }
@@ -120,6 +128,7 @@ export default function GenerateJournalButton({
           brief: brief.trim() || null,
           kind,
           mode,
+          ...(scopedDay ? { dayKey: scopedDay } : {}),
         }),
       });
 
@@ -288,6 +297,35 @@ export default function GenerateJournalButton({
           );
         })}
       </fieldset>
+
+      {kind === "day" && availableDays.length > 0 && (
+        <div className="space-y-1.5">
+          <label
+            htmlFor="journal-day-scope"
+            className="block text-sm font-medium text-accent-cyan"
+          >
+            Alcance
+          </label>
+          <select
+            id="journal-day-scope"
+            value={dayScope}
+            onChange={(e) => setDayScope(e.target.value)}
+            disabled={loading || undoBusy}
+            className="form-input w-full text-sm"
+          >
+            <option value="all">Todo el viaje</option>
+            {availableDays.map((d) => (
+              <option key={d.dayKey} value={d.dayKey}>
+                Solo {d.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-fg-secondary">
+            Elige un día para generar o refinar solo ese capítulo mientras el viaje
+            sigue en curso.
+          </p>
+        </div>
+      )}
 
       {hasExistingJournal ? (
         <div className="flex flex-col gap-2 sm:flex-row">

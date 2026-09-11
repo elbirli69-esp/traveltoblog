@@ -12,6 +12,11 @@ import { resolveFlightLegs } from "@/lib/flights";
 import type { JournalKind } from "@/lib/journal-kind";
 import { placeEmoji, placeLabel } from "@/lib/places";
 import { formatDateKey, isoToDateKey, resolveTravelDayRange } from "@/lib/travel-dates";
+import {
+  extractDayChapterMarkdown,
+  filterJournalContextToDay,
+  upsertDayChapterMarkdown,
+} from "@/lib/journal-day-chapter";
 
 type PhotoWithUser = Photo & {
   user: User;
@@ -459,6 +464,15 @@ export interface JournalPipelineOptions {
   existingMarkdown?: string | null;
   /** day = diario por fechas; blog = artículo continuo. */
   kind?: JournalKind;
+  /**
+   * When set with kind=day, generate or refine only this calendar day (YYYY-MM-DD)
+   * and merge the ### chapter into the full chronicle.
+   */
+  dayKey?: string | null;
+  /** Full day-chronicle document to merge a single-day chapter into. */
+  mergeIntoMarkdown?: string | null;
+  /** Explicit refine vs fresh for single-day runs. */
+  mode?: "refine" | "fresh";
 }
 
 const MAX_EXISTING_MARKDOWN_CHARS = 60_000;
@@ -1372,8 +1386,17 @@ export async function runJournalPipeline(
   options: JournalPipelineOptions = {}
 ): Promise<string> {
   const emit = (event: JournalPipelineEvent) => onProgress?.(event);
-  const existingMarkdown = options.existingMarkdown?.trim() || null;
   const kind: JournalKind = options.kind === "blog" ? "blog" : "day";
+  const dayKey = options.dayKey?.trim() || null;
+
+  if (dayKey) {
+    if (kind !== "day") {
+      throw new Error("La generación por día solo está disponible en la crónica «por días».");
+    }
+    return runSingleDayJournalPipeline(ctx, dayKey, emit, style, options);
+  }
+
+  const existingMarkdown = options.existingMarkdown?.trim() || null;
 
   try {
     const ai = createAiClient();
@@ -1496,6 +1519,125 @@ export async function runJournalPipeline(
       status: "done",
       markdown,
       message: "Crónica local generada (sin IA — sin conexión a DeepSeek)",
+    });
+    return markdown;
+  }
+}
+
+async function runSingleDayJournalPipeline(
+  ctx: EnhancedJournalContext,
+  dayKey: string,
+  emit: (event: JournalPipelineEvent) => void,
+  style: JournalStyle,
+  options: JournalPipelineOptions
+): Promise<string> {
+  const mergeInto = options.mergeIntoMarkdown?.trim() || null;
+  const dayCtx = filterJournalContextToDay(ctx, dayKey);
+  const chapterFromDoc = extractDayChapterMarkdown(mergeInto, dayKey);
+  const wantRefine = options.mode === "refine";
+  const existingChapter =
+    chapterFromDoc ||
+    (options.existingMarkdown?.trim().startsWith("###")
+      ? options.existingMarkdown.trim()
+      : null);
+  const refineChapter = wantRefine && Boolean(existingChapter);
+
+  try {
+    const ai = createAiClient();
+    const { model } = getAiConfig();
+    emit({
+      step: "context",
+      status: "done",
+      message: `Datos del día ${formatDateKey(dayKey, "short")} preparados`,
+    });
+
+    let chapterMarkdown: string;
+
+    if (refineChapter && existingChapter) {
+      emit({
+        step: "refine",
+        status: "running",
+        message: `Refinando el capítulo del ${formatDateKey(dayKey, "short")}…`,
+      });
+      const refined = await refineJournalMarkdown(
+        ai,
+        model,
+        dayCtx,
+        existingChapter,
+        style,
+        "day"
+      );
+      chapterMarkdown =
+        extractDayChapterMarkdown(refined, dayKey) ??
+        (refined.trim().startsWith("###")
+          ? refined.trim()
+          : `### ${formatDateKey(dayKey)}\n\n${sanitizeDaySummaryProse(refined)}`);
+      emit({ step: "refine", status: "done" });
+    } else {
+      emit({
+        step: "days",
+        status: "running",
+        message: `Escribiendo el ${formatDateKey(dayKey, "short")}…`,
+      });
+      const daySummaries = await generateDaySummaries(ai, model, dayCtx, style, "day");
+      emit({ step: "days", status: "done" });
+
+      emit({
+        step: "captions",
+        status: "running",
+        message: "Mejorando leyendas de fotos del día…",
+      });
+      const captions = await generatePhotoCaptions(ai, model, dayCtx, style, "day");
+      emit({ step: "captions", status: "done" });
+
+      emit({ step: "assemble", status: "running", message: "Ensamblando el día…" });
+      const assembled = assembleJournalMarkdown(
+        dayCtx,
+        "",
+        daySummaries,
+        captions,
+        ""
+      );
+      chapterMarkdown =
+        extractDayChapterMarkdown(assembled, dayKey) ??
+        `### ${formatDateKey(dayKey)}\n\n${
+          daySummaries[0]?.summary ?? "_Sin notas para este día._"
+        }`;
+      emit({ step: "assemble", status: "done" });
+    }
+
+    const markdown = upsertDayChapterMarkdown(
+      mergeInto,
+      dayKey,
+      chapterMarkdown,
+      ctx.title
+    );
+    emit({
+      step: "complete",
+      status: "done",
+      markdown,
+      message: refineChapter
+        ? `Día ${formatDateKey(dayKey, "short")} refinado`
+        : `Día ${formatDateKey(dayKey, "short")} generado`,
+    });
+    return markdown;
+  } catch (error) {
+    if (!isAiUnreachableError(error)) throw error;
+    if (mergeInto) {
+      throw new Error(
+        "Sin conexión a la IA; se mantiene tu crónica actual. Reintenta cuando haya red."
+      );
+    }
+    const local = buildLocalJournalMarkdown(dayCtx, "day");
+    const chapter =
+      extractDayChapterMarkdown(local, dayKey) ??
+      `### ${formatDateKey(dayKey)}\n\n_Crónica local sin IA._`;
+    const markdown = upsertDayChapterMarkdown(null, dayKey, chapter, ctx.title);
+    emit({
+      step: "complete",
+      status: "done",
+      markdown,
+      message: "Día generado en local (sin IA)",
     });
     return markdown;
   }

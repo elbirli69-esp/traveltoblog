@@ -26,6 +26,11 @@ import {
   getTypePackEntry,
   type TypePackId,
 } from "@/lib/export/type-packs";
+import {
+  filterExportContextByDayRange,
+  parseDayRangeBounds,
+} from "@/lib/export-day-scope";
+import type { ExportContext } from "@/lib/export-html";
 
 const TEMPLATES: ExportTemplateId[] = [
   "magazine",
@@ -87,6 +92,8 @@ export async function POST(request: NextRequest) {
       publicTitle = "",
       includeReaderGuide = true,
       journalSource,
+      dayFrom: rawDayFrom,
+      dayTo: rawDayTo,
     } = body as {
       travelId?: string;
       template?: ExportTemplateId;
@@ -100,6 +107,9 @@ export async function POST(request: NextRequest) {
       publicTitle?: string;
       includeReaderGuide?: boolean;
       journalSource?: "day" | "blog";
+      /** Inclusive YYYY-MM-DD range for partial day-chronicle HTML. */
+      dayFrom?: string | null;
+      dayTo?: string | null;
     };
 
     if (!travelId) {
@@ -268,14 +278,20 @@ export async function POST(request: NextRequest) {
           journalSource === "blog" || journalSource === "day"
             ? journalSource
             : undefined,
-      };
+      } satisfies ExportContext;
+
+      const dayBounds = parseDayRangeBounds(rawDayFrom, rawDayTo);
+      const scopedCtx =
+        dayBounds && (journalSource !== "blog")
+          ? filterExportContextByDayRange(ctx, dayBounds.dayFrom, dayBounds.dayTo)
+          : ctx;
 
       const slug = exportSlug(
         (typeof publicTitle === "string" && publicTitle.trim()
           ? publicTitle.trim()
-          : travel.title) || travel.title
+          : scopedCtx.publicTitle || travel.title) || travel.title
       );
-      const buffer = await buildExportArtifact(ctx, format, emit);
+      const buffer = await buildExportArtifact(scopedCtx, format, emit);
       const filename = format === "html" ? `${slug}.html` : `${slug}-export.zip`;
       const contentType = format === "html" ? "text/html; charset=utf-8" : "application/zip";
 
@@ -283,7 +299,7 @@ export async function POST(request: NextRequest) {
         buffer,
         filename,
         contentType,
-        photoCount: photos.length,
+        photoCount: scopedCtx.photos.length,
         briefInterpretation: briefResult?.directives.interpretation ?? null,
         briefSummary: briefResult?.directives.html
           ? summarizeHtmlDirectives(briefResult.directives.html)
