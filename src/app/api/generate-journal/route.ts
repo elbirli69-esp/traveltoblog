@@ -10,6 +10,10 @@ import {
   type JournalStyle,
 } from "@/lib/journal-pipeline";
 import { parseJournalKind, type JournalKind } from "@/lib/journal-kind";
+import {
+  extractDayChapterMarkdown,
+  parseJournalDayKey,
+} from "@/lib/journal-day-chapter";
 
 function parseJournalStyle(value: unknown): JournalStyle {
   return value === "factual" ? "factual" : "narrative";
@@ -50,7 +54,15 @@ async function persistGeneratedJournal(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { travelId, stream, style, brief, kind: rawKind, mode: rawMode } = body as {
+    const {
+      travelId,
+      stream,
+      style,
+      brief,
+      kind: rawKind,
+      mode: rawMode,
+      dayKey: rawDayKey,
+    } = body as {
       travelId?: string;
       stream?: boolean;
       style?: JournalStyle;
@@ -58,9 +70,24 @@ export async function POST(request: NextRequest) {
       kind?: JournalKind;
       /** refine = edit existing; fresh = generate from scratch (overwrites). */
       mode?: "refine" | "fresh";
+      /** Optional YYYY-MM-DD — generate/refine only that day (kind=day). */
+      dayKey?: string | null;
     };
     const journalStyle = parseJournalStyle(style);
     const kind = parseJournalKind(rawKind);
+    const dayKey = parseJournalDayKey(rawDayKey);
+    if (rawDayKey != null && String(rawDayKey).trim() && !dayKey) {
+      return NextResponse.json(
+        { error: "dayKey debe ser una fecha YYYY-MM-DD" },
+        { status: 400 }
+      );
+    }
+    if (dayKey && kind === "blog") {
+      return NextResponse.json(
+        { error: "La generación por día solo aplica a la crónica «por días»" },
+        { status: 400 }
+      );
+    }
     const journalBrief =
       typeof brief === "string" ? brief.trim().slice(0, 4000) || null : undefined;
 
@@ -120,9 +147,18 @@ export async function POST(request: NextRequest) {
         ? travel.journalBlogMarkdown?.trim() || null
         : travel.journalMarkdown?.trim() || null;
     // Default: refine when text exists; fresh only when explicitly requested or empty.
-    const mode: "refine" | "fresh" =
-      rawMode === "fresh" || !storedMarkdown ? "fresh" : "refine";
-    const existingMarkdown = mode === "refine" ? storedMarkdown : null;
+    // For a single day: refine if that chapter exists (unless fresh); else generate the chapter.
+    const mode: "refine" | "fresh" = (() => {
+      if (rawMode === "fresh") return "fresh";
+      if (dayKey) {
+        const hasChapter = Boolean(
+          storedMarkdown && extractDayChapterMarkdown(storedMarkdown, dayKey)
+        );
+        return hasChapter ? "refine" : "fresh";
+      }
+      return storedMarkdown ? "refine" : "fresh";
+    })();
+    const existingMarkdown = mode === "refine" && !dayKey ? storedMarkdown : null;
     const previousForPersist = storedMarkdown;
     const ctx = buildEnhancedJournalContext(
       travel,
@@ -133,6 +169,14 @@ export async function POST(request: NextRequest) {
       journalBrief !== undefined ? journalBrief : travel.journalBrief
     );
 
+    const pipelineOptions = {
+      existingMarkdown,
+      kind,
+      dayKey,
+      mergeIntoMarkdown: dayKey ? storedMarkdown : null,
+      mode,
+    };
+
     if (stream) {
       const encoder = new TextEncoder();
       const readable = new ReadableStream({
@@ -142,10 +186,12 @@ export async function POST(request: NextRequest) {
           };
 
           try {
-            const markdown = await runJournalPipeline(ctx, send, journalStyle, {
-              existingMarkdown,
-              kind,
-            });
+            const markdown = await runJournalPipeline(
+              ctx,
+              send,
+              journalStyle,
+              pipelineOptions
+            );
             await persistGeneratedJournal(
               travelId,
               kind,
@@ -206,10 +252,12 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const markdown = await runJournalPipeline(ctx, undefined, journalStyle, {
-      existingMarkdown,
-      kind,
-    });
+    const markdown = await runJournalPipeline(
+      ctx,
+      undefined,
+      journalStyle,
+      pipelineOptions
+    );
 
     await persistGeneratedJournal(travelId, kind, markdown, previousForPersist);
 
@@ -218,6 +266,7 @@ export async function POST(request: NextRequest) {
       refined: mode === "refine",
       kind,
       mode,
+      dayKey: dayKey ?? null,
     });
   } catch (error) {
     console.error("POST /api/generate-journal", error);

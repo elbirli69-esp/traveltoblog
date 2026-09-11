@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import BlogCompletenessPanel from "@/components/BlogCompletenessPanel";
 import GenerateJournalButton from "@/components/GenerateJournalButton";
 import JournalEditor from "@/components/JournalEditor";
@@ -13,6 +13,10 @@ import {
   JOURNAL_KIND_LABELS,
   type JournalKind,
 } from "@/lib/journal-kind";
+import {
+  formatDateKey,
+  resolveTravelDayRange,
+} from "@/lib/travel-dates";
 
 interface JournalWorkspaceProps {
   travelId: string;
@@ -63,6 +67,18 @@ export default function JournalWorkspace({
     kind === "blog" ? journalBlogGeneratedAt : journalGeneratedAt;
   const activePrevious =
     kind === "blog" ? journalBlogMarkdownPrevious : journalMarkdownPrevious;
+
+  const availableDays = useMemo(() => {
+    const range = resolveTravelDayRange({
+      startDate,
+      endDate,
+      photoExifDates: photos.map((p) => p.exifDateTime),
+    });
+    return range.dayKeys.map((dayKey) => ({
+      dayKey,
+      label: formatDateKey(dayKey, "short"),
+    }));
+  }, [startDate, endDate, photos]);
 
   const goTravel = (query: Record<string, string>) => {
     const params = new URLSearchParams(query);
@@ -194,6 +210,7 @@ export default function JournalWorkspace({
           hasExistingJournal={Boolean(activeMarkdown)}
           hasPreviousJournal={Boolean(activePrevious)}
           initialBrief={journalBrief ?? ""}
+          availableDays={kind === "day" ? availableDays : []}
         />
       </section>
 

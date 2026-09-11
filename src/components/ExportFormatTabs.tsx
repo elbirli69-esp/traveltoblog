@@ -127,6 +127,7 @@ export default function ExportFormatTabs({
             hasBlogJournal={hasBlogJournal}
             hasGpsPhotos={hasGpsPhotos}
             photoCount={photoCount}
+            availableDays={reelDays}
           />
         )}
         {activeTab === "pdf" && (

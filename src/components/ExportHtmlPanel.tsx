@@ -98,6 +98,8 @@ interface ExportHtmlPanelProps {
   hasBlogJournal?: boolean;
   hasGpsPhotos?: boolean;
   photoCount?: number;
+  /** Days with selected photos — for partial HTML export while traveling. */
+  availableDays?: { dayKey: string; label: string; photoCount?: number }[];
 }
 
 function blobFromBase64(base64: string, contentType: string): Blob {
@@ -116,12 +118,18 @@ export default function ExportHtmlPanel({
   hasBlogJournal = false,
   hasGpsPhotos = false,
   photoCount = 0,
+  availableDays = [],
 }: ExportHtmlPanelProps) {
   const [template, setTemplate] = useState<ExportTemplateId>("magazine");
   const [themePack, setThemePack] = useState<ThemePackId>("light-paper");
   const [typePack, setTypePack] = useState<TypePackId>("serif-editorial");
   const [journalSource, setJournalSource] = useState<HtmlJournalSource>(
     hasBlogJournal && !hasDayJournal ? "blog" : "day"
+  );
+  const [dayScopeMode, setDayScopeMode] = useState<"all" | "one" | "range">("all");
+  const [dayFrom, setDayFrom] = useState(availableDays[0]?.dayKey ?? "");
+  const [dayTo, setDayTo] = useState(
+    availableDays[availableDays.length - 1]?.dayKey ?? availableDays[0]?.dayKey ?? ""
   );
   const [packSuggestion, setPackSuggestion] = useState<{
     themePack: ThemePackId | null;
@@ -414,6 +422,17 @@ export default function ExportHtmlPanel({
             themePack,
             typePack,
             journalSource,
+            ...(journalSource === "day" &&
+            dayScopeMode !== "all" &&
+            dayFrom
+              ? {
+                  dayFrom,
+                  dayTo:
+                    dayScopeMode === "one"
+                      ? dayFrom
+                      : dayTo || dayFrom,
+                }
+              : {}),
           }),
         });
 
@@ -645,6 +664,88 @@ export default function ExportHtmlPanel({
           })}
         </div>
       </div>
+
+      {journalSource === "day" && availableDays.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-fg-secondary">
+            Días a incluir
+          </h3>
+          <p className="text-xs text-fg-secondary">
+            Exporta solo un día o un rango mientras el viaje sigue en curso (fotos +
+            capítulos de la crónica por días).
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ["all", "Todo el viaje"],
+                ["one", "Un día"],
+                ["range", "Rango"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                disabled={busy}
+                onClick={() => setDayScopeMode(id)}
+                className={`chip-btn text-xs ${
+                  dayScopeMode === id ? "border-[var(--accent-cyan)] font-semibold" : ""
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {dayScopeMode === "one" && (
+            <select
+              value={dayFrom}
+              onChange={(e) => setDayFrom(e.target.value)}
+              disabled={busy}
+              className="form-input w-full text-sm"
+            >
+              {availableDays.map((d) => (
+                <option key={d.dayKey} value={d.dayKey}>
+                  {d.label}
+                  {d.photoCount != null ? ` · ${d.photoCount} fotos` : ""}
+                </option>
+              ))}
+            </select>
+          )}
+          {dayScopeMode === "range" && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="text-xs text-fg-secondary">
+                Desde
+                <select
+                  value={dayFrom}
+                  onChange={(e) => setDayFrom(e.target.value)}
+                  disabled={busy}
+                  className="form-input mt-1 w-full text-sm"
+                >
+                  {availableDays.map((d) => (
+                    <option key={d.dayKey} value={d.dayKey}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs text-fg-secondary">
+                Hasta
+                <select
+                  value={dayTo}
+                  onChange={(e) => setDayTo(e.target.value)}
+                  disabled={busy}
+                  className="form-input mt-1 w-full text-sm"
+                >
+                  {availableDays.map((d) => (
+                    <option key={d.dayKey} value={d.dayKey}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block text-sm">
