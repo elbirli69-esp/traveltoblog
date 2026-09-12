@@ -386,8 +386,9 @@ export default function TravelPlacesPanel({
       if (!res.ok) throw new Error("No se pudo guardar");
       setEditForm(null);
       onChanged?.();
-    } catch {
-      setError("Error al actualizar el lugar");
+    } catch (err) {
+      const { describeFetchError } = await import("@/lib/fetch-error");
+      setError(describeFetchError(err, "Error al actualizar el lugar"));
     } finally {
       setSaving(false);
     }
@@ -466,7 +467,10 @@ export default function TravelPlacesPanel({
         }),
       });
 
-      if (!res.ok) throw new Error("No se pudo guardar");
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? `No se pudo guardar (${res.status})`);
+      }
 
       const created = (await res.json()) as { place?: { id: string } };
       const placeId = created.place?.id;
@@ -485,8 +489,9 @@ export default function TravelPlacesPanel({
       if (returnToPhotoId) {
         onOpenPhoto?.(returnToPhotoId);
       }
-    } catch {
-      setError("Error al guardar el lugar");
+    } catch (err) {
+      const { describeFetchError } = await import("@/lib/fetch-error");
+      setError(describeFetchError(err, "Error al guardar el lugar"));
     } finally {
       setSaving(false);
     }
