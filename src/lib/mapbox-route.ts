@@ -683,21 +683,25 @@ export async function resolveSegmentedRoute(
   const dayRuns = splitGroundRunsByDay(nodes);
   const flightLegs = buildFlightLegs(nodes);
 
-  const coloredRoads: ColoredRoutePolyline[] = [];
-  let usedDirections = false;
-
-  for (const run of dayRuns) {
-    const directions = await fetchMapboxDirectionsPolyline(run.waypoints);
-    const polyline = directions ?? encodePolyline(run.waypoints);
-    if (directions) usedDirections = true;
-    coloredRoads.push({
-      polyline,
-      dayKey: run.dayKey,
-      dayIndex: run.dayIndex,
-      color: run.color,
-      label: run.label,
-    });
-  }
+  // Parallel day Directions — sequential waterfalls feel awful over high-RTT
+  // Tailscale (e.g. Scotland → DERP Madrid → NAS in Spain).
+  const roadResults = await Promise.all(
+    dayRuns.map(async (run) => {
+      const directions = await fetchMapboxDirectionsPolyline(run.waypoints);
+      return {
+        polyline: directions ?? encodePolyline(run.waypoints),
+        usedDirections: Boolean(directions),
+        dayKey: run.dayKey,
+        dayIndex: run.dayIndex,
+        color: run.color,
+        label: run.label,
+      };
+    })
+  );
+  const coloredRoads: ColoredRoutePolyline[] = roadResults.map(
+    ({ usedDirections: _used, ...road }) => road
+  );
+  const usedDirections = roadResults.some((r) => r.usedDirections);
 
   const flightPolylines = flightLegs.map((leg) => encodePolyline(leg));
 
