@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PlaceType } from "@prisma/client";
 import type { FlightLegPhoto } from "@/lib/flights";
 import {
@@ -106,6 +106,8 @@ export default function TravelPlacesMap({
     clickToPlace,
   });
   const skipAutoFitRef = useRef(false);
+  /** Avoid replaying camera moves on every marker rebuild. */
+  const lastCameraFocusKeyRef = useRef<string | null>(null);
   const placesCountRef = useRef(places.length);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -123,7 +125,12 @@ export default function TravelPlacesMap({
 
   const { outbound, inbound } = resolveFlightLegs(photos);
   const routePhotos = photoGpsPoints(photos);
-  const localPlaces = places.filter((place) => place.type !== "TRANSPORT");
+  // Must be memoized: a fresh array each render re-fires the route effect,
+  // which calls setRouteGeometry and freezes the UI (esp. on Añadir lugar).
+  const localPlaces = useMemo(
+    () => places.filter((place) => place.type !== "TRANSPORT"),
+    [places]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -186,21 +193,51 @@ export default function TravelPlacesMap({
         if (cancelled || !containerRef.current) return;
 
         mapboxgl.accessToken = MAPBOX_TOKEN;
-        const [lat, lng] = computeMapCenter(places, photos);
+        // Prefer the photo/draft pin immediately — averaging all trip GPS
+        // (incl. ida/vuelta) parks the camera mid-route and then eases for ages.
+        let centerLng: number;
+        let centerLat: number;
+        let startZoom: number;
+        if (focusDraftPin && draftPin) {
+          centerLng = draftPin.lng;
+          centerLat = draftPin.lat;
+          startZoom = 17;
+        } else {
+          const centerPhotos =
+            scope === "local"
+              ? photos.filter((p) => !p.isTransportStart && !p.isTransportEnd)
+              : scope === "flights"
+                ? photos.filter((p) => p.isTransportStart || p.isTransportEnd)
+                : photos;
+          const centerPlaces =
+            scope === "flights"
+              ? []
+              : places.filter((p) => p.type !== "TRANSPORT");
+          const [lat, lng] = computeMapCenter(centerPlaces, centerPhotos);
+          centerLng = lng;
+          centerLat = lat;
+          startZoom =
+            centerPlaces.length || centerPhotos.some((p) => p.latitude != null)
+              ? 6
+              : 5;
+        }
 
         const map = new mapboxgl.Map({
           container: containerRef.current,
           style: resolveMapboxStyle(),
-          center: [lng, lat],
-          zoom:
-            places.length || photos.some((p) => p.latitude != null) ? 6 : 5,
+          center: [centerLng, centerLat],
+          zoom: startZoom,
           attributionControl: true,
         });
 
         map.addControl(new mapboxgl.NavigationControl({ visualizePitch: false }), "bottom-right");
 
         const geolocate = new mapboxgl.GeolocateControl({
-          positionOptions: { enableHighAccuracy: true },
+          positionOptions: {
+            enableHighAccuracy: true,
+            timeout: 12000,
+            maximumAge: 10000,
+          },
           trackUserLocation: false,
           showUserHeading: true,
           showAccuracyCircle: true,
@@ -272,16 +309,69 @@ export default function TravelPlacesMap({
     const t = window.setTimeout(() => {
       map.resize();
       if (focusDraftPin && draftPin) {
-        map.easeTo({
+        map.jumpTo({
           center: [draftPin.lng, draftPin.lat],
           zoom: 17,
-          duration: 500,
-          essential: true,
         });
       }
     }, 50);
     return () => window.clearTimeout(t);
-  }, [expanded, focusDraftPin, draftPin, mapReady]);
+  }, [expanded, focusDraftPin, draftPin?.lat, draftPin?.lng, mapReady]);
+
+  // Jump straight to photo / place / draft pin — never ease across the world.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    let key: string | null = null;
+    let center: [number, number] | null = null;
+    let zoom = 15;
+
+    if (focusDraftPin && draftPin) {
+      key = `draft:${draftPin.lat.toFixed(5)},${draftPin.lng.toFixed(5)}`;
+      center = [draftPin.lng, draftPin.lat];
+      zoom = 17;
+    } else if (selectedPhotoId) {
+      const photo = photos.find((p) => p.id === selectedPhotoId);
+      if (photo?.latitude != null && photo?.longitude != null) {
+        key = `photo:${photo.id}`;
+        center = [photo.longitude, photo.latitude];
+        zoom = 15;
+      }
+    } else if (selectedPlaceId) {
+      const place =
+        places.find((p) => p.id === selectedPlaceId) ??
+        localPlaces.find((p) => p.id === selectedPlaceId);
+      if (place) {
+        key = `place:${place.id}`;
+        center = [place.longitude, place.latitude];
+        zoom = 15;
+      }
+    }
+
+    if (!key || !center) {
+      // Focus cleared — allow route auto-fit on the next marker pass.
+      if (!focusDraftPin && !selectedPhotoId && !selectedPlaceId) {
+        lastCameraFocusKeyRef.current = null;
+        skipAutoFitRef.current = false;
+      }
+      return;
+    }
+    if (lastCameraFocusKeyRef.current === key) return;
+    lastCameraFocusKeyRef.current = key;
+    skipAutoFitRef.current = true;
+    map.jumpTo({ center, zoom });
+  }, [
+    mapReady,
+    focusDraftPin,
+    draftPin?.lat,
+    draftPin?.lng,
+    selectedPhotoId,
+    selectedPlaceId,
+    photos,
+    places,
+    localPlaces,
+  ]);
 
   useEffect(() => {
     if (!locateSignal || !mapReady) return;
@@ -502,17 +592,15 @@ export default function TravelPlacesMap({
         );
       }
 
-      if (!skipAutoFitRef.current) {
-        // Photo → Añadir lugar: lock onto the draft pin so the user can confirm
-        // the GPS spot before saving (ignore the full route bounds).
-        if (focusDraftPin && draftPin && showLocal) {
-          map.easeTo({
-            center: [draftPin.lng, draftPin.lat],
-            zoom: 17,
-            duration: 700,
-            essential: true,
-          });
-        } else if (bounds.length > 1) {
+      // Camera for draft/photo/place focus is handled by the jumpTo effect.
+      // Only auto-fit the full route when nothing specific is focused.
+      const hasFocusTarget = Boolean(
+        (focusDraftPin && draftPin && showLocal) ||
+          selectedPhotoId ||
+          selectedPlaceId
+      );
+      if (!skipAutoFitRef.current && !hasFocusTarget) {
+        if (bounds.length > 1) {
           const b = bounds.reduce(
             (acc, [lng, lat]) => acc.extend([lng, lat]),
             new mapboxgl.LngLatBounds(bounds[0], bounds[0])
@@ -520,13 +608,12 @@ export default function TravelPlacesMap({
           map.fitBounds(b, {
             padding: 48,
             maxZoom: scope === "flights" ? 6 : 14,
-            duration: 600,
+            duration: 400,
           });
         } else if (bounds.length === 1) {
-          map.easeTo({
+          map.jumpTo({
             center: bounds[0],
             zoom: scope === "flights" ? 5 : 13,
-            duration: 600,
           });
         }
       }
@@ -537,7 +624,8 @@ export default function TravelPlacesMap({
     photos,
     selectedPlaceId,
     selectedPhotoId,
-    draftPin,
+    draftPin?.lat,
+    draftPin?.lng,
     focusDraftPin,
     addMode,
     outbound,
@@ -584,8 +672,9 @@ export default function TravelPlacesMap({
     scope === "flights" ? [] : (scopedGeometry?.dayLegend ?? []);
   const showFlightLegend = scope === "all" || scope === "flights";
   const showLocalLegend = scope === "all" || scope === "local";
+  // Keep verify-from-photo maps shorter so the name field above stays in view.
   const mapHeight = expanded
-    ? "h-[min(70vh,560px)]"
+    ? "h-[min(45vh,360px)]"
     : compact
       ? "h-[280px]"
       : "h-[420px]";

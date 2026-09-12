@@ -109,7 +109,8 @@ export default function SuggestPlaceNote({
       }
       setMeta(bits.join(" ") || null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al completar");
+      const { describeFetchError } = await import("@/lib/fetch-error");
+      setError(describeFetchError(err, "Error al completar con IA"));
       setDraft(null);
     } finally {
       setLoading(false);
