@@ -505,20 +505,79 @@ export default function TravelPlacesPanel({
         return;
       }
 
-      const res = await fetch("/api/places", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          travelId,
-          userId,
-          name: draft.name,
-          type: draft.type,
-          latitude: draft.lat,
-          longitude: draft.lng,
-          comment: draft.comment.trim() || null,
-          visitedAt,
-        }),
-      });
+      const payload = {
+        travelId,
+        userId,
+        name: draft.name.trim(),
+        type: draft.type,
+        latitude: draft.lat,
+        longitude: draft.lng,
+        comment: draft.comment.trim() || null,
+        visitedAt,
+      };
+
+      const postPlace = () =>
+        fetch("/api/places", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+      let res: Response;
+      try {
+        res = await postPlace();
+      } catch (firstErr) {
+        // One retry — Tailscale DERP drops are common from abroad.
+        const { isNetworkFetchError } = await import("@/lib/fetch-error");
+        if (!isNetworkFetchError(firstErr)) throw firstErr;
+        await new Promise((r) => setTimeout(r, 600));
+        try {
+          res = await postPlace();
+        } catch (secondErr) {
+          // Persist locally so the pin is not lost on Scotland/DERP flakiness.
+          const { savePendingPlace, savePendingNote } = await import(
+            "@/lib/offline-db"
+          );
+          const placeLocalId = createLocalId();
+          await savePendingPlace({
+            localId: placeLocalId,
+            travelId,
+            userId,
+            name: draft.name.trim(),
+            type: draft.type,
+            latitude: draft.lat,
+            longitude: draft.lng,
+            comment: null,
+            visitedAt,
+            createdAt: visitedAt,
+          });
+          if (draft.comment.trim()) {
+            await savePendingNote({
+              localId: createLocalId(),
+              travelId,
+              userId,
+              photoLocalId: null,
+              placeId: null,
+              placeLocalId,
+              type: "PLACE",
+              dayDate: null,
+              text: draft.comment.trim(),
+              createdAt: new Date().toISOString(),
+            });
+          }
+          const returnToPhotoId = draft.linkPhotoId ?? null;
+          setDraft(null);
+          setAddMode(false);
+          setError(
+            "Sin respuesta del NAS (Tailscale). El lugar quedó guardado en el móvil y se sincronizará al recuperar conexión."
+          );
+          onChanged?.();
+          if (returnToPhotoId) {
+            onOpenPhoto?.(returnToPhotoId);
+          }
+          return;
+        }
+      }
 
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };

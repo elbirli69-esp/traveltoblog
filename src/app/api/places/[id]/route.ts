@@ -88,14 +88,17 @@ export async function PATCH(
       });
     }
 
-    if (coordsChanged) {
-      await autoLinkPhotosForTravel(place.travelId);
-    }
-
     await prisma.travel.update({
       where: { id: place.travelId },
       data: { updatedAt: new Date() },
     });
+
+    // Fire-and-forget: keep PATCH fast on high-latency Tailscale links.
+    if (coordsChanged) {
+      void autoLinkPhotosForTravel(place.travelId).catch((err) => {
+        console.error("PATCH /api/places/[id] autoLinkPhotosForTravel", err);
+      });
+    }
 
     return NextResponse.json({ place });
   } catch (error) {
