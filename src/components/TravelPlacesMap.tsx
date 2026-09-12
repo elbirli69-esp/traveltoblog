@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PlaceType } from "@prisma/client";
 import type { FlightLegPhoto } from "@/lib/flights";
 import {
@@ -123,7 +123,12 @@ export default function TravelPlacesMap({
 
   const { outbound, inbound } = resolveFlightLegs(photos);
   const routePhotos = photoGpsPoints(photos);
-  const localPlaces = places.filter((place) => place.type !== "TRANSPORT");
+  // Must be memoized: a fresh array each render re-fires the route effect,
+  // which calls setRouteGeometry and freezes the UI (esp. on Añadir lugar).
+  const localPlaces = useMemo(
+    () => places.filter((place) => place.type !== "TRANSPORT"),
+    [places]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -200,7 +205,11 @@ export default function TravelPlacesMap({
         map.addControl(new mapboxgl.NavigationControl({ visualizePitch: false }), "bottom-right");
 
         const geolocate = new mapboxgl.GeolocateControl({
-          positionOptions: { enableHighAccuracy: true },
+          positionOptions: {
+            enableHighAccuracy: true,
+            timeout: 12000,
+            maximumAge: 10000,
+          },
           trackUserLocation: false,
           showUserHeading: true,
           showAccuracyCircle: true,
