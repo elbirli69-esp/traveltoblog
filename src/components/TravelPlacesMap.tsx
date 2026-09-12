@@ -316,7 +316,7 @@ export default function TravelPlacesMap({
       }
     }, 50);
     return () => window.clearTimeout(t);
-  }, [expanded, focusDraftPin, draftPin, mapReady]);
+  }, [expanded, focusDraftPin, draftPin?.lat, draftPin?.lng, mapReady]);
 
   // Jump straight to photo / place / draft pin — never ease across the world.
   useEffect(() => {
@@ -364,7 +364,8 @@ export default function TravelPlacesMap({
   }, [
     mapReady,
     focusDraftPin,
-    draftPin,
+    draftPin?.lat,
+    draftPin?.lng,
     selectedPhotoId,
     selectedPlaceId,
     photos,
@@ -623,7 +624,8 @@ export default function TravelPlacesMap({
     photos,
     selectedPlaceId,
     selectedPhotoId,
-    draftPin,
+    draftPin?.lat,
+    draftPin?.lng,
     focusDraftPin,
     addMode,
     outbound,
@@ -670,8 +672,9 @@ export default function TravelPlacesMap({
     scope === "flights" ? [] : (scopedGeometry?.dayLegend ?? []);
   const showFlightLegend = scope === "all" || scope === "flights";
   const showLocalLegend = scope === "all" || scope === "local";
+  // Keep verify-from-photo maps shorter so the name field above stays in view.
   const mapHeight = expanded
-    ? "h-[min(70vh,560px)]"
+    ? "h-[min(45vh,360px)]"
     : compact
       ? "h-[280px]"
       : "h-[420px]";
