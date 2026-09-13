@@ -96,44 +96,90 @@ export default function PhotoUploadSection({
           return;
         }
 
-        const formData = new FormData();
-        formData.append("travelId", travelId);
-        formData.append("userId", userId);
+        // Upload in small batches so Confirm with many HEICs does not hang Tailscale.
+        const CONFIRM_CHUNK = 3;
+        const CONFIRM_TIMEOUT_MS = 120_000;
+        let uploaded = 0;
+        try {
+          for (let i = 0; i < photos.length; i += CONFIRM_CHUNK) {
+            const chunk = photos.slice(i, i + CONFIRM_CHUNK);
+            const formData = new FormData();
+            formData.append("travelId", travelId);
+            formData.append("userId", userId);
 
-        const metadata = photos.map((p) => ({
-          localId: p.id,
-          exifDateTime: p.exif.dateTime?.toISOString() ?? null,
-          latitude: p.exif.latitude,
-          longitude: p.exif.longitude,
-          placeId: p.placeId ?? null,
-          mediaType: p.mediaType ?? "IMAGE",
-          durationMs: p.durationMs ?? null,
-          selected: p.selected,
-          isTransportStart: p.isTransportStart,
-          isTransportEnd: p.isTransportEnd,
-        }));
+            const metadata = chunk.map((p) => ({
+              localId: p.id,
+              exifDateTime: p.exif.dateTime?.toISOString() ?? null,
+              latitude: p.exif.latitude,
+              longitude: p.exif.longitude,
+              placeId: p.placeId ?? null,
+              mediaType: p.mediaType ?? "IMAGE",
+              durationMs: p.durationMs ?? null,
+              selected: p.selected,
+              isTransportStart: p.isTransportStart,
+              isTransportEnd: p.isTransportEnd,
+            }));
 
-        formData.append("metadata", JSON.stringify(metadata));
+            formData.append("metadata", JSON.stringify(metadata));
 
-        photos.forEach((p) => {
-          formData.append(`file_${p.id}`, p.file, p.file.name);
-          if (p.posterBlob) {
-            formData.append(`poster_${p.id}`, p.posterBlob, `${p.id}.poster.jpg`);
+            chunk.forEach((p) => {
+              formData.append(`file_${p.id}`, p.file, p.file.name);
+              if (p.posterBlob) {
+                formData.append(`poster_${p.id}`, p.posterBlob, `${p.id}.poster.jpg`);
+              }
+            });
+
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), CONFIRM_TIMEOUT_MS);
+            let res: Response;
+            try {
+              res = await fetch("/api/photos", {
+                method: "POST",
+                body: formData,
+                signal: controller.signal,
+              });
+            } finally {
+              clearTimeout(timer);
+            }
+
+            if (!res.ok) {
+              throw new Error("Upload failed");
+            }
+            uploaded = i + chunk.length;
           }
-        });
-
-        const res = await fetch("/api/photos", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!res.ok) {
-          throw new Error("Upload failed");
+        } catch {
+          // Queue only what did not upload yet (already-uploaded localIds are skipped by /api/sync).
+          const remaining = photos.slice(uploaded);
+          for (const photo of remaining) {
+            await savePendingPhoto({
+              localId: photo.id,
+              travelId,
+              userId,
+              fileBlob: photo.file,
+              filename: photo.file.name,
+              exifDateTime: photo.exif.dateTime?.toISOString() ?? null,
+              latitude: photo.exif.latitude,
+              longitude: photo.exif.longitude,
+              placeId: photo.placeId ?? null,
+              placeLocalId: null,
+              mediaType: photo.mediaType ?? "IMAGE",
+              durationMs: photo.durationMs ?? null,
+              posterBlob: photo.posterBlob ?? null,
+              selected: photo.selected,
+              isTransportStart: photo.isTransportStart,
+              isTransportEnd: photo.isTransportEnd,
+              createdAt: new Date().toISOString(),
+              syncStatus: "pending",
+              lastError: null,
+            });
+          }
+          if (uploaded > 0) onSyncComplete?.();
+          return;
         }
 
         onSyncComplete?.();
       } catch {
-        // Network blip or server error: keep memories in the offline queue.
+        // Offline / unexpected: keep all memories in the offline queue.
         await queueOffline();
       }
     },
