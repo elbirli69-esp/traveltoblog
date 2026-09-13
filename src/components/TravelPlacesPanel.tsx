@@ -27,6 +27,13 @@ import MemoryDateTimeField, {
 } from "@/components/MemoryDateTimeField";
 import { findNearby, formatDistanceM, NEARBY_THRESHOLD_M } from "@/lib/geo";
 import { formatDateKey, isoToDateKey, todayKey } from "@/lib/travel-dates";
+import {
+  buildDirectRouteGeometry,
+  buildRouteNodesFromPhotosAndPlaces,
+  coalesceRouteNodes,
+  resolveSegmentedRouteGeometry,
+  type SegmentedRouteGeometry,
+} from "@/lib/mapbox-route";
 
 const TravelPlacesMap = dynamic(() => import("@/components/TravelPlacesMap"), {
   ssr: false,
@@ -221,6 +228,52 @@ export default function TravelPlacesPanel({
         !p.isTransportEnd
     ) || places.length > 0;
   const showDualMaps = hasFlightGps && hasLocalMapContent;
+  const [sharedRouteGeometry, setSharedRouteGeometry] =
+    useState<SegmentedRouteGeometry | null>(null);
+  const [showFlightsMap, setShowFlightsMap] = useState(false);
+
+  // Resolve Directions once for dual maps (avoids 2× Mapbox waterfalls on Tailscale).
+  useEffect(() => {
+    let cancelled = false;
+    const localOnly = places.filter((place) => place.type !== "TRANSPORT");
+    const nodes = coalesceRouteNodes(
+      buildRouteNodesFromPhotosAndPlaces(
+        photos.map((photo) => ({
+          latitude: photo.latitude,
+          longitude: photo.longitude,
+          exifDateTime: photo.exifDateTime,
+          isTransportStart: photo.isTransportStart,
+          isTransportEnd: photo.isTransportEnd,
+        })),
+        localOnly.map((place) => ({
+          latitude: place.latitude,
+          longitude: place.longitude,
+          visitedAt: place.visitedAt ?? null,
+        }))
+      )
+    );
+    if (nodes.length < 2) {
+      setSharedRouteGeometry(null);
+      return;
+    }
+    setSharedRouteGeometry(buildDirectRouteGeometry(nodes));
+    void resolveSegmentedRouteGeometry(nodes).then((geometry) => {
+      if (!cancelled && geometry) setSharedRouteGeometry(geometry);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [photos, places]);
+
+  // Defer second Mapbox GL instance until local map had a chance to settle.
+  useEffect(() => {
+    if (!showDualMaps) {
+      setShowFlightsMap(false);
+      return;
+    }
+    const t = window.setTimeout(() => setShowFlightsMap(true), 750);
+    return () => window.clearTimeout(t);
+  }, [showDualMaps]);
   const placesPageCount = totalPages(places.length, PLACES_PAGE_SIZE);
   const visiblePlaces = pageSlice(places, placesPage, PLACES_PAGE_SIZE);
 
@@ -452,20 +505,79 @@ export default function TravelPlacesPanel({
         return;
       }
 
-      const res = await fetch("/api/places", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          travelId,
-          userId,
-          name: draft.name,
-          type: draft.type,
-          latitude: draft.lat,
-          longitude: draft.lng,
-          comment: draft.comment.trim() || null,
-          visitedAt,
-        }),
-      });
+      const payload = {
+        travelId,
+        userId,
+        name: draft.name.trim(),
+        type: draft.type,
+        latitude: draft.lat,
+        longitude: draft.lng,
+        comment: draft.comment.trim() || null,
+        visitedAt,
+      };
+
+      const postPlace = () =>
+        fetch("/api/places", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+      let res: Response;
+      try {
+        res = await postPlace();
+      } catch (firstErr) {
+        // One retry — Tailscale DERP drops are common from abroad.
+        const { isNetworkFetchError } = await import("@/lib/fetch-error");
+        if (!isNetworkFetchError(firstErr)) throw firstErr;
+        await new Promise((r) => setTimeout(r, 600));
+        try {
+          res = await postPlace();
+        } catch (secondErr) {
+          // Persist locally so the pin is not lost on Scotland/DERP flakiness.
+          const { savePendingPlace, savePendingNote } = await import(
+            "@/lib/offline-db"
+          );
+          const placeLocalId = createLocalId();
+          await savePendingPlace({
+            localId: placeLocalId,
+            travelId,
+            userId,
+            name: draft.name.trim(),
+            type: draft.type,
+            latitude: draft.lat,
+            longitude: draft.lng,
+            comment: null,
+            visitedAt,
+            createdAt: visitedAt,
+          });
+          if (draft.comment.trim()) {
+            await savePendingNote({
+              localId: createLocalId(),
+              travelId,
+              userId,
+              photoLocalId: null,
+              placeId: null,
+              placeLocalId,
+              type: "PLACE",
+              dayDate: null,
+              text: draft.comment.trim(),
+              createdAt: new Date().toISOString(),
+            });
+          }
+          const returnToPhotoId = draft.linkPhotoId ?? null;
+          setDraft(null);
+          setAddMode(false);
+          setError(
+            "Sin respuesta del NAS (Tailscale). El lugar quedó guardado en el móvil y se sincronizará al recuperar conexión."
+          );
+          onChanged?.();
+          if (returnToPhotoId) {
+            onOpenPhoto?.(returnToPhotoId);
+          }
+          return;
+        }
+      }
 
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -720,30 +832,6 @@ export default function TravelPlacesPanel({
         {showDualMaps && !fromPhoto ? (
           <div className="space-y-4">
             <TravelPlacesMap
-              scope="flights"
-              compact
-              title="Trayecto / llegada"
-              subtitle="Vuelos de ida y vuelta — contexto del destino"
-              places={places}
-              photos={photos}
-              selectedPlaceId={selectedPlaceId}
-              selectedPhotoId={selectedPhotoId}
-              addMode={false}
-              clickToPlace={false}
-              locateSignal={0}
-              draftPin={null}
-              onMapClick={handleMapClick}
-              onPlaceClick={(id) => {
-                setSelectedPlaceId(id);
-                setSelectedPhotoId(null);
-                setEditForm(null);
-              }}
-              onPhotoClick={(id) => {
-                setSelectedPhotoId(id);
-                onOpenPhoto?.(id);
-              }}
-            />
-            <TravelPlacesMap
               scope="local"
               title="En destino"
               subtitle="Recorrido del viaje — sin el zoom de los vuelos"
@@ -755,6 +843,7 @@ export default function TravelPlacesPanel({
               clickToPlace={addMode && pickOnMap}
               locateSignal={locateSignal}
               draftPin={draftPinCoords}
+              sharedRouteGeometry={sharedRouteGeometry}
               onMapClick={handleMapClick}
               onPlaceClick={(id) => {
                 setSelectedPlaceId(id);
@@ -766,10 +855,42 @@ export default function TravelPlacesPanel({
                 onOpenPhoto?.(id);
               }}
             />
+            {showFlightsMap ? (
+              <TravelPlacesMap
+                scope="flights"
+                compact
+                title="Trayecto / llegada"
+                subtitle="Vuelos de ida y vuelta — contexto del destino"
+                places={places}
+                photos={photos}
+                selectedPlaceId={selectedPlaceId}
+                selectedPhotoId={selectedPhotoId}
+                addMode={false}
+                clickToPlace={false}
+                locateSignal={0}
+                draftPin={null}
+                sharedRouteGeometry={sharedRouteGeometry}
+                onMapClick={handleMapClick}
+                onPlaceClick={(id) => {
+                  setSelectedPlaceId(id);
+                  setSelectedPhotoId(null);
+                  setEditForm(null);
+                }}
+                onPhotoClick={(id) => {
+                  setSelectedPhotoId(id);
+                  onOpenPhoto?.(id);
+                }}
+              />
+            ) : (
+              <div className="flex h-[220px] items-center justify-center rounded-xl surface-inset text-sm text-fg-secondary">
+                Cargando mapa de trayecto…
+              </div>
+            )}
           </div>
         ) : (
           <TravelPlacesMap
             scope={showDualMaps || fromPhoto ? "local" : "all"}
+            sharedRouteGeometry={sharedRouteGeometry}
             title={fromPhoto ? "Confirma el pin de la foto" : undefined}
             subtitle={
               fromPhoto

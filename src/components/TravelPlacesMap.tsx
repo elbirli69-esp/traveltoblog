@@ -30,6 +30,7 @@ import {
   MAPBOX_TOKEN,
 } from "@/lib/mapbox";
 import { getThemeColor } from "@/lib/theme";
+import { photoThumbUrl } from "@/lib/photo-display";
 import type { GeoJSONSource, Map as MapboxMap, Marker, GeolocateControl } from "mapbox-gl";
 
 export interface MapPlace {
@@ -73,6 +74,11 @@ interface TravelPlacesMapProps {
   focusDraftPin?: boolean;
   title?: string;
   subtitle?: string;
+  /**
+   * Precomputed trip route (shared across dual maps). When set, this map skips
+   * its own Directions fetches — critical on high-latency Tailscale links.
+   */
+  sharedRouteGeometry?: SegmentedRouteGeometry | null;
 }
 
 export default function TravelPlacesMap({
@@ -93,6 +99,7 @@ export default function TravelPlacesMap({
   focusDraftPin = false,
   title,
   subtitle,
+  sharedRouteGeometry = undefined,
 }: TravelPlacesMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
@@ -133,6 +140,12 @@ export default function TravelPlacesMap({
   );
 
   useEffect(() => {
+    // Parent dual-map layout already resolved Directions once — reuse it.
+    if (sharedRouteGeometry !== undefined) {
+      setRouteGeometry(sharedRouteGeometry);
+      return;
+    }
+
     let cancelled = false;
     const nodes = coalesceRouteNodes(
       buildRouteNodesFromPhotosAndPlaces(
@@ -168,7 +181,7 @@ export default function TravelPlacesMap({
     return () => {
       cancelled = true;
     };
-  }, [photos, localPlaces]);
+  }, [photos, localPlaces, sharedRouteGeometry]);
 
   useEffect(() => {
     if (localPlaces.length !== placesCountRef.current) {
@@ -527,7 +540,7 @@ export default function TravelPlacesMap({
           handlersRef.current.onPhotoClick?.(photo.id);
         });
         const popup = new mapboxgl.Popup({ offset: 12, closeButton: false }).setHTML(
-          `<div style="max-width:140px"><img src="${escapeHtml(photo.url)}" alt="" style="width:100%;border-radius:6px;display:block"/><small>#${index + 1} · ${escapeHtml(photo.user.alias)}</small></div>`
+          `<div style="max-width:140px"><img src="${escapeHtml(photoThumbUrl(photo.id))}" alt="" style="width:100%;border-radius:6px;display:block"/><small>#${index + 1} · ${escapeHtml(photo.user.alias)}</small></div>`
         );
         markersRef.current.push(
           new mapboxgl.Marker({ element: el })

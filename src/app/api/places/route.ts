@@ -82,7 +82,13 @@ export async function POST(request: NextRequest) {
       data: { updatedAt: new Date() },
     });
 
-    await autoLinkPhotosForTravel(travelId);
+    // Don't block the HTTP response on photo auto-link. Over high-RTT Tailscale
+    // (e.g. Scotland → DERP Madrid → NAS) awaiting this made the client see
+    // "Failed to fetch" / "Error al guardar el lugar" even though the place
+    // was already persisted.
+    void autoLinkPhotosForTravel(travelId).catch((err) => {
+      console.error("POST /api/places autoLinkPhotosForTravel", err);
+    });
 
     return NextResponse.json({ place });
   } catch (error) {
