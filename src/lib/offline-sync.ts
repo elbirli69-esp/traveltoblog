@@ -12,6 +12,13 @@ import {
   resetPendingPhotoForRetry,
   resetPendingPlaceForRetry,
 } from "@/lib/offline-db";
+import { describeFetchError } from "@/lib/fetch-error";
+import type { PendingPhoto } from "@/types";
+
+/** Keep each /api/sync POST small enough for Tailscale/NAS (HEIC ≈ 3–12 MB). */
+export const PHOTO_SYNC_CHUNK_SIZE = 3;
+/** Per-chunk timeout — a hung POST used to leave the UI on «Sincronizando…» forever. */
+export const PHOTO_SYNC_CHUNK_TIMEOUT_MS = 120_000;
 
 export interface SyncTravelResult {
   syncedPhotos: number;
@@ -20,6 +27,79 @@ export interface SyncTravelResult {
   failed: number;
   photoIdByLocalId: Map<string, string>;
   placeIdByLocalId: Map<string, string>;
+}
+
+function chunkPendingPhotos<T>(items: T[], size: number): T[][] {
+  if (size <= 0) return [items];
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+async function postPhotoSyncChunk(
+  travelId: string,
+  userId: string,
+  chunk: PendingPhoto[],
+  placeIdByLocalId: Map<string, string>
+): Promise<{
+  synced: Array<{ id: string; localId: string | null }>;
+  skipped: Array<{ localId: string; reason: string }>;
+}> {
+  const formData = new FormData();
+  formData.append("travelId", travelId);
+  formData.append("userId", userId);
+  formData.append(
+    "pendingPhotos",
+    JSON.stringify(
+      chunk.map((p) => ({
+        localId: p.localId,
+        exifDateTime: p.exifDateTime,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        placeId:
+          p.placeId ??
+          (p.placeLocalId ? placeIdByLocalId.get(p.placeLocalId) ?? null : null),
+        mediaType: p.mediaType ?? "IMAGE",
+        durationMs: p.durationMs ?? null,
+        selected: p.selected,
+        isTransportStart: p.isTransportStart,
+        isTransportEnd: p.isTransportEnd,
+        filename: p.filename,
+      }))
+    )
+  );
+
+  for (const p of chunk) {
+    formData.append(`file_${p.localId}`, p.fileBlob, p.filename);
+    if (p.posterBlob) {
+      formData.append(`poster_${p.localId}`, p.posterBlob, `${p.localId}.poster.jpg`);
+    }
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PHOTO_SYNC_CHUNK_TIMEOUT_MS);
+  try {
+    const res = await fetch("/api/sync", {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new Error(await readErrorMessage(res, "No se pudieron subir las fotos"));
+    }
+    const data = (await res.json()) as {
+      synced?: Array<{ id: string; localId: string | null }>;
+      skipped?: Array<{ localId: string; reason: string }>;
+    };
+    return {
+      synced: data.synced ?? [],
+      skipped: data.skipped ?? [],
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function errorMessage(res: Response, fallback: string): string {
@@ -102,74 +182,47 @@ export async function syncTravelPending(
     (p) => includeErrors || (p.syncStatus ?? "pending") !== "error"
   );
 
-  if (pendingPhotos.length > 0) {
+  // Upload in small chunks — one giant multipart of 18 HEICs hangs Tailscale/NAS
+  // and leaves the banner stuck on «Sincronizando…».
+  for (const chunk of chunkPendingPhotos(pendingPhotos, PHOTO_SYNC_CHUNK_SIZE)) {
     try {
-      const formData = new FormData();
-      formData.append("travelId", travelId);
-      formData.append("userId", userId);
-      formData.append(
-        "pendingPhotos",
-        JSON.stringify(
-          pendingPhotos.map((p) => ({
-            localId: p.localId,
-            exifDateTime: p.exifDateTime,
-            latitude: p.latitude,
-            longitude: p.longitude,
-            placeId:
-              p.placeId ??
-              (p.placeLocalId ? placeIdByLocalId.get(p.placeLocalId) ?? null : null),
-            mediaType: p.mediaType ?? "IMAGE",
-            durationMs: p.durationMs ?? null,
-            selected: p.selected,
-            isTransportStart: p.isTransportStart,
-            isTransportEnd: p.isTransportEnd,
-            filename: p.filename,
-          }))
-        )
+      const { synced, skipped } = await postPhotoSyncChunk(
+        travelId,
+        userId,
+        chunk,
+        placeIdByLocalId
       );
-
-      for (const p of pendingPhotos) {
-        formData.append(`file_${p.localId}`, p.fileBlob, p.filename);
-        if (p.posterBlob) {
-          formData.append(`poster_${p.localId}`, p.posterBlob, `${p.localId}.poster.jpg`);
+      const syncedLocalIds = new Set<string>();
+      for (const photo of synced) {
+        if (photo.localId) {
+          photoIdByLocalId.set(photo.localId, photo.id);
+          syncedLocalIds.add(photo.localId);
         }
       }
-
-      const res = await fetch("/api/sync", { method: "POST", body: formData });
-      if (!res.ok) {
-        const message = await readErrorMessage(res, "No se pudieron subir las fotos");
-        failed += pendingPhotos.length;
-        for (const photo of pendingPhotos) {
-          await markPendingPhotoError(photo, message);
-        }
-      } else {
-        const data = (await res.json()) as {
-          synced?: Array<{ id: string; localId: string | null }>;
-        };
-        const syncedLocalIds = new Set<string>();
-        for (const photo of data.synced ?? []) {
-          if (photo.localId) {
-            photoIdByLocalId.set(photo.localId, photo.id);
-            syncedLocalIds.add(photo.localId);
-          }
-        }
-        for (const photo of pendingPhotos) {
-          if (syncedLocalIds.has(photo.localId)) {
-            await removePendingPhoto(photo.localId);
-            syncedPhotos += 1;
-          } else {
-            failed += 1;
-            await markPendingPhotoError(
-              photo,
+      const skippedByLocalId = new Map(
+        skipped.map((s) => [s.localId, s.reason] as const)
+      );
+      for (const photo of chunk) {
+        if (syncedLocalIds.has(photo.localId)) {
+          await removePendingPhoto(photo.localId);
+          syncedPhotos += 1;
+        } else {
+          failed += 1;
+          await markPendingPhotoError(
+            photo,
+            skippedByLocalId.get(photo.localId) ??
               "La foto no se sincronizó (archivo ausente o demasiado grande)"
-            );
-          }
+          );
         }
       }
-    } catch {
-      failed += pendingPhotos.length;
-      for (const photo of pendingPhotos) {
-        await markPendingPhotoError(photo, "Sin conexión o error de red al subir fotos");
+    } catch (err) {
+      failed += chunk.length;
+      const message =
+        err instanceof Error && err.name === "AbortError"
+          ? "Tiempo de espera agotado al subir (lote demasiado lento). Reintenta."
+          : describeFetchError(err, "Sin conexión o error de red al subir fotos");
+      for (const photo of chunk) {
+        await markPendingPhotoError(photo, message);
       }
     }
   }

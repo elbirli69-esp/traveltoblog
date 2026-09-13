@@ -6,6 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { maxBytesForMedia } from "@/lib/media-limits";
 import type { MediaKind } from "@/lib/media-types";
 
+/** Match /api/sync — HEIC batches over Tailscale need headroom. */
+export const maxDuration = 120;
+
 interface PhotoMeta {
   localId: string;
   exifDateTime: string | null;
@@ -39,6 +42,14 @@ export async function POST(request: NextRequest) {
     const places = await loadPlacesForLink(travelId);
 
     for (const meta of metadata) {
+      const existing = await prisma.photo.findUnique({
+        where: { localId: meta.localId },
+      });
+      if (existing) {
+        created.push(existing);
+        continue;
+      }
+
       const file = formData.get(`file_${meta.localId}`) as File | null;
       if (!file) continue;
 
