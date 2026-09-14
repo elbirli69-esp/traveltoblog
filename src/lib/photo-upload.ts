@@ -1,8 +1,11 @@
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
+import {
+  contentTypeForFilename,
+  logicalPhotoUrl,
+  putTravelFile,
+} from "@/lib/media-store";
 import { extractExifFromBuffer, mergeExifMetadata } from "@/lib/exif";
 import type { ExifMetadata } from "@/types";
-import { normalizeImageForStorage, photoFilePath } from "@/lib/photo-storage";
+import { normalizeImageForStorage } from "@/lib/photo-storage";
 import { generateThumbnail } from "@/lib/photo-thumbnail";
 import type { MediaKind } from "@/lib/media-types";
 
@@ -11,6 +14,9 @@ export interface PreparedPhotoUpload {
   ext: string;
   exif: ExifMetadata;
   filename: string;
+  /** Logical public URL stored in DB (`/uploads/...`). */
+  url: string;
+  /** @deprecated Use url; kept for callers that expected a filesystem path. */
   filepath: string;
   mediaType: MediaKind;
   durationMs: number | null;
@@ -49,16 +55,18 @@ export async function preparePhotoForStorage(
     const exif = mergeExifMetadata(clientMeta, fileExif);
     const ext = normalizeVideoExt(originalExt);
     const filename = `${localId}${ext}`;
-    const uploadDir = path.join(process.cwd(), "public", "uploads", travelId);
-    await mkdir(uploadDir, { recursive: true });
-    const filepath = path.join(uploadDir, filename);
-    await writeFile(filepath, originalBuffer);
+    await putTravelFile(
+      travelId,
+      filename,
+      originalBuffer,
+      contentTypeForFilename(filename)
+    );
 
     let posterFilename: string | null = null;
     const posterBuffer = options?.posterBuffer ?? null;
     if (posterBuffer && posterBuffer.length > 0) {
       posterFilename = `${localId}.poster.jpg`;
-      await writeFile(photoFilePath(travelId, posterFilename), posterBuffer);
+      await putTravelFile(travelId, posterFilename, posterBuffer, "image/jpeg");
       try {
         await generateThumbnail(posterBuffer, travelId, filename);
       } catch (thumbError) {
@@ -66,12 +74,14 @@ export async function preparePhotoForStorage(
       }
     }
 
+    const url = logicalPhotoUrl(travelId, filename);
     return {
       buffer: originalBuffer,
       ext,
       exif,
       filename,
-      filepath,
+      url,
+      filepath: url,
       mediaType: "VIDEO",
       durationMs: options?.durationMs ?? null,
       posterFilename,
@@ -85,10 +95,12 @@ export async function preparePhotoForStorage(
   const buffer = Buffer.from(normalized.buffer);
   const ext = normalized.ext;
   const filename = `${localId}${ext}`;
-  const uploadDir = path.join(process.cwd(), "public", "uploads", travelId);
-  await mkdir(uploadDir, { recursive: true });
-  const filepath = path.join(uploadDir, filename);
-  await writeFile(filepath, buffer);
+  await putTravelFile(
+    travelId,
+    filename,
+    buffer,
+    contentTypeForFilename(filename)
+  );
 
   try {
     await generateThumbnail(buffer, travelId, filename);
@@ -96,12 +108,14 @@ export async function preparePhotoForStorage(
     console.warn("Thumbnail generation failed", thumbError);
   }
 
+  const url = logicalPhotoUrl(travelId, filename);
   return {
     buffer,
     ext,
     exif,
     filename,
-    filepath,
+    url,
+    filepath: url,
     mediaType: "IMAGE",
     durationMs: null,
     posterFilename: null,

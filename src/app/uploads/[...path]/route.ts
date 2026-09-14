@@ -1,59 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile } from "fs/promises";
 import path from "path";
+import { getMediaStore, urlToMediaKey } from "@/lib/media-store";
+import { contentTypeForFilename } from "@/lib/media-store/types";
 
-const UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads");
-
-const MIME_BY_EXT: Record<string, string> = {
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".png": "image/png",
-  ".webp": "image/webp",
-  ".gif": "image/gif",
-  ".heic": "image/heic",
-  ".heif": "image/heif",
-  ".avif": "image/avif",
-  ".mp4": "video/mp4",
-  ".webm": "video/webm",
-  ".mov": "video/quicktime",
-  ".m4v": "video/x-m4v",
-  ".avi": "video/x-msvideo",
-  ".mkv": "video/x-matroska",
-};
-
-function contentTypeFor(filePath: string): string {
-  const ext = path.extname(filePath).toLowerCase();
-  return MIME_BY_EXT[ext] ?? "application/octet-stream";
-}
-
-function safeUploadPath(segments: string[]): string | null {
-  if (segments.length < 2) return null;
-  const normalized = segments.map((s) => path.basename(s));
-  if (normalized.some((s) => s === "." || s === ".." || !s)) return null;
-  const full = path.join(UPLOADS_ROOT, ...normalized);
-  if (!full.startsWith(UPLOADS_ROOT)) return null;
-  return full;
-}
-
+/**
+ * Serves `/uploads/{travelId}/...` from the active media store (fs or blob).
+ * Keeps Photo.url stable as `/uploads/...` on both hosts.
+ */
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   const { path: segments } = await params;
-  const filePath = safeUploadPath(segments);
-  if (!filePath) {
+  if (!segments?.length || segments.some((s) => s === "." || s === "..")) {
     return NextResponse.json({ error: "Ruta no válida" }, { status: 400 });
   }
 
+  const safe = segments.map((s) => path.basename(s));
+  if (safe.some((s) => !s) || safe.length < 2) {
+    return NextResponse.json({ error: "Ruta no válida" }, { status: 400 });
+  }
+
+  const key = urlToMediaKey(`uploads/${safe.join("/")}`);
   try {
-    const buffer = await readFile(filePath);
+    const buffer = await getMediaStore().get(key);
+    if (!buffer) {
+      return NextResponse.json({ error: "Archivo no encontrado" }, { status: 404 });
+    }
+    const filename = safe[safe.length - 1]!;
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
-        "Content-Type": contentTypeFor(filePath),
+        "Content-Type": contentTypeForFilename(filename),
         "Cache-Control": "public, max-age=86400",
       },
     });
-  } catch {
-    return NextResponse.json({ error: "Archivo no encontrado" }, { status: 404 });
+  } catch (error) {
+    console.error("GET /uploads/[...path]", error);
+    return NextResponse.json({ error: "Error al leer archivo" }, { status: 500 });
   }
 }

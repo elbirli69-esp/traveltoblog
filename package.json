@@ -27,7 +27,10 @@
     "test:destination-fiche": "npx --yes tsx scripts/test-destination-fiche.mjs",
     "build:android": "bash scripts/build-android-apk.sh",
     "cap:sync": "npx cap sync android",
-    "deploy:synology": "bash scripts/deploy-synology.sh"
+    "deploy:synology": "bash scripts/deploy-synology.sh",
+    "db:push:cloud": "prisma db push --schema prisma/schema.cloud.prisma",
+    "smoke:media-store": "npx --yes tsx scripts/smoke-media-store.ts",
+    "migrate:nas-to-cloud": "npx --yes tsx scripts/migrate-nas-to-cloud.ts"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.2",
@@ -35,6 +38,7 @@
     "@capacitor/cli": "^6.2.2",
     "@capacitor/core": "^6.2.2",
     "@prisma/client": "^6.5.0",
+    "@vercel/blob": "^2.8.0",
     "exifr": "^7.1.3",
     "heic-convert": "^2.1.0",
     "heic2any": "^0.0.4",

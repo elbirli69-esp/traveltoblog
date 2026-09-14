@@ -1,0 +1,252 @@
+// Prisma schema for TravelToBlog — CLOUD (Vercel + Neon Postgres)
+// Keep models in sync with schema.prisma (SQLite / NAS).
+// Usage: DATABASE_URL="postgresql://..." npx prisma db push --schema prisma/schema.cloud.prisma
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TravelType {
+  GENERIC
+  CITY_BREAK
+  ROAD_TRIP
+  INTERNATIONAL
+  BEACH_RESORT
+  TREKKING
+  SLOW_TRAVEL
+}
+
+/// A shared travel room. Participants join via shareCode / QR URL.
+model Travel {
+  id           String   @id @default(cuid())
+  title        String
+  /// Short code for joining (e.g. "abc123")
+  shareCode    String   @unique
+  /// Trip start boundary — set when transport-out photo is marked
+  startDate    DateTime?
+  /// Trip end boundary — set when transport-return photo is marked
+  endDate      DateTime?
+  /// Generated blog article in Markdown
+  journalMarkdown String?
+  journalGeneratedAt DateTime?
+  /// Previous journalMarkdown before last AI generate/refine (one-level undo)
+  journalMarkdownPrevious String?
+  /// Blog-style chronicle (continuous article for sharing), separate from day-by-day
+  journalBlogMarkdown String?
+  journalBlogGeneratedAt DateTime?
+  /// Previous journalBlogMarkdown before last AI generate/refine
+  journalBlogMarkdownPrevious String?
+  /// Free-text brief: anecdotes, emphasis, tone for AI journal generation
+  journalBrief String?
+  /// Which chronicle HTML export uses: "day" | "blog" (null = day)
+  htmlJournalSource String?
+  /// Optional canonical destination for blog voice (e.g. "Cracovia, Polonia")
+  destinationName String?
+  /// Optional JSON string[] of up to 3 editorial themes (historia, comida, barrios…)
+  destinationThemes String?
+  /// Shared free-text brief for HTML / Reel / PDF exports (session-persisted on travel)
+  exportBrief String?
+  /// Last grounded interpretation / directives cache (JSON)
+  exportBriefCache String?
+  /// Last chosen HTML template id (magazine, visual-journey, …)
+  htmlTemplateId String?
+  /// Last chosen HTML theme pack id
+  htmlThemePackId String?
+  /// Last chosen typography pack id
+  htmlTypePackId String?
+  /// Last chosen Reel montage preset id
+  reelPresetId String?
+  /// Last chosen PDF look preset id
+  pdfPresetId String?
+  /// Export / narrative typology (null = auto-suggest on export)
+  travelType   TravelType?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  /// Participant who created the travel room (only they may delete the trip)
+  creatorId    String?  @unique
+  creator      User?    @relation("TravelCreator", fields: [creatorId], references: [id], onDelete: SetNull)
+
+  users        User[]
+  photos       Photo[]
+  notes        Note[]
+  places       Place[]
+  gpsTracks    GpsTrack[]
+
+  /// Transport photo that opens the trip
+  startPhoto   Photo?   @relation("TravelStartPhoto", fields: [startPhotoId], references: [id], onDelete: SetNull)
+  startPhotoId String?  @unique
+
+  /// Transport photo that closes the trip
+  endPhoto     Photo?   @relation("TravelEndPhoto", fields: [endPhotoId], references: [id], onDelete: SetNull)
+  endPhotoId   String?  @unique
+}
+
+/// Lightweight participant — alias only, no full auth flow
+model User {
+  id        String   @id @default(cuid())
+  alias     String
+  travelId  String
+  createdAt DateTime @default(now())
+
+  travel    Travel   @relation(fields: [travelId], references: [id], onDelete: Cascade)
+  createdTravel Travel? @relation("TravelCreator")
+  photos    Photo[]
+  notes     Note[]
+  places    Place[]
+  gpsTracks GpsTrack[]
+
+  @@unique([travelId, alias])
+  @@index([travelId])
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+model Photo {
+  id              String    @id @default(cuid())
+  travelId        String
+  userId          String
+  /// Stored filename on server (under /public/uploads)
+  filename        String
+  /// Public URL path
+  url             String
+  mediaType       MediaType @default(IMAGE)
+  /// Video duration in milliseconds (null for images)
+  durationMs      Int?
+  /// Still frame JPEG for video thumbs / export posters
+  posterFilename  String?
+  /// EXIF DateTimeOriginal parsed on client
+  exifDateTime    DateTime?
+  latitude        Float?
+  longitude       Float?
+  /// Optional explicit link to a marked place (export categories + guía)
+  placeId         String?
+  /// User selected this photo for the journal
+  selected        Boolean   @default(true)
+  /// Prominence 0–10 for Reel + HTML export (0 = unscored)
+  highlightScore  Int       @default(0)
+  /// Marks outbound transport photo (trip start)
+  isTransportStart Boolean  @default(false)
+  /// Marks return transport photo (trip end)
+  isTransportEnd   Boolean  @default(false)
+  /// Client-side UUID for offline sync deduplication
+  localId         String?   @unique
+  syncedAt        DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+
+  travel          Travel    @relation(fields: [travelId], references: [id], onDelete: Cascade)
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  place           Place?    @relation(fields: [placeId], references: [id], onDelete: SetNull)
+  notes           Note[]
+
+  travelAsStart   Travel?   @relation("TravelStartPhoto")
+  travelAsEnd     Travel?   @relation("TravelEndPhoto")
+
+  @@index([travelId, exifDateTime])
+  @@index([userId])
+  @@index([placeId])
+}
+
+enum NoteType {
+  PHOTO
+  DAY
+  TRIP
+  PLACE
+}
+
+model Note {
+  id        String    @id @default(cuid())
+  travelId  String
+  userId    String
+  /// Required when type = PHOTO
+  photoId   String?
+  /// Required when type = PLACE
+  placeId   String?
+  type      NoteType
+  /// Calendar date for DAY notes (YYYY-MM-DD stored as midnight UTC)
+  dayDate   DateTime?
+  text      String
+  /// Client-side UUID for offline sync
+  localId   String?   @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  travel    Travel    @relation(fields: [travelId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  photo     Photo?    @relation(fields: [photoId], references: [id], onDelete: SetNull)
+  place     Place?    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@index([travelId, type])
+  @@index([userId])
+  @@index([placeId])
+}
+
+enum PlaceType {
+  HOTEL
+  RESTAURANT
+  CAFE
+  MUSEUM
+  PARK
+  BEACH
+  VIEWPOINT
+  TRANSPORT
+  SHOP
+  OTHER
+}
+
+/// Point of interest marked on the trip map (DogTrainer-style pins)
+model Place {
+  id        String    @id @default(cuid())
+  travelId  String
+  userId    String
+  name      String
+  type      PlaceType @default(OTHER)
+  latitude  Float
+  longitude Float
+  /// Deprecated: prefer Note(type=PLACE). Kept nullable for migration.
+  comment   String?
+  /// When the place was actually visited (falls back to createdAt in timeline)
+  visitedAt DateTime?
+  /// Prominence 0–10 for Reel + HTML export (0 = unscored)
+  highlightScore Int @default(0)
+  /// Client-side UUID for offline sync deduplication
+  localId   String?   @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  travel    Travel    @relation(fields: [travelId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes     Note[]
+  photos    Photo[]
+
+  @@index([travelId])
+  @@index([userId])
+}
+
+/// Optional continuous GPS trail (opt-in recording during trip)
+model GpsTrack {
+  id              String    @id @default(cuid())
+  travelId        String
+  userId          String
+  startedAt       DateTime
+  endedAt         DateTime?
+  /// JSON array of { lat, lng, at } — sampled ~1/min
+  points          String    @default("[]")
+  includeInExport Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  travel Travel @relation(fields: [travelId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([travelId])
+  @@index([userId])
+}

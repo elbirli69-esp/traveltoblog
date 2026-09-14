@@ -34,6 +34,18 @@ function parseTypePack(raw: unknown): TypePackId | null {
 
 export async function POST(request: NextRequest) {
   try {
+    const { isPdfExportEnabled } = await import("@/lib/runtime-config");
+    if (!isPdfExportEnabled()) {
+      return NextResponse.json(
+        {
+          error:
+            "La exportación PDF no está disponible en este entorno (p. ej. Vercel). Usa el NAS / Docker self-host, o activa PDF_EXPORT_ENABLED=1 si WeasyPrint está instalado.",
+          code: "PDF_EXPORT_DISABLED",
+        },
+        { status: 501 }
+      );
+    }
+
     const stream = request.nextUrl.searchParams.get("stream") === "true";
     const body = await request.json();
     const {

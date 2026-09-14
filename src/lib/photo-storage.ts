@@ -1,7 +1,12 @@
-import { unlink } from "fs/promises";
 import path from "path";
 import convert from "heic-convert";
-import { deleteThumbnailFile } from "@/lib/photo-thumbnail";
+import {
+  deleteTravelFile,
+  getMediaStore,
+  mediaKey,
+  thumbMediaKey,
+} from "@/lib/media-store";
+import { isBlobStorage } from "@/lib/runtime-config";
 
 const HEIC_EXT = /\.(heic|heif)$/i;
 
@@ -41,6 +46,7 @@ export async function normalizeImageForStorage(
   }
 }
 
+/** Absolute fs path — only meaningful for STORAGE_DRIVER=fs. Prefer media-store. */
 export function photoFilePath(travelId: string, filename: string): string {
   return path.join(process.cwd(), "public", "uploads", travelId, filename);
 }
@@ -50,17 +56,34 @@ export async function deleteStoredPhotoFile(
   filename: string,
   posterFilename?: string | null
 ): Promise<void> {
-  try {
-    await unlink(photoFilePath(travelId, filename));
-  } catch {
-    // File may already be missing.
-  }
+  await deleteTravelFile(travelId, filename);
   if (posterFilename) {
+    await deleteTravelFile(travelId, posterFilename);
+  }
+  await getMediaStore().delete(thumbMediaKey(travelId, filename));
+
+  // Best-effort cleanup of legacy sibling thumb on disk
+  if (!isBlobStorage()) {
     try {
-      await unlink(photoFilePath(travelId, posterFilename));
+      const { unlink } = await import("fs/promises");
+      const base = filename.replace(/\.[^.]+$/i, "");
+      await unlink(
+        path.join(
+          process.cwd(),
+          "public",
+          "uploads",
+          travelId,
+          "thumbs",
+          `${base}.thumb.jpg`
+        )
+      );
     } catch {
-      // already gone
+      // ignore
     }
   }
-  await deleteThumbnailFile(travelId, filename);
+}
+
+/** @deprecated Prefer mediaKey from media-store. */
+export function photoMediaKey(travelId: string, filename: string): string {
+  return mediaKey(travelId, filename);
 }

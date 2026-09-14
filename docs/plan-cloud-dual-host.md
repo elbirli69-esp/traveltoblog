@@ -2,9 +2,9 @@
 
 Plan de **implementación técnica** para desplegar TravelToBlog en Vercel sin romper el self-host en Synology. Complementa [`plan-producto-escala.md`](./plan-producto-escala.md) (eje A0–A5) y el handoff [`AGENT-HANDOFF.md`](./AGENT-HANDOFF.md).
 
-**Estado:** 📋 Anotado (2026-09-14)  
+**Estado:** 🚧 En implementación (2026-09-14) — D0–D4 en código; falta provisionar Neon/Blob y cutover.  
 **Principio:** un solo repo, dos modos de runtime (`fs`+SQLite en NAS · `blob`+Postgres en Vercel).  
-**Restricción:** no cambiar el comportamiento de producción en Synology hasta que el modo cloud esté validado; trabajo en rama hasta merge controlado.
+**Restricción:** default `STORAGE_DRIVER=fs` — Synology no cambia hasta activar cloud en Vercel.
 
 ---
 
@@ -77,10 +77,10 @@ Default **siempre** `STORAGE_DRIVER=fs` para no romper Docker existente.
 
 | ID | Trabajo | Criterio de hecho |
 |----|---------|-------------------|
-| D0.1 | Rama `cursor/cloud-dual-host-*` desde `main` | Rama verde, NAS no afectado |
-| D0.2 | Doc env + secrets (este plan + sección en handoff) | Lista de vars revisada |
-| D0.3 | Proyecto Vercel + Neon + Blob (vacíos) | Preview deploy “hola” o build OK |
-| D0.4 | Decidir: ¿cloud clona datos o sustituye uso diario? | Decisión escrita (§7) |
+| D0.1 | Rama `cursor/cloud-dual-host-*` desde `main` | ✅ Rama de implementación |
+| D0.2 | Doc env + secrets (este plan + `.env.example`) | ✅ Vars documentadas |
+| D0.3 | Proyecto Vercel + Neon + Blob (vacíos) | 📋 Manual: crear en dashboard |
+| D0.4 | Decidir: ¿cloud clona datos o sustituye uso diario? | ✅ Clon (NAS intacto) — §7 opción A |
 
 **No merge a `main` obligatorio** hasta D1+ con default fs.
 
@@ -92,12 +92,12 @@ Default **siempre** `STORAGE_DRIVER=fs` para no romper Docker existente.
 
 | ID | Trabajo | Archivos / zona | Criterio de hecho |
 |----|---------|-----------------|-------------------|
-| D1.1 | Interfaz `MediaStore`: `put`, `get`, `delete`, `deleteTravelPrefix`, `publicUrl` | `src/lib/media-store/*` | Unit/contrato tipado |
-| D1.2 | Driver `fs` = comportamiento actual | envuelve paths actuales | NAS: tests/manual upload+thumb+delete OK |
-| D1.3 | Driver `blob` | Vercel Blob SDK | Put/get en preview |
-| D1.4 | Cablear upload + sync + delete + thumbs | `api/photos*`, `api/sync` | Misma UX; URL estable en BD |
-| D1.5 | Modelo de URL en `Photo.url` | path lógico `uploads/{travelId}/{file}` o key Blob | Resolución vía store, no `path.join` suelto |
-| D1.6 | Thumbs: generar y guardar en store (o on-the-fly cache) | `photo-thumbnail`, `thumb` route | Galería usable en cloud |
+| D1.1 | Interfaz `MediaStore` | `src/lib/media-store/*` | ✅ |
+| D1.2 | Driver `fs` | default | ✅ smoke `npm run smoke:media-store` |
+| D1.3 | Driver `blob` | `@vercel/blob` | ✅ código; falta token real |
+| D1.4 | Cablear upload + sync + delete + thumbs | photo-upload / thumb / routes | ✅ |
+| D1.5 | `Photo.url` lógico `/uploads/...` | uploads route vía store | ✅ |
+| D1.6 | Thumbs en store | `photo-thumbnail` | ✅ |
 
 **Regla:** ningún `path.join(process.cwd(), "public", "uploads")` fuera del driver `fs`.
 
@@ -109,11 +109,11 @@ Default **siempre** `STORAGE_DRIVER=fs` para no romper Docker existente.
 
 | ID | Trabajo | Criterio de hecho |
 |----|---------|-------------------|
-| D2.1 | Auditar schema Prisma vs Postgres (enums, Json, fechas) | Lista de diffs; cambios mínimos en schema |
-| D2.2 | Estrategia Prisma: un schema con provider por env **o** `schema.prisma` + shadow docs | `prisma migrate` / `db push` documentado para ambos |
-| D2.3 | Neon vacío + migrate | Tablas creadas |
-| D2.4 | Smoke: crear Travel / User / Place / Photo metadata en cloud | CRUD API OK sin media grande |
-| D2.5 | CI: typecheck + (opcional) test contra Postgres efímero | Build Vercel verde |
+| D2.1 | Auditar schema Prisma vs Postgres | ✅ `prisma/schema.cloud.prisma` |
+| D2.2 | Dos schemas (sqlite NAS + postgres cloud) | ✅ `npm run db:push:cloud` |
+| D2.3 | Neon vacío + migrate | 📋 Requiere credenciales Neon |
+| D2.4 | Smoke CRUD en cloud | 📋 Tras D2.3 |
+| D2.5 | Typecheck | ✅ `tsc --noEmit` |
 
 **Nota:** mantener SQLite en NAS. Evitar features solo-Postgres o solo-SQLite en queries nuevas.
 
@@ -123,13 +123,13 @@ Default **siempre** `STORAGE_DRIVER=fs` para no romper Docker existente.
 
 | ID | Trabajo | Criterio de hecho |
 |----|---------|-------------------|
-| D3.1 | `vercel.ts` / config build (standalone no requerido en Vercel) | Deploy preview |
-| D3.2 | Crear viaje, unirse por código, notas, lugares, mapa | Flujo Escocia OK |
-| D3.3 | Subida fotos (incl. HEIC) en chunks existentes | Fotos visibles en galería |
-| D3.4 | Offline sync: cola IndexedDB → `/api/sync` cloud | No regresión grave |
-| D3.5 | Export HTML + Reel (cliente) | Funciona contra Blob URLs |
-| D3.6 | PDF: mensaje “disponible en self-host” o 501 controlado | No 500 opaco |
-| D3.7 | PWA / Capacitor: documentar URL cloud de prueba | APK o PWA apunta a preview si se prueba |
+| D3.1 | Config Vercel (`vercel.json`; standalone solo fuera de Vercel) | ✅ |
+| D3.2 | Crear viaje, unirse por código, notas, lugares, mapa | 📋 Tras deploy preview |
+| D3.3 | Subida fotos (incl. HEIC) en chunks existentes | 📋 Tras Blob token |
+| D3.4 | Offline sync: cola IndexedDB → `/api/sync` cloud | 📋 Tras preview |
+| D3.5 | Export HTML + Reel (cliente) | 📋 Tras preview |
+| D3.6 | PDF: 501 controlado en cloud | ✅ `PDF_EXPORT_ENABLED` / auto-off en Vercel |
+| D3.7 | PWA / Capacitor: documentar URL cloud de prueba | 📋 Pendiente |
 
 ---
 
@@ -141,7 +141,7 @@ Default **siempre** `STORAGE_DRIVER=fs` para no romper Docker existente.
 | ID | Trabajo | Criterio de hecho |
 |----|---------|-------------------|
 | D4.1 | Inventario: nº travels, photos, tamaño uploads | Informe en `/tmp` o doc |
-| D4.2 | Script `scripts/migrate-nas-to-cloud.ts` (o `.mjs`) | Dry-run + apply |
+| D4.2 | Script `scripts/migrate-nas-to-cloud.ts` | ✅ dry-run + `--apply` (media); filas BD parcial |
 | D4.3 | Copiar filas Prisma en orden FK (Travel → User → Place → Photo → Note → GpsTrack) | Conteos NAS == Neon |
 | D4.4 | Subir ficheros a Blob; verificar sample URLs | 100% o reporte de fallos |
 | D4.5 | Reconciliar `Photo.url` / keys | Galería cloud = mismas fotos |
@@ -275,3 +275,4 @@ Walkthrough: capturas/vídeo de galería cloud + mapa tras migración.
 | Fecha | Nota |
 |-------|------|
 | 2026-09-14 | Plan creado: dual-host Vercel+Synology, fases D0–D6, migración clon. |
+| 2026-09-14 | Implementación: MediaStore fs/blob, schema.cloud, migrate script, PDF gate, vercel.json. |
