@@ -2,7 +2,7 @@
 
 Documento **canónico** para que cualquier agente (o humano) conozca el estado real del producto, la arquitectura, las reglas de IA ya decididas y el roadmap hacia robustez y público general.
 
-**Última actualización:** 2026-09-08  
+**Última actualización:** 2026-09-14  
 **Repo:** `elbirli69-esp/traveltoblog`  
 **Hosting actual:** Docker en Synology NAS + Tailscale HTTPS (`https://syno-nas.tailf9872a.ts.net`)  
 **Idioma de producto / UI:** español (peninsular)
@@ -14,6 +14,7 @@ Documento **canónico** para que cualquier agente (o humano) conozca el estado r
 | Si necesitas… | Lee… |
 |---------------|------|
 | Visión y monetización | §1 + [`plan-producto-escala.md`](./plan-producto-escala.md) |
+| Cloud dual-host (Vercel + NAS) | [`plan-cloud-dual-host.md`](./plan-cloud-dual-host.md) |
 | Qué hay ya construido | §2–§6 |
 | Reglas de IA (anti-alucinación + blog) | §7 |
 | Export HTML/PDF/Reel | §8 + planes `plan-export-*.md` |
@@ -297,16 +298,17 @@ Ver plan dedicado: [`plan-blog-editorial.md`](./plan-blog-editorial.md).
 
 ### P3 — Público general (SaaS)
 
-Del [`plan-producto-escala.md`](./plan-producto-escala.md):
+Del [`plan-producto-escala.md`](./plan-producto-escala.md).  
+**Plan de implementación dual-host (Vercel + Synology, migración de álbumes):** [`plan-cloud-dual-host.md`](./plan-cloud-dual-host.md) (fases D0–D6).
 
 | Fase | Qué |
 |------|-----|
-| A0 | Decisión hosting (Vercel+Neon+R2 vs VPS) |
+| A0 | Decisión hosting (Vercel+Neon+Blob/R2 vs VPS) — cerrar en dual-host D0 |
 | A1 | Auth (magic link / OAuth) + multi-tenant |
-| A2 | Object storage para media |
-| A3 | Postgres |
+| A2 | Object storage para media — dual-host D1/D3 |
+| A3 | Postgres — dual-host D2; migración álbumes D4 |
 | A4 | Dominio, onboarding, stores |
-| A5 | Self-host Docker como producto paralelo |
+| A5 | Self-host Docker como producto paralelo — NAS sigue en `fs` |
 | F0–F4 | Límites free/Plus, Stripe, paywall, métricas |
 
 ### P4 — Mobile
