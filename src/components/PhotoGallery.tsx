@@ -89,6 +89,17 @@ function formatPhotoDate(iso: string | null): string {
 }
 
 /** Most recent PHOTO note text on another photo in the current page. */
+function addPlacePayloadFromPhoto(
+  photo: GalleryPhoto
+): AddPlaceFromPhotoPayload {
+  return {
+    photoId: photo.id,
+    latitude: photo.latitude!,
+    longitude: photo.longitude!,
+    visitedAt: photo.exifDateTime,
+  };
+}
+
 function lastOtherPhotoNoteText(
   photos: GalleryPhoto[],
   excludePhotoId: string
@@ -525,6 +536,9 @@ export default function PhotoGallery({
             if (photo.isTransportEnd) badges.push("Vuelta");
             if (photo.mediaType === "VIDEO") badges.push("Vídeo");
             if (isValidGps(photo.latitude, photo.longitude)) badges.push("GPS");
+            const canAddPlaceFromPhoto =
+              Boolean(onAddPlaceFromPhoto) &&
+              isValidGps(photo.latitude, photo.longitude);
             const placeName =
               photo.place?.name ??
               (photo.placeId
@@ -595,12 +609,31 @@ export default function PhotoGallery({
                           Sin nota
                         </span>
                       )}
+                      {!photo.placeId && canAddPlaceFromPhoto && (
+                        <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-sky-200">
+                          Sin lugar
+                        </span>
+                      )}
                     </div>
                     <p className="text-[11px] text-fg-secondary">
                       {formatPhotoDate(photo.exifDateTime)}
                     </p>
                   </div>
                 </button>
+
+                {!photo.placeId && canAddPlaceFromPhoto && (
+                  <div className="border-t border-divider px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onAddPlaceFromPhoto!(addPlacePayloadFromPhoto(photo))
+                      }
+                      className="chip-btn w-full justify-center text-xs"
+                    >
+                      Añadir lugar
+                    </button>
+                  </div>
+                )}
 
                 {isExpanded && (
                   <div className="space-y-4 border-t border-divider px-4 py-4">
@@ -655,9 +688,7 @@ export default function PhotoGallery({
                       </button>
                     </div>
 
-                    {(places.length > 0 ||
-                      (onAddPlaceFromPhoto &&
-                        isValidGps(photo.latitude, photo.longitude))) && (
+                    {(places.length > 0 || onAddPlaceFromPhoto) && (
                       <div className="space-y-1.5">
                         <label className="block text-xs font-semibold text-fg-secondary">
                           Lugar asociado
@@ -689,17 +720,13 @@ export default function PhotoGallery({
                               Ver lugar en el mapa
                             </button>
                           )}
-                          {onAddPlaceFromPhoto &&
-                            isValidGps(photo.latitude, photo.longitude) && (
+                          {canAddPlaceFromPhoto && (
                               <button
                                 type="button"
                                 onClick={() =>
-                                  onAddPlaceFromPhoto({
-                                    photoId: photo.id,
-                                    latitude: photo.latitude!,
-                                    longitude: photo.longitude!,
-                                    visitedAt: photo.exifDateTime,
-                                  })
+                                  onAddPlaceFromPhoto!(
+                                    addPlacePayloadFromPhoto(photo)
+                                  )
                                 }
                                 className="chip-btn"
                               >
@@ -709,12 +736,20 @@ export default function PhotoGallery({
                               </button>
                             )}
                         </div>
-                        {places.length === 0 &&
-                          onAddPlaceFromPhoto &&
-                          isValidGps(photo.latitude, photo.longitude) && (
+                        {places.length === 0 && canAddPlaceFromPhoto && (
                             <p className="text-[11px] text-fg-secondary">
                               Crea un lugar con el GPS de esta foto (nombre + tipo)
                               y aparecerá en el mapa.
+                            </p>
+                          )}
+                        {!photo.placeId &&
+                          onAddPlaceFromPhoto &&
+                          !canAddPlaceFromPhoto && (
+                            <p className="text-[11px] text-fg-secondary">
+                              Esta foto no tiene GPS en los metadatos.
+                              {places.length > 0
+                                ? " Elige un lugar existente arriba o súbela de nuevo desde el original."
+                                : " Súbela de nuevo desde el archivo original o crea el lugar a mano en Lugares."}
                             </p>
                           )}
                       </div>
