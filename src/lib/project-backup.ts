@@ -1,4 +1,3 @@
-import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import JSZip from "jszip";
 import type {
@@ -9,7 +8,7 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateShareCode, createLocalId } from "@/lib/utils";
-import { photoFilePath } from "@/lib/photo-storage";
+import { getTravelFile, putTravelFile } from "@/lib/media-store";
 import { generateThumbnail } from "@/lib/photo-thumbnail";
 import {
   parseProjectManifest,
@@ -71,23 +70,21 @@ export async function buildProjectBackup(
   for (const photo of travel.photos) {
     const mediaPath = mediaRelPath(photo.id, photo.filename);
     let included = false;
-    try {
-      const buf = await readFile(photoFilePath(travel.id, photo.filename));
+    const buf = await getTravelFile(travel.id, photo.filename);
+    if (buf) {
       zip.file(mediaPath, buf, { compression: "STORE" });
       included = true;
-    } catch {
+    } else {
       missing.push(mediaPath);
     }
 
     let posterPath: string | null = null;
     if (photo.posterFilename) {
       posterPath = mediaRelPath(photo.id, photo.posterFilename);
-      try {
-        const posterBuf = await readFile(
-          photoFilePath(travel.id, photo.posterFilename)
-        );
+      const posterBuf = await getTravelFile(travel.id, photo.posterFilename);
+      if (posterBuf) {
         zip.file(posterPath, posterBuf, { compression: "STORE" });
-      } catch {
+      } else {
         missing.push(posterPath);
         posterPath = null;
       }
@@ -507,11 +504,7 @@ export async function importProjectBackup(
     };
   });
 
-  // Write media outside the DB transaction
-  await mkdir(path.join(process.cwd(), "public", "uploads", result.travel.id), {
-    recursive: true,
-  });
-
+  // Write media outside the DB transaction (fs or Vercel Blob via MediaStore)
   let mediaRestored = 0;
   let mediaMissing = 0;
 
@@ -524,7 +517,7 @@ export async function importProjectBackup(
     }
     try {
       const buf = Buffer.from(await entry.async("nodebuffer"));
-      await writeFile(photoFilePath(result.travel.id, job.filename), buf);
+      await putTravelFile(result.travel.id, job.filename, buf);
       if (job.mediaType === "IMAGE") {
         try {
           await generateThumbnail(buf, result.travel.id, job.filename);
@@ -547,8 +540,9 @@ export async function importProjectBackup(
       if (posterEntry) {
         try {
           const posterBuf = Buffer.from(await posterEntry.async("nodebuffer"));
-          await writeFile(
-            photoFilePath(result.travel.id, job.posterFilename),
+          await putTravelFile(
+            result.travel.id,
+            job.posterFilename,
             posterBuf
           );
           try {

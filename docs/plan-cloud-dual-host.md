@@ -141,8 +141,8 @@ Default **siempre** `STORAGE_DRIVER=fs` para no romper Docker existente.
 | ID | Trabajo | Criterio de hecho |
 |----|---------|-------------------|
 | D4.1 | Inventario: nº travels, photos, tamaño uploads | Informe en `/tmp` o doc |
-| D4.2 | Script `scripts/migrate-nas-to-cloud.ts` | ✅ dry-run + `--apply` (media); filas BD parcial |
-| D4.3 | Copiar filas Prisma en orden FK (Travel → User → Place → Photo → Note → GpsTrack) | Conteos NAS == Neon |
+| D4.2 | Script `scripts/migrate-nas-to-cloud.ts` + `import-project-zip.ts` | ✅ dry-run media; clone por ZIP (Blob-aware) |
+| D4.3 | Copiar filas Prisma en orden FK (Travel → User → Place → Photo → Note → GpsTrack) | ✅ vía `importProjectBackup` (ids nuevos; NAS intacto) |
 | D4.4 | Subir ficheros a Blob; verificar sample URLs | 100% o reporte de fallos |
 | D4.5 | Reconciliar `Photo.url` / keys | Galería cloud = mismas fotos |
 | D4.6 | Checklist post-migración por viaje (Scotland, etc.) | Sign-off manual |
@@ -276,3 +276,4 @@ Walkthrough: capturas/vídeo de galería cloud + mapa tras migración.
 |-------|------|
 | 2026-09-14 | Plan creado: dual-host Vercel+Synology, fases D0–D6, migración clon. |
 | 2026-09-14 | Implementación: MediaStore fs/blob, schema.cloud, migrate script, PDF gate, vercel.json. |
+| 2026-09-15 | Import ZIP Blob-aware; clon Scotland 2026 NAS→Vercel (dual). |
