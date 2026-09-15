@@ -4,7 +4,7 @@ Documento **canónico** para que cualquier agente (o humano) conozca el estado r
 
 **Última actualización:** 2026-09-14  
 **Repo:** `elbirli69-esp/traveltoblog`  
-**Hosting actual:** Docker en Synology NAS + Tailscale HTTPS (`https://syno-nas.tailf9872a.ts.net`)  
+**Hosting actual:** Dual-host — Vercel cloud (`https://traveltoblog.vercel.app`) + Docker Synology NAS + Tailscale (`https://syno-nas.tailf9872a.ts.net`)  
 **Idioma de producto / UI:** español (peninsular)
 
 ---
