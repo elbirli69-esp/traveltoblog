@@ -5,10 +5,9 @@ import { readStoredPhotoBuffer } from "@/lib/photo-gps";
 import {
   isHeicFilename,
   normalizeImageForStorage,
-  photoFilePath,
   deleteStoredPhotoFile,
 } from "@/lib/photo-storage";
-import { writeFile } from "fs/promises";
+import { putTravelFile } from "@/lib/media-store";
 
 const MIME: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -65,7 +64,7 @@ export async function GET(
         const newFilename = photo.filename.replace(HEIC_EXT, ".jpg");
         const newUrl = `/uploads/${photo.travelId}/${newFilename}`;
         try {
-          await writeFile(photoFilePath(photo.travelId, newFilename), buffer);
+          await putTravelFile(photo.travelId, newFilename, buffer, "image/jpeg");
           await deleteStoredPhotoFile(photo.travelId, photo.filename);
           await prisma.photo.update({
             where: { id: photo.id },

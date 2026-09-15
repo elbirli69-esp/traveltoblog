@@ -1,6 +1,9 @@
-import { readFile } from "fs/promises";
-import path from "path";
-import { extractExifFromBuffer, mergeExifMetadata, sanitizeGpsPair } from "@/lib/exif";
+import {
+  extractExifFromBuffer,
+  mergeExifMetadata,
+  sanitizeGpsPair,
+} from "@/lib/exif";
+import { getByPhotoUrl } from "@/lib/media-store";
 import type { ExifMetadata } from "@/types";
 
 export interface StoredPhotoExifInput {
@@ -10,17 +13,13 @@ export interface StoredPhotoExifInput {
   longitude: number | null;
 }
 
-export async function readStoredPhotoBuffer(photoUrl: string): Promise<Buffer | null> {
-  const relative = photoUrl.startsWith("/") ? photoUrl.slice(1) : photoUrl;
-  const filepath = path.join(process.cwd(), "public", relative);
-  try {
-    return await readFile(filepath);
-  } catch {
-    return null;
-  }
+export async function readStoredPhotoBuffer(
+  photoUrl: string
+): Promise<Buffer | null> {
+  return getByPhotoUrl(photoUrl);
 }
 
-/** Fill missing GPS/date from the stored image file when DB values are empty. */
+/** Fill missing GPS/date from the stored image when DB values are empty. */
 export async function resolvePhotoExifFromFile(
   photo: StoredPhotoExifInput
 ): Promise<ExifMetadata & { changed: boolean }> {
@@ -34,7 +33,11 @@ export async function resolvePhotoExifFromFile(
   const needsGps = current.latitude == null || current.longitude == null;
   const needsDate = photo.exifDateTime == null;
   if (!needsGps && !needsDate) {
-    return { ...current, changed: dbGps.latitude !== photo.latitude || dbGps.longitude !== photo.longitude };
+    return {
+      ...current,
+      changed:
+        dbGps.latitude !== photo.latitude || dbGps.longitude !== photo.longitude,
+    };
   }
 
   const buffer = await readStoredPhotoBuffer(photo.url);

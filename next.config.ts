@@ -8,7 +8,8 @@ const withSerwist = withSerwistInit({
 });
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // Synology Docker needs standalone; Vercel builds without it.
+  ...(process.env.VERCEL ? {} : { output: "standalone" as const }),
   experimental: {
     serverActions: {
       bodySizeLimit: "800mb",

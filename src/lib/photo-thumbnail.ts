@@ -1,6 +1,10 @@
-import { access, mkdir, readFile, writeFile } from "fs/promises";
-import path from "path";
 import sharp from "sharp";
+import {
+  getMediaStore,
+  getTravelFile,
+  mediaKey,
+  thumbMediaKey,
+} from "@/lib/media-store";
 import { normalizeImageForStorage } from "@/lib/photo-storage";
 
 export const THUMB_MAX_WIDTH = 480;
@@ -11,38 +15,25 @@ export function thumbFilename(filename: string): string {
   return `${base}.thumb.jpg`;
 }
 
+/** @deprecated Prefer thumbMediaKey. */
 export function thumbDirPath(travelId: string): string {
-  return path.join(process.cwd(), "public", "uploads", travelId, "thumbs");
+  return `uploads/${travelId}/thumbs`;
 }
 
+/** @deprecated Prefer thumbMediaKey. */
 export function thumbFilePath(travelId: string, filename: string): string {
-  return path.join(thumbDirPath(travelId), thumbFilename(filename));
+  return thumbMediaKey(travelId, filename);
 }
 
 export async function thumbFileExists(
   travelId: string,
   filename: string
 ): Promise<boolean> {
-  try {
-    await access(thumbFilePath(travelId, filename));
-    return true;
-  } catch {
-    return false;
-  }
+  return getMediaStore().exists(thumbMediaKey(travelId, filename));
 }
 
-/** Genera miniatura JPEG optimizada para la UI (no usar en export). */
-export async function generateThumbnail(
-  sourceBuffer: Buffer,
-  travelId: string,
-  filename: string
-): Promise<string> {
-  const thumbDir = thumbDirPath(travelId);
-  await mkdir(thumbDir, { recursive: true });
-  const thumbName = thumbFilename(filename);
-  const thumbPath = path.join(thumbDir, thumbName);
-
-  const thumbBuffer = await sharp(sourceBuffer)
+async function buildThumbBuffer(sourceBuffer: Buffer): Promise<Buffer> {
+  return sharp(sourceBuffer)
     .rotate()
     .resize({ width: THUMB_MAX_WIDTH, withoutEnlargement: true })
     .jpeg({ quality: THUMB_JPEG_QUALITY, mozjpeg: true })
@@ -59,22 +50,39 @@ export async function generateThumbnail(
         .jpeg({ quality: THUMB_JPEG_QUALITY })
         .toBuffer()
     );
+}
 
-  await writeFile(thumbPath, thumbBuffer);
+/** Genera miniatura JPEG optimizada para la UI (no usar en export). */
+export async function generateThumbnail(
+  sourceBuffer: Buffer,
+  travelId: string,
+  filename: string
+): Promise<string> {
+  const thumbName = thumbFilename(filename);
+  const thumbBuffer = await buildThumbBuffer(sourceBuffer);
+  await getMediaStore().put(thumbMediaKey(travelId, filename), thumbBuffer, {
+    contentType: "image/jpeg",
+    overwrite: true,
+  });
   return thumbName;
 }
 
-/** Lee miniatura de disco o la genera desde el original (fotos legacy). */
+/** Lee miniatura del store o la genera desde el original (fotos legacy). */
 export async function ensureThumbnailBuffer(
   travelId: string,
   filename: string,
   fullBuffer: Buffer,
   originalExt: string
 ): Promise<Buffer> {
-  const exists = await thumbFileExists(travelId, filename);
-  if (exists) {
-    return readFile(thumbFilePath(travelId, filename));
-  }
+  const key = thumbMediaKey(travelId, filename);
+  const existing = await getMediaStore().get(key);
+  if (existing) return existing;
+
+  const legacy = await getTravelFile(
+    travelId,
+    `thumbs/${thumbFilename(filename)}`
+  );
+  if (legacy) return legacy;
 
   let buffer = fullBuffer;
   if (/\.(heic|heif)$/i.test(filename) || /\.(heic|heif)$/i.test(originalExt)) {
@@ -83,17 +91,19 @@ export async function ensureThumbnailBuffer(
   }
 
   await generateThumbnail(buffer, travelId, filename);
-  return readFile(thumbFilePath(travelId, filename));
+  return (await getMediaStore().get(key)) ?? buffer;
 }
 
 export async function deleteThumbnailFile(
   travelId: string,
   filename: string
 ): Promise<void> {
-  const { unlink } = await import("fs/promises");
-  try {
-    await unlink(thumbFilePath(travelId, filename));
-  } catch {
-    // already gone
-  }
+  await getMediaStore().delete(thumbMediaKey(travelId, filename));
+}
+
+export async function readOriginalPhotoBuffer(
+  travelId: string,
+  filename: string
+): Promise<Buffer | null> {
+  return getMediaStore().get(mediaKey(travelId, filename));
 }

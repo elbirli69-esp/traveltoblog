@@ -48,12 +48,14 @@ Cualquiera puede crear cuenta/viaje en una URL pública, invitar al grupo y expo
 
 | Fase | Qué | Estado |
 |------|-----|--------|
-| A0 | Decisión hosting (Vercel+Neon+R2 vs VPS) y presupuesto | 📋 Anotado |
+| A0 | Decisión hosting (Vercel+Neon+R2 vs VPS) y presupuesto | 📋 Anotado → ver [`plan-cloud-dual-host.md`](./plan-cloud-dual-host.md) |
 | A1 | Auth ligera (email mágico / OAuth) + multi-tenant seguro | 📋 Pendiente |
-| A2 | Migrar media a object storage | 📋 Pendiente |
-| A3 | Migrar BD a Postgres | 📋 Pendiente |
+| A2 | Migrar media a object storage | 📋 Pendiente → fases D1/D3 del plan dual-host |
+| A3 | Migrar BD a Postgres | 📋 Pendiente → fase D2 del plan dual-host |
 | A4 | Dominio público, onboarding, App Store / Play | 📋 Pendiente |
-| A5 | Mantener imagen Docker self-host como producto paralelo | 📋 Pendiente |
+| A5 | Mantener imagen Docker self-host como producto paralelo | 📋 Pendiente → dual-host (NAS + Vercel) |
+
+**Implementación técnica (dual Vercel + Synology, sin romper `main`):** [`plan-cloud-dual-host.md`](./plan-cloud-dual-host.md).
 
 ### Criterios de hecho (escala pública)
 
@@ -190,3 +192,4 @@ No hace falta terminar toda la nube antes de prototipar `experienceType` en el N
 | Fecha | Nota |
 |-------|------|
 | 2026-09-03 | Plan creado: escala pública, freemium, experiencias más allá del viaje. |
+| 2026-09-14 | Enlace a plan técnico dual-host Vercel+Synology (`plan-cloud-dual-host.md`). |
