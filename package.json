@@ -30,7 +30,8 @@
     "deploy:synology": "bash scripts/deploy-synology.sh",
     "db:push:cloud": "prisma db push --schema prisma/schema.cloud.prisma",
     "smoke:media-store": "npx --yes tsx scripts/smoke-media-store.ts",
-    "migrate:nas-to-cloud": "npx --yes tsx scripts/migrate-nas-to-cloud.ts"
+    "migrate:nas-to-cloud": "npx --yes tsx scripts/migrate-nas-to-cloud.ts",
+    "import:project-zip": "npx --yes tsx scripts/import-project-zip.ts"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.2",

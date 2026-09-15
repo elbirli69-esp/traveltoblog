@@ -22,6 +22,11 @@
  * This script uses raw SQL via better-sqlite3 for the source and Prisma for the
  * destination when available; if Prisma provider is still sqlite, it only
  * uploads media to Blob and prints SQL/JSON for DB import.
+ *
+ * Prefer single-travel clone via project backup (keeps NAS intact):
+ *   POST /api/export-project on NAS → ZIP
+ *   STORAGE_DRIVER=blob DATABASE_URL=postgres… npx tsx scripts/import-project-zip.ts trip.zip
+ * Import uses MediaStore (Blob on cloud) after project-backup was wired to putTravelFile.
  */
 
 import { createReadStream, existsSync, readdirSync, statSync } from "fs";
