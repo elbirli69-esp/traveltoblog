@@ -22,17 +22,18 @@ const UPLOAD_MAX_EDGE = 2560;
 const UPLOAD_JPEG_QUALITY = 82;
 
 async function makeLargeJpeg(minBytes = 7.5e6) {
-  let w = 5000;
-  let h = 4000;
+  // High-entropy noise → compressed size closer to real phone JPEGs (~1–3MB).
+  let w = 4000;
+  let h = 3000;
   for (;;) {
     const n = Buffer.alloc(w * h * 3);
-    for (let i = 0; i < n.length; i++) n[i] = (Math.sin(i * 0.01) * 127 + 128) | 0;
+    for (let i = 0; i < n.length; i++) n[i] = (Math.random() * 256) | 0;
     const buf = await sharp(n, { raw: { width: w, height: h, channels: 3 } })
-      .jpeg({ quality: 92 })
+      .jpeg({ quality: 92, chromaSubsampling: "4:4:4" })
       .toBuffer();
     if (buf.length >= minBytes) return buf;
-    w += 500;
-    h += 400;
+    w += 400;
+    h += 300;
   }
 }
 
