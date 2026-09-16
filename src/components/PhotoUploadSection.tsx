@@ -6,6 +6,11 @@ import {
   savePendingPhoto,
   removePendingPhoto,
 } from "@/lib/offline-db";
+import {
+  describeUploadHttpError,
+  packByUploadBudget,
+  prepareImageForUpload,
+} from "@/lib/client-photo-compress";
 import type { ExifMetadata, ParsedPhoto, TravelDateRange } from "@/types";
 
 interface PhotoUploadSectionProps {
@@ -26,6 +31,39 @@ interface PhotoUploadSectionProps {
   addOnly?: boolean;
 }
 
+type PreparedConfirmPhoto = ParsedPhoto & {
+  uploadBlob: Blob;
+  uploadFilename: string;
+};
+
+async function prepareConfirmPhotos(
+  photos: ParsedPhoto[]
+): Promise<PreparedConfirmPhoto[]> {
+  const out: PreparedConfirmPhoto[] = [];
+  for (const photo of photos) {
+    const prepared = await prepareImageForUpload(photo.file, photo.file.name, {
+      mediaType: photo.mediaType ?? "IMAGE",
+    });
+    out.push({
+      ...photo,
+      uploadBlob: prepared.blob,
+      uploadFilename: prepared.filename,
+    });
+  }
+  return out;
+}
+
+async function readUploadError(res: Response, fallback: string): Promise<string> {
+  let serverError: string | null = null;
+  try {
+    const data = (await res.json()) as { error?: string };
+    if (data.error?.trim()) serverError = data.error.trim();
+  } catch {
+    /* ignore non-JSON (e.g. Vercel 413 plain/FUNCTION_PAYLOAD_TOO_LARGE) */
+  }
+  return describeUploadHttpError(res.status, fallback, serverError);
+}
+
 export default function PhotoUploadSection({
   travelId,
   userId,
@@ -43,14 +81,21 @@ export default function PhotoUploadSection({
 }: PhotoUploadSectionProps) {
   const handlePhotosConfirmed = useCallback(
     async (photos: ParsedPhoto[]) => {
-      const queueOffline = async () => {
-        for (const photo of photos) {
+      const queueOffline = async (
+        items: Array<{
+          photo: ParsedPhoto;
+          uploadBlob: Blob;
+          uploadFilename: string;
+        }>,
+        lastError: string | null = null
+      ) => {
+        for (const { photo, uploadBlob, uploadFilename } of items) {
           await savePendingPhoto({
             localId: photo.id,
             travelId,
             userId,
-            fileBlob: photo.file,
-            filename: photo.file.name,
+            fileBlob: uploadBlob,
+            filename: uploadFilename,
             exifDateTime: photo.exif.dateTime?.toISOString() ?? null,
             latitude: photo.exif.latitude,
             longitude: photo.exif.longitude,
@@ -63,14 +108,21 @@ export default function PhotoUploadSection({
             isTransportStart: photo.isTransportStart,
             isTransportEnd: photo.isTransportEnd,
             createdAt: new Date().toISOString(),
-            syncStatus: "pending",
-            lastError: null,
+            syncStatus: lastError ? "error" : "pending",
+            lastError,
           });
         }
       };
 
       if (!navigator.onLine) {
-        await queueOffline();
+        const prepared = await prepareConfirmPhotos(photos);
+        await queueOffline(
+          prepared.map((p) => ({
+            photo: p,
+            uploadBlob: p.uploadBlob,
+            uploadFilename: p.uploadFilename,
+          }))
+        );
         return;
       }
 
@@ -96,13 +148,20 @@ export default function PhotoUploadSection({
           return;
         }
 
-        // Upload in small batches so Confirm with many HEICs does not hang Tailscale.
-        const CONFIRM_CHUNK = 3;
+        // Compress first, then upload one (or budget-safe) photo per request so
+        // phone JPEGs (~8MB) never hit Vercel’s ~4.5MB FUNCTION_PAYLOAD_TOO_LARGE.
+        const prepared = await prepareConfirmPhotos(photos);
         const CONFIRM_TIMEOUT_MS = 120_000;
         let uploaded = 0;
+        let lastFailureMessage: string | null = null;
+
         try {
-          for (let i = 0; i < photos.length; i += CONFIRM_CHUNK) {
-            const chunk = photos.slice(i, i + CONFIRM_CHUNK);
+          const chunks = packByUploadBudget(
+            prepared,
+            (p) => p.uploadBlob.size + (p.posterBlob?.size ?? 0)
+          );
+
+          for (const chunk of chunks) {
             const formData = new FormData();
             formData.append("travelId", travelId);
             formData.append("userId", userId);
@@ -123,7 +182,7 @@ export default function PhotoUploadSection({
             formData.append("metadata", JSON.stringify(metadata));
 
             chunk.forEach((p) => {
-              formData.append(`file_${p.id}`, p.file, p.file.name);
+              formData.append(`file_${p.id}`, p.uploadBlob, p.uploadFilename);
               if (p.posterBlob) {
                 formData.append(`poster_${p.id}`, p.posterBlob, `${p.id}.poster.jpg`);
               }
@@ -143,44 +202,45 @@ export default function PhotoUploadSection({
             }
 
             if (!res.ok) {
-              throw new Error("Upload failed");
+              lastFailureMessage = await readUploadError(res, "No se pudieron subir las fotos");
+              throw new Error(lastFailureMessage);
             }
-            uploaded = i + chunk.length;
+            uploaded += chunk.length;
           }
-        } catch {
-          // Queue only what did not upload yet (already-uploaded localIds are skipped by /api/sync).
-          const remaining = photos.slice(uploaded);
-          for (const photo of remaining) {
-            await savePendingPhoto({
-              localId: photo.id,
-              travelId,
-              userId,
-              fileBlob: photo.file,
-              filename: photo.file.name,
-              exifDateTime: photo.exif.dateTime?.toISOString() ?? null,
-              latitude: photo.exif.latitude,
-              longitude: photo.exif.longitude,
-              placeId: photo.placeId ?? null,
-              placeLocalId: null,
-              mediaType: photo.mediaType ?? "IMAGE",
-              durationMs: photo.durationMs ?? null,
-              posterBlob: photo.posterBlob ?? null,
-              selected: photo.selected,
-              isTransportStart: photo.isTransportStart,
-              isTransportEnd: photo.isTransportEnd,
-              createdAt: new Date().toISOString(),
-              syncStatus: "pending",
-              lastError: null,
-            });
-          }
+        } catch (err) {
+          // Queue only what did not upload yet. HTTP 413 / payload errors are marked
+          // as syncStatus=error (not silent "offline") so the banner shows a clear message.
+          const remaining = prepared.slice(uploaded);
+          const message =
+            lastFailureMessage ??
+            (err instanceof Error ? err.message : null) ??
+            "Error al subir fotos";
+          const isPayloadOrHttp =
+            /HTTP\s*413|demasiado grande|FUNCTION_PAYLOAD/i.test(message);
+
+          await queueOffline(
+            remaining.map((p) => ({
+              photo: p,
+              uploadBlob: p.uploadBlob,
+              uploadFilename: p.uploadFilename,
+            })),
+            isPayloadOrHttp ? message : null
+          );
           if (uploaded > 0) onSyncComplete?.();
           return;
         }
 
         onSyncComplete?.();
       } catch {
-        // Offline / unexpected: keep all memories in the offline queue.
-        await queueOffline();
+        // Offline / unexpected: keep memories in the offline queue (compressed when possible).
+        const prepared = await prepareConfirmPhotos(photos);
+        await queueOffline(
+          prepared.map((p) => ({
+            photo: p,
+            uploadBlob: p.uploadBlob,
+            uploadFilename: p.uploadFilename,
+          }))
+        );
       }
     },
     [travelId, userId, shareBundleId, onSyncComplete]
