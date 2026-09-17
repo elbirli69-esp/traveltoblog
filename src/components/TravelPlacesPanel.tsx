@@ -1171,16 +1171,25 @@ export default function TravelPlacesPanel({
 
       {selectedPlace && !draft && !editForm && (
         <div className="surface p-4 space-y-3">
-          <div>
-            <p className="text-sm font-semibold text-fg">
-              {placeEmoji(selectedPlace.type)} {selectedPlace.name}
-            </p>
-            <p className="text-xs text-fg-secondary">
-              Notas del lugar · {selectedPlace.user.alias}
-              {formatVisitedAt(selectedPlace.visitedAt)
-                ? ` · ${formatVisitedAt(selectedPlace.visitedAt)}`
-                : ""}
-            </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-fg">
+                {placeEmoji(selectedPlace.type)} {selectedPlace.name}
+              </p>
+              <p className="text-xs text-fg-secondary">
+                Notas del lugar · {selectedPlace.user.alias}
+                {formatVisitedAt(selectedPlace.visitedAt)
+                  ? ` · ${formatVisitedAt(selectedPlace.visitedAt)}`
+                  : ""}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => startEditPlace(selectedPlace)}
+              className="btn-secondary shrink-0 px-3 py-1.5 text-xs"
+            >
+              Cambiar nombre
+            </button>
           </div>
           <HighlightScoreControl
             value={selectedPlace.highlightScore ?? 0}
