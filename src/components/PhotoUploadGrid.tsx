@@ -643,8 +643,12 @@ export default function PhotoUploadGrid({
       await onPhotosConfirmed(toUpload);
       toUpload.forEach((p) => URL.revokeObjectURL(p.previewUrl));
       setPhotos((prev) => prev.filter((p) => !p.selected));
-    } catch {
-      setError("Error al guardar las fotos. Se intentará sincronizar offline.");
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message.trim()
+          ? err.message.trim()
+          : "Error al guardar las fotos. Revisa la cola de sincronización.";
+      setError(message);
     } finally {
       setUploading(false);
     }

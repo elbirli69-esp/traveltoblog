@@ -208,39 +208,56 @@ export default function PhotoUploadSection({
             uploaded += chunk.length;
           }
         } catch (err) {
-          // Queue only what did not upload yet. HTTP 413 / payload errors are marked
-          // as syncStatus=error (not silent "offline") so the banner shows a clear message.
+          // Queue only what did not upload yet. Always mark lastError so the UI
+          // (and offline banner) show a real message — do not pretend success.
           const remaining = prepared.slice(uploaded);
           const message =
             lastFailureMessage ??
             (err instanceof Error ? err.message : null) ??
             "Error al subir fotos";
-          const isPayloadOrHttp =
-            /HTTP\s*413|demasiado grande|FUNCTION_PAYLOAD/i.test(message);
 
-          await queueOffline(
-            remaining.map((p) => ({
-              photo: p,
-              uploadBlob: p.uploadBlob,
-              uploadFilename: p.uploadFilename,
-            })),
-            isPayloadOrHttp ? message : null
-          );
+          if (remaining.length) {
+            await queueOffline(
+              remaining.map((p) => ({
+                photo: p,
+                uploadBlob: p.uploadBlob,
+                uploadFilename: p.uploadFilename,
+              })),
+              message
+            );
+          }
           if (uploaded > 0) onSyncComplete?.();
-          return;
+          const summary =
+            uploaded > 0
+              ? `Se subieron ${uploaded} de ${prepared.length}. ${message}`
+              : message;
+          throw new Error(summary);
         }
 
         onSyncComplete?.();
-      } catch {
-        // Offline / unexpected: keep memories in the offline queue (compressed when possible).
+      } catch (err) {
+        // Propagate structured upload errors to PhotoUploadGrid.
+        if (
+          err instanceof Error &&
+          /HTTP\s*\d|subieron \d|demasiado grande|FUNCTION_PAYLOAD|No se pudieron|Error al subir|Import failed/i.test(
+            err.message
+          )
+        ) {
+          throw err;
+        }
+        // Unexpected (e.g. compress crash): keep memories in the offline queue.
         const prepared = await prepareConfirmPhotos(photos);
+        const message =
+          err instanceof Error ? err.message : "Error al guardar las fotos";
         await queueOffline(
           prepared.map((p) => ({
             photo: p,
             uploadBlob: p.uploadBlob,
             uploadFilename: p.uploadFilename,
-          }))
+          })),
+          message
         );
+        throw new Error(message);
       }
     },
     [travelId, userId, shareBundleId, onSyncComplete]

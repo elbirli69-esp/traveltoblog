@@ -13,7 +13,9 @@ export const UPLOAD_JPEG_QUALITY = 0.82;
  * Soft per-request budget for multipart bodies (files + metadata overhead).
  * Vercel rejects above ~4.5MB with 413 FUNCTION_PAYLOAD_TOO_LARGE.
  */
-export const UPLOAD_SOFT_MAX_BYTES = Math.floor(3.5 * 1024 * 1024);
+export const UPLOAD_SOFT_MAX_BYTES = Math.floor(2.5 * 1024 * 1024);
+/** Always compress (or convert HEIC) when source is larger than this. */
+export const UPLOAD_COMPRESS_THRESHOLD_BYTES = Math.floor(1 * 1024 * 1024);
 /** Prefer one photo per POST; packing may add more only when under budget. */
 export const PHOTO_UPLOAD_CHUNK_SIZE = 1;
 
@@ -105,8 +107,11 @@ export async function prepareImageForUpload(
     return { blob, filename, compressed: false };
   }
 
-  // Small non-HEIC images already fit; skip work.
-  if (!isHeicBlob(blob, filename) && blob.size <= UPLOAD_SOFT_MAX_BYTES) {
+  // Tiny non-HEIC images already fit; skip work.
+  if (
+    !isHeicBlob(blob, filename) &&
+    blob.size <= UPLOAD_COMPRESS_THRESHOLD_BYTES
+  ) {
     return { blob, filename, compressed: false };
   }
 
