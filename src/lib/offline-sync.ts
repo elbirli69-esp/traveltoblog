@@ -12,11 +12,20 @@ import {
   resetPendingPhotoForRetry,
   resetPendingPlaceForRetry,
 } from "@/lib/offline-db";
+import {
+  PHOTO_UPLOAD_CHUNK_SIZE,
+  describeUploadHttpError,
+  packByUploadBudget,
+  prepareImageForUpload,
+} from "@/lib/client-photo-compress";
 import { describeFetchError } from "@/lib/fetch-error";
 import type { PendingPhoto } from "@/types";
 
-/** Keep each /api/sync POST small enough for Tailscale/NAS (HEIC ≈ 3–12 MB). */
-export const PHOTO_SYNC_CHUNK_SIZE = 3;
+/**
+ * Keep each /api/sync POST under Vercel’s ~4.5MB body limit (and Tailscale-friendly).
+ * Images are client-compressed first; default is one photo per request.
+ */
+export const PHOTO_SYNC_CHUNK_SIZE = PHOTO_UPLOAD_CHUNK_SIZE;
 /** Per-chunk timeout — a hung POST used to leave the UI on «Sincronizando…» forever. */
 export const PHOTO_SYNC_CHUNK_TIMEOUT_MS = 120_000;
 
@@ -29,19 +38,28 @@ export interface SyncTravelResult {
   placeIdByLocalId: Map<string, string>;
 }
 
-function chunkPendingPhotos<T>(items: T[], size: number): T[][] {
-  if (size <= 0) return [items];
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
-  }
-  return chunks;
+type PreparedPendingPhoto = PendingPhoto & {
+  uploadBlob: Blob;
+  uploadFilename: string;
+};
+
+async function preparePendingPhotoForUpload(
+  photo: PendingPhoto
+): Promise<PreparedPendingPhoto> {
+  const prepared = await prepareImageForUpload(photo.fileBlob, photo.filename, {
+    mediaType: photo.mediaType ?? "IMAGE",
+  });
+  return {
+    ...photo,
+    uploadBlob: prepared.blob,
+    uploadFilename: prepared.filename,
+  };
 }
 
 async function postPhotoSyncChunk(
   travelId: string,
   userId: string,
-  chunk: PendingPhoto[],
+  chunk: PreparedPendingPhoto[],
   placeIdByLocalId: Map<string, string>
 ): Promise<{
   synced: Array<{ id: string; localId: string | null }>;
@@ -66,13 +84,13 @@ async function postPhotoSyncChunk(
         selected: p.selected,
         isTransportStart: p.isTransportStart,
         isTransportEnd: p.isTransportEnd,
-        filename: p.filename,
+        filename: p.uploadFilename,
       }))
     )
   );
 
   for (const p of chunk) {
-    formData.append(`file_${p.localId}`, p.fileBlob, p.filename);
+    formData.append(`file_${p.localId}`, p.uploadBlob, p.uploadFilename);
     if (p.posterBlob) {
       formData.append(`poster_${p.localId}`, p.posterBlob, `${p.localId}.poster.jpg`);
     }
@@ -102,18 +120,15 @@ async function postPhotoSyncChunk(
   }
 }
 
-function errorMessage(res: Response, fallback: string): string {
-  return `${fallback} (HTTP ${res.status})`;
-}
-
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+  let serverError: string | null = null;
   try {
     const data = (await res.json()) as { error?: string };
-    if (data.error?.trim()) return data.error.trim();
+    if (data.error?.trim()) serverError = data.error.trim();
   } catch {
-    /* ignore */
+    /* ignore non-JSON (Vercel edge 413) */
   }
-  return errorMessage(res, fallback);
+  return describeUploadHttpError(res.status, fallback, serverError);
 }
 
 export interface SyncTravelOptions {
@@ -182,9 +197,21 @@ export async function syncTravelPending(
     (p) => includeErrors || (p.syncStatus ?? "pending") !== "error"
   );
 
-  // Upload in small chunks — one giant multipart of 18 HEICs hangs Tailscale/NAS
-  // and leaves the banner stuck on «Sincronizando…».
-  for (const chunk of chunkPendingPhotos(pendingPhotos, PHOTO_SYNC_CHUNK_SIZE)) {
+  // Compress images, then upload in budget-safe chunks (default 1) so Vercel
+  // never sees an 8MB phone JPEG (or a 3×HEIC batch) as one function body.
+  const preparedPhotos: PreparedPendingPhoto[] = [];
+  for (const photo of pendingPhotos) {
+    preparedPhotos.push(await preparePendingPhotoForUpload(photo));
+  }
+
+  const photoChunks = packByUploadBudget(
+    preparedPhotos,
+    (p) => p.uploadBlob.size + (p.posterBlob?.size ?? 0),
+    undefined,
+    PHOTO_SYNC_CHUNK_SIZE
+  );
+
+  for (const chunk of photoChunks) {
     try {
       const { synced, skipped } = await postPhotoSyncChunk(
         travelId,

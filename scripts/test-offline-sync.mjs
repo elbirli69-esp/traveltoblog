@@ -1,29 +1,88 @@
 import assert from "node:assert/strict";
 
-function chunkPendingPhotos(items, size) {
-  if (size <= 0) return [items];
+/** Mirrors src/lib/client-photo-compress.ts packByUploadBudget + describeUploadHttpError. */
+
+function packByUploadBudget(items, sizeOf, maxBytes = 3.5 * 1024 * 1024, maxItems = 1) {
+  if (!items.length) return [];
   const chunks = [];
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
+  let current = [];
+  let bytes = 0;
+
+  for (const item of items) {
+    const size = Math.max(0, sizeOf(item));
+    const wouldOverflow =
+      current.length > 0 &&
+      (current.length >= maxItems || bytes + size > maxBytes);
+    if (wouldOverflow) {
+      chunks.push(current);
+      current = [];
+      bytes = 0;
+    }
+    current.push(item);
+    bytes += size;
+    if (current.length >= maxItems) {
+      chunks.push(current);
+      current = [];
+      bytes = 0;
+    }
   }
+  if (current.length) chunks.push(current);
   return chunks;
 }
 
-assert.deepEqual(chunkPendingPhotos([1, 2, 3, 4, 5, 6, 7], 3), [
-  [1, 2, 3],
-  [4, 5, 6],
-  [7],
-]);
-assert.deepEqual(chunkPendingPhotos([], 3), []);
-assert.equal(chunkPendingPhotos(Array.from({ length: 18 }, (_, i) => i), 3).length, 6);
-
-function errorMessage(resStatus, fallback) {
-  return `${fallback} (HTTP ${resStatus})`;
+function describeUploadHttpError(status, fallback, serverError) {
+  if (serverError?.trim()) {
+    if (status === 413) {
+      return `${serverError.trim()} (HTTP 413: el archivo supera el límite del servidor cloud)`;
+    }
+    return serverError.trim();
+  }
+  if (status === 413) {
+    return (
+      "La foto es demasiado grande para el servidor (HTTP 413). " +
+      "Prueba una imagen más pequeña o comprueba la conexión; no se ha puesto en cola como «sin conexión»."
+    );
+  }
+  return `${fallback} (HTTP ${status})`;
 }
 
-assert.equal(
-  errorMessage(500, "No se pudieron subir las fotos"),
-  "No se pudieron subir las fotos (HTTP 500)"
+// Default chunk size 1: three large photos → three requests
+assert.deepEqual(
+  packByUploadBudget(
+    [{ size: 8e6 }, { size: 8e6 }, { size: 8e6 }],
+    (p) => p.size
+  ).map((c) => c.length),
+  [1, 1, 1]
 );
 
-console.log("offline-sync helpers ok");
+// Empty
+assert.deepEqual(packByUploadBudget([], (p) => p.size), []);
+
+// Allow packing two small files when maxItems=3
+assert.deepEqual(
+  packByUploadBudget(
+    [{ size: 500_000 }, { size: 500_000 }, { size: 500_000 }],
+    (p) => p.size,
+    3.5e6,
+    3
+  ).map((c) => c.length),
+  [3]
+);
+
+// Oversized single item still alone
+assert.equal(
+  packByUploadBudget([{ size: 9e6 }], (p) => p.size, 3.5e6, 3).length,
+  1
+);
+
+assert.match(describeUploadHttpError(413, "fail"), /HTTP 413/);
+assert.equal(
+  describeUploadHttpError(500, "No se pudieron subir las fotos"),
+  "No se pudieron subir las fotos (HTTP 500)"
+);
+assert.match(
+  describeUploadHttpError(413, "fail", "payload too large"),
+  /HTTP 413/
+);
+
+console.log("offline-sync / upload-budget helpers ok");

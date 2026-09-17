@@ -33,6 +33,10 @@ import { pickImagesFromFileExplorer } from "@/lib/photo-picker";
 import { createPhotoPreviewUrl } from "@/lib/photo-preview";
 import { createLocalId } from "@/lib/utils";
 import { useEscapeKey } from "@/lib/use-escape-key";
+import {
+  formatPhotoSaveProgress,
+  type PhotoSaveProgress,
+} from "@/lib/photo-save-progress";
 import type { ParsedPhoto, TravelDateRange } from "@/types";
 
 /** Android photo picker strips GPS when accept="image/*". text/plain opens file explorer. */
@@ -67,7 +71,10 @@ interface PhotoUploadGridProps {
   incomingFiles?: File[];
   incomingExifByName?: Record<string, import("@/types").ExifMetadata>;
   onIncomingFilesHandled?: () => void;
-  onPhotosConfirmed: (photos: ParsedPhoto[]) => Promise<void>;
+  onPhotosConfirmed: (
+    photos: ParsedPhoto[],
+    onProgress?: (progress: PhotoSaveProgress) => void
+  ) => Promise<void>;
   onTransportPhotoMarked?: (
     photoId: string,
     type: "start" | "end",
@@ -98,6 +105,9 @@ export default function PhotoUploadGrid({
   const [photos, setPhotos] = useState<ParsedPhoto[]>([]);
   const [processing, setProcessing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<PhotoSaveProgress | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
   const [locationBusy, setLocationBusy] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
@@ -584,6 +594,7 @@ export default function PhotoUploadGrid({
     setError(null);
     setProcessing(false);
     setUploading(false);
+    setSaveProgress(null);
   }, []);
 
   const handleConfirm = async () => {
@@ -638,15 +649,31 @@ export default function PhotoUploadGrid({
 
     setUploading(true);
     setError(null);
+    setSaveProgress({
+      phase: "preparing",
+      current: 0,
+      total: toUpload.length,
+      completed: 0,
+      label:
+        toUpload.length === 1
+          ? "Preparando 1 foto…"
+          : `Preparando ${toUpload.length} fotos…`,
+    });
 
     try {
-      await onPhotosConfirmed(toUpload);
+      await onPhotosConfirmed(toUpload, setSaveProgress);
       toUpload.forEach((p) => URL.revokeObjectURL(p.previewUrl));
       setPhotos((prev) => prev.filter((p) => !p.selected));
-    } catch {
-      setError("Error al guardar las fotos. Se intentará sincronizar offline.");
+      setSaveProgress(null);
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message.trim()
+          ? err.message.trim()
+          : "Error al guardar las fotos. Revisa la cola de sincronización.";
+      setError(message);
     } finally {
       setUploading(false);
+      setSaveProgress(null);
     }
   };
 
@@ -1130,10 +1157,62 @@ export default function PhotoUploadGrid({
                 disabled={uploading || selectedCount === 0 || locationBusy}
                 className="btn-primary px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {uploading ? "Guardando…" : isOnline ? "Confirmar fotos" : "Guardar offline"}
+                {uploading
+                  ? saveProgress
+                    ? formatPhotoSaveProgress(saveProgress).headline
+                    : "Guardando…"
+                  : isOnline
+                    ? "Confirmar fotos"
+                    : "Guardar offline"}
               </button>
             </div>
           </div>
+
+          {uploading && saveProgress && (
+            <div
+              className="surface-elevated mt-3 rounded-xl p-3"
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              {(() => {
+                const view = formatPhotoSaveProgress(saveProgress);
+                const remaining = Math.max(
+                  0,
+                  saveProgress.total - saveProgress.completed
+                );
+                return (
+                  <>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="text-sm font-semibold text-fg">
+                        {view.headline}
+                      </p>
+                      <p className="text-xs tabular-nums text-fg-secondary">
+                        {saveProgress.completed}/{saveProgress.total}
+                      </p>
+                    </div>
+                    <p className="mt-1 text-sm text-fg-secondary">{view.detail}</p>
+                    <div
+                      className="mt-2 h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10"
+                      aria-hidden
+                    >
+                      <div
+                        className="h-full rounded-full bg-accent-mint transition-[width] duration-300 ease-out"
+                        style={{ width: `${view.percent}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-fg-secondary">
+                      {remaining === 0
+                        ? "Casi listo…"
+                        : remaining === 1
+                          ? "Queda 1 foto"
+                          : `Quedan ${remaining} fotos`}
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+          )}
         </>
       )}
 

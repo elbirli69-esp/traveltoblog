@@ -6,6 +6,12 @@ import {
   savePendingPhoto,
   removePendingPhoto,
 } from "@/lib/offline-db";
+import {
+  describeUploadHttpError,
+  packByUploadBudget,
+  prepareImageForUpload,
+} from "@/lib/client-photo-compress";
+import type { PhotoSaveProgress } from "@/lib/photo-save-progress";
 import type { ExifMetadata, ParsedPhoto, TravelDateRange } from "@/types";
 
 interface PhotoUploadSectionProps {
@@ -26,6 +32,51 @@ interface PhotoUploadSectionProps {
   addOnly?: boolean;
 }
 
+type PreparedConfirmPhoto = ParsedPhoto & {
+  uploadBlob: Blob;
+  uploadFilename: string;
+};
+
+type ProgressCb = (progress: PhotoSaveProgress) => void;
+
+async function prepareConfirmPhotos(
+  photos: ParsedPhoto[],
+  onProgress?: ProgressCb
+): Promise<PreparedConfirmPhoto[]> {
+  const out: PreparedConfirmPhoto[] = [];
+  const total = photos.length;
+  for (let i = 0; i < photos.length; i++) {
+    const photo = photos[i];
+    onProgress?.({
+      phase: "compressing",
+      current: i + 1,
+      total,
+      completed: i,
+      label: `Comprimiendo ${i + 1} de ${total}`,
+    });
+    const prepared = await prepareImageForUpload(photo.file, photo.file.name, {
+      mediaType: photo.mediaType ?? "IMAGE",
+    });
+    out.push({
+      ...photo,
+      uploadBlob: prepared.blob,
+      uploadFilename: prepared.filename,
+    });
+  }
+  return out;
+}
+
+async function readUploadError(res: Response, fallback: string): Promise<string> {
+  let serverError: string | null = null;
+  try {
+    const data = (await res.json()) as { error?: string };
+    if (data.error?.trim()) serverError = data.error.trim();
+  } catch {
+    /* ignore non-JSON (e.g. Vercel 413 plain/FUNCTION_PAYLOAD_TOO_LARGE) */
+  }
+  return describeUploadHttpError(res.status, fallback, serverError);
+}
+
 export default function PhotoUploadSection({
   travelId,
   userId,
@@ -42,15 +93,35 @@ export default function PhotoUploadSection({
   addOnly = false,
 }: PhotoUploadSectionProps) {
   const handlePhotosConfirmed = useCallback(
-    async (photos: ParsedPhoto[]) => {
-      const queueOffline = async () => {
-        for (const photo of photos) {
+    async (photos: ParsedPhoto[], onProgress?: ProgressCb) => {
+      const total = photos.length;
+      const report = (partial: PhotoSaveProgress) => onProgress?.(partial);
+
+      const queueOffline = async (
+        items: Array<{
+          photo: ParsedPhoto;
+          uploadBlob: Blob;
+          uploadFilename: string;
+        }>,
+        lastError: string | null = null
+      ) => {
+        report({
+          phase: "queuing",
+          current: 0,
+          total,
+          completed: Math.max(0, total - items.length),
+          label:
+            items.length === 1
+              ? "Guardando 1 foto en la cola local"
+              : `Guardando ${items.length} fotos en la cola local`,
+        });
+        for (const { photo, uploadBlob, uploadFilename } of items) {
           await savePendingPhoto({
             localId: photo.id,
             travelId,
             userId,
-            fileBlob: photo.file,
-            filename: photo.file.name,
+            fileBlob: uploadBlob,
+            filename: uploadFilename,
             exifDateTime: photo.exif.dateTime?.toISOString() ?? null,
             latitude: photo.exif.latitude,
             longitude: photo.exif.longitude,
@@ -63,19 +134,49 @@ export default function PhotoUploadSection({
             isTransportStart: photo.isTransportStart,
             isTransportEnd: photo.isTransportEnd,
             createdAt: new Date().toISOString(),
-            syncStatus: "pending",
-            lastError: null,
+            syncStatus: lastError ? "error" : "pending",
+            lastError,
           });
         }
       };
 
+      report({
+        phase: "preparing",
+        current: 0,
+        total,
+        completed: 0,
+        label:
+          total === 1 ? "Preparando 1 foto…" : `Preparando ${total} fotos…`,
+      });
+
       if (!navigator.onLine) {
-        await queueOffline();
+        const prepared = await prepareConfirmPhotos(photos, onProgress);
+        await queueOffline(
+          prepared.map((p) => ({
+            photo: p,
+            uploadBlob: p.uploadBlob,
+            uploadFilename: p.uploadFilename,
+          }))
+        );
+        report({
+          phase: "done",
+          current: total,
+          total,
+          completed: total,
+          label: "Guardadas offline",
+        });
         return;
       }
 
       try {
         if (shareBundleId) {
+          report({
+            phase: "uploading",
+            current: 1,
+            total,
+            completed: 0,
+            label: "Importando desde el buzón compartido…",
+          });
           const res = await fetch(`/api/travels/${travelId}/photos/import-shared`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -93,16 +194,43 @@ export default function PhotoUploadSection({
           });
           if (!res.ok) throw new Error("Import failed");
           onSyncComplete?.();
+          report({
+            phase: "done",
+            current: total,
+            total,
+            completed: total,
+            label: "Importación lista",
+          });
           return;
         }
 
-        // Upload in small batches so Confirm with many HEICs does not hang Tailscale.
-        const CONFIRM_CHUNK = 3;
+        // Compress first, then upload one (or budget-safe) photo per request so
+        // phone JPEGs (~8MB) never hit Vercel’s ~4.5MB FUNCTION_PAYLOAD_TOO_LARGE.
+        const prepared = await prepareConfirmPhotos(photos, onProgress);
         const CONFIRM_TIMEOUT_MS = 120_000;
         let uploaded = 0;
+        let lastFailureMessage: string | null = null;
+
         try {
-          for (let i = 0; i < photos.length; i += CONFIRM_CHUNK) {
-            const chunk = photos.slice(i, i + CONFIRM_CHUNK);
+          const chunks = packByUploadBudget(
+            prepared,
+            (p) => p.uploadBlob.size + (p.posterBlob?.size ?? 0)
+          );
+
+          for (const chunk of chunks) {
+            const indexStart = uploaded + 1;
+            const indexEnd = uploaded + chunk.length;
+            report({
+              phase: "uploading",
+              current: indexStart,
+              total,
+              completed: uploaded,
+              label:
+                chunk.length === 1
+                  ? `Subiendo ${indexStart} de ${total}`
+                  : `Subiendo ${indexStart}–${indexEnd} de ${total}`,
+            });
+
             const formData = new FormData();
             formData.append("travelId", travelId);
             formData.append("userId", userId);
@@ -123,7 +251,7 @@ export default function PhotoUploadSection({
             formData.append("metadata", JSON.stringify(metadata));
 
             chunk.forEach((p) => {
-              formData.append(`file_${p.id}`, p.file, p.file.name);
+              formData.append(`file_${p.id}`, p.uploadBlob, p.uploadFilename);
               if (p.posterBlob) {
                 formData.append(`poster_${p.id}`, p.posterBlob, `${p.id}.poster.jpg`);
               }
@@ -143,44 +271,82 @@ export default function PhotoUploadSection({
             }
 
             if (!res.ok) {
-              throw new Error("Upload failed");
+              lastFailureMessage = await readUploadError(
+                res,
+                "No se pudieron subir las fotos"
+              );
+              throw new Error(lastFailureMessage);
             }
-            uploaded = i + chunk.length;
-          }
-        } catch {
-          // Queue only what did not upload yet (already-uploaded localIds are skipped by /api/sync).
-          const remaining = photos.slice(uploaded);
-          for (const photo of remaining) {
-            await savePendingPhoto({
-              localId: photo.id,
-              travelId,
-              userId,
-              fileBlob: photo.file,
-              filename: photo.file.name,
-              exifDateTime: photo.exif.dateTime?.toISOString() ?? null,
-              latitude: photo.exif.latitude,
-              longitude: photo.exif.longitude,
-              placeId: photo.placeId ?? null,
-              placeLocalId: null,
-              mediaType: photo.mediaType ?? "IMAGE",
-              durationMs: photo.durationMs ?? null,
-              posterBlob: photo.posterBlob ?? null,
-              selected: photo.selected,
-              isTransportStart: photo.isTransportStart,
-              isTransportEnd: photo.isTransportEnd,
-              createdAt: new Date().toISOString(),
-              syncStatus: "pending",
-              lastError: null,
+            uploaded += chunk.length;
+            report({
+              phase: "uploading",
+              current: Math.min(uploaded, total),
+              total,
+              completed: uploaded,
+              label:
+                uploaded >= total
+                  ? "Subida completa"
+                  : `Subidas ${uploaded} de ${total}`,
             });
           }
+        } catch (err) {
+          // Queue only what did not upload yet. Always mark lastError so the UI
+          // (and offline banner) show a real message — do not pretend success.
+          const remaining = prepared.slice(uploaded);
+          const message =
+            lastFailureMessage ??
+            (err instanceof Error ? err.message : null) ??
+            "Error al subir fotos";
+
+          if (remaining.length) {
+            await queueOffline(
+              remaining.map((p) => ({
+                photo: p,
+                uploadBlob: p.uploadBlob,
+                uploadFilename: p.uploadFilename,
+              })),
+              message
+            );
+          }
           if (uploaded > 0) onSyncComplete?.();
-          return;
+          const summary =
+            uploaded > 0
+              ? `Se subieron ${uploaded} de ${prepared.length}. ${message}`
+              : message;
+          throw new Error(summary);
         }
 
         onSyncComplete?.();
-      } catch {
-        // Offline / unexpected: keep all memories in the offline queue.
-        await queueOffline();
+        report({
+          phase: "done",
+          current: total,
+          total,
+          completed: total,
+          label: total === 1 ? "1 foto guardada" : `${total} fotos guardadas`,
+        });
+      } catch (err) {
+        // Propagate structured upload errors to PhotoUploadGrid.
+        if (
+          err instanceof Error &&
+          /HTTP\s*\d|subieron \d|demasiado grande|FUNCTION_PAYLOAD|No se pudieron|Error al subir|Import failed/i.test(
+            err.message
+          )
+        ) {
+          throw err;
+        }
+        // Unexpected (e.g. compress crash): keep memories in the offline queue.
+        const prepared = await prepareConfirmPhotos(photos, onProgress);
+        const message =
+          err instanceof Error ? err.message : "Error al guardar las fotos";
+        await queueOffline(
+          prepared.map((p) => ({
+            photo: p,
+            uploadBlob: p.uploadBlob,
+            uploadFilename: p.uploadFilename,
+          })),
+          message
+        );
+        throw new Error(message);
       }
     },
     [travelId, userId, shareBundleId, onSyncComplete]
